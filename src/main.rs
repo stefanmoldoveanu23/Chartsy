@@ -1,10 +1,14 @@
+#![windows_subsystem = "windows"]
+
 mod scene;
 mod scenes;
+mod tool;
+mod tools;
 
 use scene::{Message};
 use scenes::scenes::SceneLoader;
 
-use iced::{Element, Sandbox, Settings};
+use iced::{Application, Command, Element, executor, Settings, Theme};
 
 pub fn main() -> iced::Result {
     Chartsy::run(Settings {
@@ -17,25 +21,31 @@ struct Chartsy {
     scene_loader: SceneLoader,
 }
 
-impl Sandbox for Chartsy {
+impl Application for Chartsy {
+    type Executor = executor::Default;
     type Message = Message;
+    type Theme = Theme;
+    type Flags = ();
 
-    fn new() -> Self {
-        Chartsy{scene_loader: SceneLoader::default()}
+    fn new(_flags: Self::Flags) -> (Chartsy, Command<Self::Message>) {
+        (Chartsy{scene_loader: SceneLoader::default()}, Command::none())
     }
 
     fn title(&self) -> String {
         String::from("Title")
     }
 
-    fn update(&mut self, message: Self::Message) {
+    fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
+
         match message {
             Message::ChangeScene(scene) => {
                 self.scene_loader.load(scene);
+                Command::none()
             }
             Message::DoAction(action) => {
                 let scene = self.scene_loader.get_mut().expect("Error getting scene.");
                 scene.update(action);
+                Command::none()
             }
         }
     }

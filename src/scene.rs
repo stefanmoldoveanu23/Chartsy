@@ -5,7 +5,7 @@ use crate::scenes::scenes::Scenes;
 
 pub trait Scene: Send+Sync {
     fn get_title(&self) -> String;
-    fn update(&mut self, message: &dyn Action);
+    fn update(&mut self, message: Box<dyn Action>);
     fn view(&self) -> Element<'_, Message>;
 }
 
@@ -18,6 +18,13 @@ impl Debug for dyn Scene {
 pub trait Action: Send+Sync {
     fn as_any(&self) -> &dyn Any;
     fn get_name(&self) -> String;
+    fn boxed_clone(&self) -> Box<dyn Action + 'static>;
+}
+
+impl Clone for Box<dyn Action + 'static> {
+    fn clone(&self) -> Self {
+        self.boxed_clone()
+    }
 }
 
 impl Debug for dyn Action {
@@ -29,5 +36,5 @@ impl Debug for dyn Action {
 #[derive(Debug, Clone)]
 pub enum Message {
     ChangeScene(Scenes),
-    DoAction(&'static dyn Action),
+    DoAction(Box<dyn Action>)
 }
