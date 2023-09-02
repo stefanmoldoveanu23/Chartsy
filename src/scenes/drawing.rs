@@ -8,7 +8,7 @@ use iced::widget::canvas::{Cache, Event, Frame, Geometry, Path, Stroke};
 
 use crate::scene::{Scene, Action, Message};
 use crate::tool::{Tool, Pending};
-use crate::tools::{line::LinePending, rect::RectPending};
+use crate::tools::{line::LinePending, rect::RectPending, triangle::TrianglePending, polygon::PolygonPending, circle::CirclePending, ellipse::EllipsePending};
 use crate::scenes::scenes::Scenes;
 
 #[derive(Default)]
@@ -213,7 +213,11 @@ impl Scene for Box<Drawing> {
                 button("Back").padding(8).on_press(Message::ChangeScene(Scenes::Main)),
                 button("Line").padding(8).on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(LinePending::None))))),
                 button("Rectangle").padding(8).on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(RectPending::None))))),
-                ]
+                button("Triangle").padding(8).on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(TrianglePending::None))))),
+                button("Polygon").padding(8).on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(PolygonPending::None))))),
+                button("Circle").padding(8).on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(CirclePending::None))))),
+                button("Ellipse").padding(8).on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(EllipsePending::None))))),
+            ]
         ]
             .padding(20)
             .spacing(20)

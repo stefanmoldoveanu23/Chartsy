@@ -1,6 +1,5 @@
 use std::fmt::{Debug};
-use std::ops::Sub;
-use iced::{mouse, Point, Rectangle, Renderer, keyboard, Size};
+use iced::{mouse, Point, Rectangle, Renderer, keyboard};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
@@ -9,12 +8,13 @@ use iced::widget::canvas::path::Builder;
 use crate::tool::{Pending, Tool};
 
 #[derive(Clone)]
-pub enum RectPending {
+pub enum TrianglePending {
     None,
     One(Point),
+    Two(Point, Point),
 }
 
-impl Pending for RectPending {
+impl Pending for TrianglePending {
     fn update(
         &mut self,
         event: Event,
@@ -25,15 +25,20 @@ impl Pending for RectPending {
                 let message = match mouse_event {
                     mouse::Event::ButtonPressed(mouse::Button::Left) => {
                         match self {
-                            RectPending::None => {
-                                *self = RectPending::One(cursor);
+                            TrianglePending::None => {
+                                *self = TrianglePending::One(cursor);
                                 None
                             }
-                            RectPending::One(start) => {
-                                let start_clone = start.clone();
+                            TrianglePending::One(start) => {
+                                *self = TrianglePending::Two(*start, cursor);
+                                None
+                            }
+                            TrianglePending::Two(point1, point2) => {
+                                let point1_clone = point1.clone();
+                                let point2_clone = point2.clone();
 
-                                *self = RectPending::None;
-                                Some(Box::new(Rect { start: start_clone, end: cursor }).into())
+                                *self = TrianglePending::None;
+                                Some(Box::new(Triangle { point1: point1_clone, point2: point2_clone, point3: cursor }).into())
                             }
                         }
                     }
@@ -45,7 +50,7 @@ impl Pending for RectPending {
             Event::Keyboard(key_event) => {
                 match key_event {
                     keyboard::Event::KeyPressed { key_code: keyboard::KeyCode::S, .. } => {
-                        *self = RectPending::None;
+                        *self = TrianglePending::None;
 
                         (Status::Captured, None)
                     }
@@ -66,10 +71,21 @@ impl Pending for RectPending {
 
         if let Some(cursor_position) = cursor.position_in(bounds) {
             match self {
-                RectPending::None => {}
-                RectPending::One(start) => {
+                TrianglePending::None => {}
+                TrianglePending::One(point1) => {
                     let stroke = Path::new(|p| {
-                        p.rectangle(*start, Size::from(cursor_position.sub(*start)));
+                        p.move_to(*point1);
+                        p.line_to(cursor_position);
+                    });
+
+                    frame.stroke(&stroke, Stroke::default().with_width(2.0));
+                }
+                TrianglePending::Two(point1, point2) => {
+                    let stroke = Path::new(|p| {
+                        p.move_to(*point1);
+                        p.line_to(*point2);
+                        p.line_to(cursor_position);
+                        p.line_to(*point1);
                     });
 
                     frame.stroke(&stroke, Stroke::default().with_width(2.0));
@@ -81,11 +97,11 @@ impl Pending for RectPending {
     }
 
     fn id(&self) -> String {
-        String::from("Rectangle")
+        String::from("Triangle")
     }
 
     fn default() -> Self where Self: Sized {
-        RectPending::None
+        TrianglePending::None
     }
 
     fn boxed_clone(&self) -> Box<dyn Pending> {
@@ -94,14 +110,18 @@ impl Pending for RectPending {
 }
 
 #[derive(Debug, Clone)]
-pub struct Rect {
-    start: Point,
-    end: Point,
+pub struct Triangle {
+    point1: Point,
+    point2: Point,
+    point3: Point,
 }
 
-impl Tool for Rect {
+impl Tool for Triangle {
     fn add_to_path(&self, builder: &mut Builder) {
-        builder.rectangle(self.start, Size::from(self.end.sub(self.start)));
+        builder.move_to(self.point1);
+        builder.line_to(self.point2);
+        builder.line_to(self.point3);
+        builder.line_to(self.point1);
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {
@@ -109,7 +129,7 @@ impl Tool for Rect {
     }
 }
 
-impl Into<Box<dyn Tool>> for Box<Rect> {
+impl Into<Box<dyn Tool>> for Box<Triangle> {
     fn into(self) -> Box<dyn Tool> {
         self.boxed_clone()
     }

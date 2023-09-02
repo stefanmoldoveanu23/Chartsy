@@ -1,5 +1,5 @@
 use std::fmt::{Debug};
-use iced::{mouse, Point, Rectangle, Renderer};
+use iced::{mouse, Point, Rectangle, Renderer, keyboard};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
@@ -8,31 +8,31 @@ use iced::widget::canvas::path::Builder;
 use crate::tool::{Pending, Tool};
 
 #[derive(Clone)]
-pub enum LinePending {
+pub enum CirclePending {
     None,
     One(Point),
 }
 
-impl Pending for LinePending {
+impl Pending for CirclePending {
     fn update(
         &mut self,
         event: Event,
-        cursor: Point
+        cursor: Point,
     ) -> (Status, Option<Box<dyn Tool>>) {
         match event {
             Event::Mouse(mouse_event) => {
                 let message = match mouse_event {
                     mouse::Event::ButtonPressed(mouse::Button::Left) => {
                         match self {
-                            LinePending::None => {
-                                *self = LinePending::One(cursor);
+                            CirclePending::None => {
+                                *self = CirclePending::One(cursor);
                                 None
                             }
-                            LinePending::One(start) => {
-                                let start_clone = start.clone();
+                            CirclePending::One(center) => {
+                                let center_clone = center.clone();
 
-                                *self = LinePending::None;
-                                Some(Box::new(Line{start:start_clone, end:cursor}).into())
+                                *self = CirclePending::None;
+                                Some(Box::new(Circle { center: center_clone, radius: cursor.distance(center_clone) }).into())
                             }
                         }
                     }
@@ -40,6 +40,16 @@ impl Pending for LinePending {
                 };
 
                 (Status::Captured, message)
+            }
+            Event::Keyboard(key_event) => {
+                match key_event {
+                    keyboard::Event::KeyPressed { key_code: keyboard::KeyCode::S, .. } => {
+                        *self = CirclePending::None;
+
+                        (Status::Captured, None)
+                    }
+                    _ => (Status::Ignored, None)
+                }
             }
             _ => (Status::Ignored, None)
         }
@@ -49,17 +59,16 @@ impl Pending for LinePending {
         &self,
         renderer: &Renderer,
         bounds: Rectangle,
-        cursor: Cursor
+        cursor: Cursor,
     ) -> Geometry {
         let mut frame = Frame::new(renderer, bounds.size());
 
         if let Some(cursor_position) = cursor.position_in(bounds) {
             match self {
-                LinePending::None => {}
-                LinePending::One(start) => {
+                CirclePending::None => {}
+                CirclePending::One(center) => {
                     let stroke = Path::new(|p| {
-                        p.move_to(*start);
-                        p.line_to(cursor_position);
+                        p.circle(*center, cursor_position.distance(*center));
                     });
 
                     frame.stroke(&stroke, Stroke::default().with_width(2.0));
@@ -71,11 +80,11 @@ impl Pending for LinePending {
     }
 
     fn id(&self) -> String {
-        String::from("Line")
+        String::from("Circle")
     }
 
     fn default() -> Self where Self: Sized {
-        LinePending::None
+        CirclePending::None
     }
 
     fn boxed_clone(&self) -> Box<dyn Pending> {
@@ -84,15 +93,14 @@ impl Pending for LinePending {
 }
 
 #[derive(Debug, Clone)]
-pub struct Line {
-    start: Point,
-    end: Point,
+pub struct Circle {
+    center: Point,
+    radius: f32,
 }
 
-impl Tool for Line {
+impl Tool for Circle {
     fn add_to_path(&self, builder: &mut Builder) {
-        builder.move_to(self.start);
-        builder.line_to(self.end);
+        builder.circle(self.center, self.radius.clone());
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {
@@ -100,7 +108,7 @@ impl Tool for Line {
     }
 }
 
-impl Into<Box<dyn Tool>> for Box<Line> {
+impl Into<Box<dyn Tool>> for Box<Circle> {
     fn into(self) -> Box<dyn Tool> {
         self.boxed_clone()
     }
