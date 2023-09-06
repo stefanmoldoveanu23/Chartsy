@@ -20,21 +20,21 @@ impl EllipsePending {
     fn convert_data(center: Point, point1: Point, point2: Point) -> (Point, Vector, f32) {
         let point2h :Point=
             if (point1.x - center.x).abs() < 1e-3 {
-                Point::new(center.clone().x, point2.y)
+                Point::new(center.x, point2.y)
             } else {
-                let slope1 = (center.y - point1.y) / (center.clone().x - point1.clone().x);
+                let slope1 = (center.y - point1.y) / (center.x - point1.x);
                 let slope2 = -1.0 / slope1;
 
-                let x :f32= (point2.y - center.clone().y + slope2 * center.clone().x - slope1.clone() * point2.x) / (slope2.clone() - slope1.clone());
-                let y :f32= slope2.clone() * (x - center.clone().x) + center.clone().y;
+                let x :f32= (point2.y - center.y + slope2 * center.x - slope1 * point2.x) / (slope2 - slope1);
+                let y :f32= slope2 * (x - center.x) + center.y;
 
-                Point::new(x.clone(), y)
+                Point::new(x, y)
             };
 
-        let radii :Vector= Vector::new(point1.distance(center.clone()), center.distance(point2h));
-        let rotation = (point1.clone().y - center.clone().y).atan2(point1.clone().x - center.clone().x);
+        let radii :Vector= Vector::new(point1.distance(center), center.distance(point2h));
+        let rotation = (point1.y - center.y).atan2(point1.x - center.x);
 
-        (center.clone(), radii, rotation)
+        (center, radii, rotation)
     }
 }
 
@@ -58,8 +58,8 @@ impl Pending for EllipsePending {
                                 None
                             }
                             EllipsePending::Two(center, point1) => {
-                                let center_clone = center.clone();
-                                let point1_clone = point1.clone();
+                                let center_clone = *center;
+                                let point1_clone = *point1;
 
                                 *self = EllipsePending::None;
 

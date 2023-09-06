@@ -10,6 +10,7 @@ use crate::scene::{Scene, Action, Message};
 use crate::tool::{Tool, Pending};
 use crate::tools::{line::LinePending, rect::RectPending, triangle::TrianglePending, polygon::PolygonPending, circle::CirclePending, ellipse::EllipsePending};
 use crate::scenes::scenes::Scenes;
+use crate::menu::menu;
 
 #[derive(Default)]
 struct State {
@@ -206,20 +207,32 @@ impl Scene for Box<Drawing> {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        column![
-            text(format!("{}", self.get_title())).width(Length::Shrink).size(50),
-            self.state.view(&self.tools, &self.current_tool).map(|tool| {Message::DoAction(Box::new(DrawingAction::UseTool(tool)).into())}),
-            row![
+        row![
+            menu(250, Box::<[(String, Box<[Box<dyn Pending>]>); 2]>::new(
+                    [
+                        (String::from("Geometry"), Box::new(
+                            [
+                                Box::new(LinePending::None),
+                                Box::new(RectPending::None),
+                                Box::new(TrianglePending::None),
+                                Box::new(PolygonPending::None),
+                            ])),
+                        (String::from("Brushes"), Box::new(
+                            [
+                                Box::new(CirclePending::None),
+                                Box::new(EllipsePending::None),
+                            ]))
+                    ]
+                ),
+                Box::new(|tool| {Message::DoAction(Box::new(DrawingAction::ChangeTool(tool)))}),
+            ),
+            column![
+                text(format!("{}", self.get_title())).width(Length::Shrink).size(50),
+                self.state.view(&self.tools, &self.current_tool).map(|tool| {Message::DoAction(Box::new(DrawingAction::UseTool(tool)).into())}),
                 button("Back").padding(8).on_press(Message::ChangeScene(Scenes::Main)),
-                button("Line").padding(8).on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(LinePending::None))))),
-                button("Rectangle").padding(8).on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(RectPending::None))))),
-                button("Triangle").padding(8).on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(TrianglePending::None))))),
-                button("Polygon").padding(8).on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(PolygonPending::None))))),
-                button("Circle").padding(8).on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(CirclePending::None))))),
-                button("Ellipse").padding(8).on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(EllipsePending::None))))),
             ]
         ]
-            .padding(20)
+            .padding(0)
             .spacing(20)
             .width(Length::Fill)
             .height(Length::Fill)

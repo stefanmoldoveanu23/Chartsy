@@ -4,6 +4,7 @@ mod scene;
 mod scenes;
 mod tool;
 mod tools;
+mod menu;
 
 use scene::{Message};
 use scenes::scenes::SceneLoader;
