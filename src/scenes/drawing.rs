@@ -9,6 +9,7 @@ use iced::widget::canvas::{Cache, Event, Frame, Geometry, Path, Stroke};
 use crate::scene::{Scene, Action, Message};
 use crate::tool::{Tool, Pending};
 use crate::tools::{line::LinePending, rect::RectPending, triangle::TrianglePending, polygon::PolygonPending, circle::CirclePending, ellipse::EllipsePending};
+use crate::tools::{brush::BrushPending, brushes::pencil::Pencil};
 use crate::scenes::scenes::Scenes;
 use crate::menu::menu;
 
@@ -221,6 +222,7 @@ impl Scene for Box<Drawing> {
                             [
                                 Box::new(CirclePending::None),
                                 Box::new(EllipsePending::None),
+                                Box::new(BrushPending::<Pencil>::None),
                             ]))
                     ]
                 ),
