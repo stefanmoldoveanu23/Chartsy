@@ -4,7 +4,6 @@ use iced::{mouse, Point, Rectangle, Renderer, keyboard, Size};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
-use iced::widget::canvas::path::Builder;
 
 use crate::tool::{Pending, Tool};
 
@@ -100,8 +99,12 @@ pub struct Rect {
 }
 
 impl Tool for Rect {
-    fn add_to_path(&self, builder: &mut Builder) {
-        builder.rectangle(self.start, Size::from(self.end.sub(self.start)));
+    fn add_to_frame(&self, frame: &mut Frame) {
+        let rect = Path::new(|builder| {
+            builder.rectangle(self.start, Size::from(self.end.sub(self.start)));
+        });
+
+        frame.stroke(&rect, Stroke::default().with_width(2.0));
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

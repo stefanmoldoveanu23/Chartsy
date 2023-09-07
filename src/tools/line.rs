@@ -3,7 +3,6 @@ use iced::{mouse, Point, Rectangle, Renderer};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
-use iced::widget::canvas::path::Builder;
 
 use crate::tool::{Pending, Tool};
 
@@ -90,9 +89,13 @@ pub struct Line {
 }
 
 impl Tool for Line {
-    fn add_to_path(&self, builder: &mut Builder) {
-        builder.move_to(self.start);
-        builder.line_to(self.end);
+    fn add_to_frame(&self, frame: &mut Frame) {
+        let line = Path::new(|builder| {
+            builder.move_to(self.start);
+            builder.line_to(self.end);
+        });
+
+        frame.stroke(&line, Stroke::default().with_width(2.0));
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

@@ -1,10 +1,9 @@
 use std::fmt::Debug;
 use iced::{mouse, Point, Rectangle, Renderer};
-use iced::widget::canvas::{event, Event, Geometry};
-use iced::widget::canvas::path::Builder;
+use iced::widget::canvas::{event, Event, Frame, Geometry};
 
 pub trait Tool: Debug+Send+Sync {
-    fn add_to_path(&self, builder: &mut Builder);
+    fn add_to_frame(&self, frame: &mut Frame);
     fn boxed_clone(&self) -> Box<dyn Tool>;
 }
 

@@ -4,7 +4,6 @@ use iced::{mouse, Point, Rectangle, Renderer, keyboard, Vector, Color};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke, Style};
-use iced::widget::canvas::path::Builder;
 
 use crate::tool::{Pending, Tool};
 
@@ -134,14 +133,18 @@ pub struct Polygon {
 }
 
 impl Tool for Polygon {
-    fn add_to_path(&self, builder: &mut Builder) {
-        builder.move_to(self.first);
+    fn add_to_frame(&self, frame: &mut Frame) {
+        let polygon = Path::new(|builder| {
+            builder.move_to(self.first);
 
-        let mut pos = self.first;
-        for offset in self.offsets.clone() {
-            pos = pos.add(offset);
-            builder.line_to(pos);
-        }
+            let mut pos = self.first;
+            for offset in self.offsets.clone() {
+                pos = pos.add(offset);
+                builder.line_to(pos);
+            }
+        });
+
+        frame.stroke(&polygon, Stroke::default().with_width(2.0));
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

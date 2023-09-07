@@ -4,8 +4,7 @@ use std::ops::{Add, Sub};
 use iced::{mouse, Point, Rectangle, Renderer, keyboard, Vector};
 use iced::event::Status;
 use iced::mouse::Cursor;
-use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
-use iced::widget::canvas::path::Builder;
+use iced::widget::canvas::{Event, Frame, Geometry};
 
 use crate::tool::{Pending, Tool};
 
@@ -101,17 +100,12 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
         if let Some(_cursor_position) = cursor.position_in(bounds) {
             match self {
                 BrushPending::Stroking(start, _last, offsets) => {
-                    let stroke = Path::new(|p| {
-                        let mut pos = *start;
-                        p.move_to(pos);
+                    let mut pos = *start;
 
-                        for offset in offsets.clone() {
-                            BrushType::add_stroke_piece(pos, pos.add(offset), p);
-                            pos = pos.add(offset.clone());
-                        }
-                    });
-
-                    frame.stroke(&stroke, Stroke::default().with_width(2.0));
+                    for offset in offsets.clone() {
+                        BrushType::add_stroke_piece(pos, pos.add(offset), &mut frame);
+                        pos = pos.add(offset.clone());
+                    }
                 }
                 _ => {}
             }
@@ -121,7 +115,7 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
     }
 
     fn id(&self) -> String {
-        String::from("Brush")
+        BrushType::id()
     }
 
     fn default() -> Self where Self: Sized {
@@ -135,20 +129,21 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
 
 pub trait Brush: Send+Sync+Debug {
     fn new(start: Point, offsets: Vec<Vector>) -> Self where Self:Sized;
+    fn id() -> String where Self:Sized;
+
     fn get_start(&self) -> Point;
     fn get_offsets(&self) -> Vec<Vector>;
 
-    fn add_stroke_piece(point1: Point, point2: Point, builder: &mut Builder) where Self:Sized;
+    fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame) where Self:Sized;
 }
 
 impl<BrushType> Tool for BrushType
 where BrushType: Brush+Clone+'static {
-    fn add_to_path(&self, builder: &mut Builder) {
+    fn add_to_frame(&self, frame: &mut Frame) {
         let mut pos = self.get_start();
-        builder.move_to(pos);
 
         for offset in self.get_offsets() {
-            BrushType::add_stroke_piece(pos, pos.add(offset), builder);
+            BrushType::add_stroke_piece(pos, pos.add(offset), frame);
             pos = pos.add(offset.clone());
         }
     }

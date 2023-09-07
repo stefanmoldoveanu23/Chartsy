@@ -5,7 +5,6 @@ use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
 use iced::widget::canvas::path::arc::Elliptical;
-use iced::widget::canvas::path::Builder;
 
 use crate::tool::{Pending, Tool};
 
@@ -153,20 +152,24 @@ pub struct Ellipse {
 }
 
 impl Tool for Ellipse {
-    fn add_to_path(&self, builder: &mut Builder) {
-        if self.radii.y.abs() < 1e-3 {
-            let vector = Vector::new(self.clone().radii.x * self.clone().rotation.cos(), self.clone().radii.x * self.clone().rotation.sin());
-            builder.move_to(self.center.sub(vector));
-            builder.line_to(self.center.add(vector.clone()));
-        } else {
-            builder.ellipse(Elliptical{
-                center: self.center,
-                radii: self.radii.clone(),
-                rotation: self.rotation.clone(),
-                start_angle: 0.0,
-                end_angle: 360.0,
-            });
-        }
+    fn add_to_frame(&self, frame: &mut Frame) {
+        let ellipse = Path::new(|builder| {
+            if self.radii.y.abs() < 1e-3 {
+                let vector = Vector::new(self.clone().radii.x * self.clone().rotation.cos(), self.clone().radii.x * self.clone().rotation.sin());
+                builder.move_to(self.center.sub(vector));
+                builder.line_to(self.center.add(vector.clone()));
+            } else {
+                builder.ellipse(Elliptical{
+                    center: self.center,
+                    radii: self.radii.clone(),
+                    rotation: self.rotation.clone(),
+                    start_angle: 0.0,
+                    end_angle: 360.0,
+                });
+            }
+        });
+
+        frame.stroke(&ellipse, Stroke::default().with_width(2.0));
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {
