@@ -37,6 +37,8 @@ impl Brush for Pencil {
 
         frame.stroke(&line, Stroke::default().with_width(2.0));
     }
+
+    fn add_end(_point: Point, _frame: &mut Frame) where Self: Sized { }
 }
 
 impl Into<Box<dyn Tool>> for Box<Pencil> {

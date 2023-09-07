@@ -135,6 +135,7 @@ pub trait Brush: Send+Sync+Debug {
     fn get_offsets(&self) -> Vec<Vector>;
 
     fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame) where Self:Sized;
+    fn add_end(point: Point, frame: &mut Frame) where Self:Sized;
 }
 
 impl<BrushType> Tool for BrushType
@@ -146,6 +147,8 @@ where BrushType: Brush+Clone+'static {
             BrushType::add_stroke_piece(pos, pos.add(offset), frame);
             pos = pos.add(offset.clone());
         }
+
+        BrushType::add_end(pos, frame);
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

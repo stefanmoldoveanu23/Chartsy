@@ -42,8 +42,9 @@ impl Brush for Pen {
         });
 
         frame.fill(&quad, Fill::default());
-        frame.
     }
+
+    fn add_end(_point: Point, _frame: &mut Frame) where Self: Sized { }
 }
 
 impl Into<Box<dyn Tool>> for Box<Pen> {

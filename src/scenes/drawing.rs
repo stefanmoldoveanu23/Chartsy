@@ -9,7 +9,7 @@ use iced::widget::canvas::{Cache, Event, Frame, Geometry, Path, Stroke};
 use crate::scene::{Scene, Action, Message};
 use crate::tool::{Tool, Pending};
 use crate::tools::{line::LinePending, rect::RectPending, triangle::TrianglePending, polygon::PolygonPending, circle::CirclePending, ellipse::EllipsePending};
-use crate::tools::{brush::BrushPending, brushes::{pencil::Pencil, pen::Pen}};
+use crate::tools::{brush::BrushPending, brushes::{pencil::Pencil, pen::Pen, airbrush::Airbrush, eraser::Eraser}};
 use crate::scenes::scenes::Scenes;
 use crate::menu::menu;
 
@@ -198,29 +198,33 @@ impl Scene for Box<Drawing> {
             }
             DrawingAction::ChangeTool(tool) => {
                 self.current_tool = (*tool).boxed_clone();
-                self.state.request_redraw();
             }
         }
     }
 
     fn view(&self) -> Element<'_, Message> {
         row![
-            menu(250, Box::<[(String, Box<[Box<dyn Pending>]>); 2]>::new(
+            menu(250, Box::<[(String, Box<[(String, Box<dyn Pending>)]>); 3]>::new(
                     [
                         (String::from("Geometry"), Box::new(
                             [
-                                Box::new(LinePending::None),
-                                Box::new(RectPending::None),
-                                Box::new(TrianglePending::None),
-                                Box::new(PolygonPending::None),
+                                ("Line".into(), Box::new(LinePending::None)),
+                                ("Rectangle".into(), Box::new(RectPending::None)),
+                                ("Triangle".into(), Box::new(TrianglePending::None)),
+                                ("Polygon".into(), Box::new(PolygonPending::None)),
+                                ("Circle".into(), Box::new(CirclePending::None)),
+                                ("Ellipse".into(), Box::new(EllipsePending::None)),
                             ])),
                         (String::from("Brushes"), Box::new(
                             [
-                                Box::new(CirclePending::None),
-                                Box::new(EllipsePending::None),
-                                Box::new(BrushPending::<Pencil>::None),
-                                Box::new(BrushPending::<Pen>::None),
-                            ]))
+                                ("Pencil".into(), Box::new(BrushPending::<Pencil>::None)),
+                                ("Fountain pen".into(), Box::new(BrushPending::<Pen>::None)),
+                                ("Airbrush".into(), Box::new(BrushPending::<Airbrush>::None)),
+                            ])),
+                        (String::from("Eraser"), Box::new(
+                            [
+                                ("Eraser".into(), Box::new(BrushPending::<Eraser>::None)),
+                            ])),
                     ]
                 ),
                 Box::new(|tool| {Message::DoAction(Box::new(DrawingAction::ChangeTool(tool)))}),

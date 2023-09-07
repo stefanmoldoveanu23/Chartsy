@@ -10,19 +10,19 @@ use iced::mouse::Cursor;
 
 pub struct Menu<T: Clone, Message> {
     width: u32,
-    options: Box<[(String, Box<[T]>)]>,
+    options: Box<[(String, Box<[(String, T)]>)]>,
     action: Box<dyn Fn(T) -> Message>,
     hovered_option: Option<(usize, usize)>,
     is_pressing: bool,
 }
 
 impl<T: Clone, Message> Menu<T, Message> {
-    fn new(width: u32, options: Box<[(String, Box<[T]>)]>, action: Box<dyn Fn(T) -> Message>) -> Menu<T, Message> {
+    fn new(width: u32, options: Box<[(String, Box<[(String, T)]>)]>, action: Box<dyn Fn(T) -> Message>) -> Menu<T, Message> {
         Menu {width, options, action, hovered_option: None, is_pressing: false}
     }
 }
 
-pub fn menu<T: Clone, Message>(width: u32, options: Box<[(String, Box<[T]>)]>, action: Box<dyn Fn(T) -> Message>) -> Menu<T, Message> {
+pub fn menu<T: Clone, Message>(width: u32, options: Box<[(String, Box<[(String, T)]>)]>, action: Box<dyn Fn(T) -> Message>) -> Menu<T, Message> {
     Menu::new(width, options, action)
 }
 
@@ -87,8 +87,8 @@ where Renderer: text::Renderer
                 shaping: Default::default(),
             });
 
-            for (j, _value) in values.iter().enumerate() {
-                let button_color = if Some((i, j)) == self.hovered_option {
+            for (j, (name, _value)) in values.iter().enumerate() {
+                let button_color = if Some((i.clone(), j)) == self.hovered_option {
                     if self.is_pressing {
                         Color::from_rgb8(0, 64, 64)
                     } else {
@@ -101,7 +101,7 @@ where Renderer: text::Renderer
                 renderer.fill_quad(Quad {
                     bounds: Rectangle {
                         x: 76.0,
-                        y: 8.0 + (30.0 * (2.0 * i.clone() as f32 + 1.0)) + (30.0 * (count_options.clone() + j) as f32),
+                        y: 8.0 + (30.0 * (2.0 * i.clone() as f32 + 1.0)) + (30.0 * (count_options.clone() + j.clone()) as f32),
                         width: self.width as f32 - 90.0,
                         height: 25.0,
                     },
@@ -113,7 +113,7 @@ where Renderer: text::Renderer
                 );
 
                 renderer.fill_text(Text{
-                    content: "Hello",
+                    content: name,
                     bounds: Rectangle {
                         x: 80.0,
                         y: 10.0 + (30.0 * (2.0 * i.clone() as f32 + 1.0)) + (30.0 * (count_options.clone() + j.clone()) as f32),
@@ -151,7 +151,7 @@ where Renderer: text::Renderer
                     mouse::Event::ButtonReleased(mouse::Button::Left) => {
                         if cursor.is_over(layout.bounds()) {
                             if let Some(pos) = self.hovered_option {
-                                shell.publish((self.action)(((*self).options[pos.0].1[pos.1]).clone()));
+                                shell.publish((self.action)(((*self).options[pos.0].1[pos.1].1).clone()));
                                 Status::Captured
                             } else {
                                 Status::Ignored
@@ -182,7 +182,7 @@ where Renderer: text::Renderer
                                         for j in 0..values.len() {
                                             if 8.0 + (30.0 * (2.0 * i.clone() as f32 + 1.0)) + (30.0 * (count_options.clone() + j) as f32) <= cursor_position.y &&
                                                 cursor_position.y <= 33.0 + (30.0 * (2.0 * i.clone() as f32 + 1.0)) + (30.0 * (count_options.clone() + j.clone()) as f32) {
-                                                self.hovered_option = Some((i, j.clone()));
+                                                self.hovered_option = Some((i.clone(), j.clone()));
                                                 hovered = true;
                                                 break
                                             }
