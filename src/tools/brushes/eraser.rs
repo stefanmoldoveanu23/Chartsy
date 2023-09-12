@@ -4,6 +4,7 @@ use std::ops::{Add, Sub};
 use iced::{Color, Point, Vector};
 use iced::widget::canvas::{Fill, Frame, Path, Style};
 use iced::widget::canvas::fill::Rule;
+
 use crate::tool::Tool;
 
 use crate::tools::brush::Brush;

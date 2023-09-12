@@ -8,3 +8,6 @@ edition = "2021"
 [dependencies]
 iced = {version="0.10.0", features=["canvas", "advanced"]}
 rand = "0.8.5"
+mongodb = {version="2.6.1", features=["async-std-runtime"], default-features=false}
+svg = "0.13.1"
+iced_aw = {version="0.6.0", features=["modal", "menu"]}

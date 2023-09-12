@@ -1,11 +1,12 @@
-use crate::scene::Scene;
+use iced::Command;
+use crate::scene::{Message, Scene, SceneOptions};
 use crate::scenes::drawing::Drawing;
 use crate::scenes::main::Main;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Scenes {
-    Main,
-    Drawing,
+    Main(Option<Box<dyn SceneOptions<Main>>>),
+    Drawing(Option<Box<dyn SceneOptions<Box<Drawing>>>>),
 }
 
 #[derive(Debug)]
@@ -20,37 +21,41 @@ pub struct SceneLoader {
 }
 
 impl SceneLoader {
-    pub fn load(&mut self, scene: Scenes) {
+    pub fn load(&mut self, scene: Scenes) -> Command<Message> {
         match self.current_scene {
-            Scenes::Main => {
+            Scenes::Main(_) => {
                 self.main = None
             }
-            Scenes::Drawing => {
+            Scenes::Drawing(_) => {
                 self.drawing = None
             }
         }
 
         self.current_scene = scene;
 
-        match self.current_scene {
-            Scenes::Main => {
-                self.main = Some(Main::new());
+        match &self.current_scene {
+            Scenes::Main(options) => {
+                let (main, command) = Scene::new(options.clone());
+                self.main = Some(main);
+                command
             }
-            Scenes::Drawing => {
-                self.drawing = Some(Drawing::new());
+            Scenes::Drawing(options) => {
+                let (drawing, command) = Scene::new(options.clone());
+                self.drawing = Some(drawing);
+                command
             }
         }
     }
 
     pub fn get_mut(&mut self) -> Result<& mut dyn Scene, SceneErr> {
         match self.current_scene {
-            Scenes::Main => {
+            Scenes::Main(_) => {
                 match self.main {
                     None => Err(SceneErr::Error),
                     Some(ref mut scene) => Ok(scene)
                 }
             }
-            Scenes::Drawing => {
+            Scenes::Drawing(_) => {
                 match self.drawing {
                     None => Err(SceneErr::Error),
                     Some(ref mut scene) => Ok(scene)
@@ -61,13 +66,13 @@ impl SceneLoader {
 
     pub fn get(&self) -> Result<& dyn Scene, SceneErr> {
         match self.current_scene {
-            Scenes::Main => {
+            Scenes::Main(_) => {
                 match self.main {
                     None => Err(SceneErr::Error),
                     Some(ref scene) => Ok(scene)
                 }
             }
-            Scenes::Drawing => {
+            Scenes::Drawing(_) => {
                 match self.drawing {
                     None => Err(SceneErr::Error),
                     Some(ref scene) => Ok(scene)
@@ -80,8 +85,8 @@ impl SceneLoader {
 impl Default for SceneLoader {
     fn default() -> Self {
         SceneLoader {
-            current_scene: Scenes::Main,
-            main: Some(Main::new()),
+            current_scene: Scenes::Main(None),
+            main: Some(Main::new(None).0),
             drawing: None,
         }
     }

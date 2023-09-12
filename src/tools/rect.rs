@@ -4,6 +4,8 @@ use iced::{mouse, Point, Rectangle, Renderer, keyboard, Size};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
+use mongodb::bson::{Bson, doc, Document};
+use crate::serde::{Deserialize, Serialize};
 
 use crate::tool::{Pending, Tool};
 
@@ -98,6 +100,31 @@ pub struct Rect {
     end: Point,
 }
 
+impl Serialize for Rect {
+    fn serialize(&self) -> Document {
+        doc! {
+            "start" : self.start.serialize(),
+            "end": self.end.serialize(),
+        }
+    }
+}
+
+impl Deserialize for Rect {
+    fn deserialize(document: Document) -> Self where Self: Sized {
+        let mut rect = Rect {start: Point::default(), end: Point::default()};
+
+        if let Some(Bson::Document(start)) = document.get("start") {
+            rect.start = Point::deserialize(start.clone());
+        }
+
+        if let Some(Bson::Document(end)) = document.get("end") {
+            rect.end = Point::deserialize(end.clone());
+        }
+
+        rect
+    }
+}
+
 impl Tool for Rect {
     fn add_to_frame(&self, frame: &mut Frame) {
         let rect = Path::new(|builder| {
@@ -109,6 +136,10 @@ impl Tool for Rect {
 
     fn boxed_clone(&self) -> Box<dyn Tool> {
         Box::new((*self).clone())
+    }
+
+    fn id(&self) -> String {
+        "Rectangle".into()
     }
 }
 

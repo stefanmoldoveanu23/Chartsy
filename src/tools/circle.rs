@@ -3,6 +3,8 @@ use iced::{mouse, Point, Rectangle, Renderer, keyboard};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
+use mongodb::bson::{Bson, doc, Document};
+use crate::serde::{Deserialize, Serialize};
 
 use crate::tool::{Pending, Tool};
 
@@ -97,6 +99,31 @@ pub struct Circle {
     radius: f32,
 }
 
+impl Serialize for Circle {
+    fn serialize(&self) -> Document {
+        doc! {
+            "center": self.center.serialize(),
+            "radius": self.radius,
+        }
+    }
+}
+
+impl Deserialize for Circle {
+    fn deserialize(document: Document) -> Self where Self: Sized {
+        let mut circle = Circle {center: Point::default(), radius: 0.0};
+
+        if let Some(Bson::Document(center)) = document.get("center") {
+            circle.center = Point::deserialize(center.clone());
+        }
+
+        if let Some(Bson::Double(radius)) = document.get("radius") {
+            circle.radius = radius.clone() as f32;
+        }
+
+        circle
+    }
+}
+
 impl Tool for Circle {
     fn add_to_frame(&self, frame: &mut Frame) {
         let circle = Path::new(|builder| {
@@ -108,6 +135,10 @@ impl Tool for Circle {
 
     fn boxed_clone(&self) -> Box<dyn Tool> {
         Box::new((*self).clone())
+    }
+
+    fn id(&self) -> String {
+        "Circle".into()
     }
 }
 

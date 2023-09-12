@@ -1,32 +1,34 @@
 use iced::advanced::layout::{self, Layout};
 use iced::advanced::{Clipboard, renderer, Shell, text, Text};
 use iced::advanced::widget::{Tree, Widget};
-use iced::{Element, Event, mouse};
+use iced::{Element, Event, keyboard, mouse};
 use iced::{Color, Length, Rectangle, Size};
 use iced::advanced::renderer::Quad;
 use iced::alignment::{Horizontal, Vertical};
 use iced::event::Status;
+use iced::keyboard::KeyCode;
 use iced::mouse::Cursor;
 
-pub struct Menu<T: Clone, Message> {
+pub struct Menu<T: Clone, Message: Clone> {
     width: u32,
     options: Box<[(String, Box<[(String, T)]>)]>,
     action: Box<dyn Fn(T) -> Message>,
+    on_close: Message,
     hovered_option: Option<(usize, usize)>,
     is_pressing: bool,
 }
 
-impl<T: Clone, Message> Menu<T, Message> {
-    fn new(width: u32, options: Box<[(String, Box<[(String, T)]>)]>, action: Box<dyn Fn(T) -> Message>) -> Menu<T, Message> {
-        Menu {width, options, action, hovered_option: None, is_pressing: false}
+impl<T: Clone, Message: Clone> Menu<T, Message> {
+    fn new(width: u32, options: Box<[(String, Box<[(String, T)]>)]>, action: Box<dyn Fn(T) -> Message>, on_close: Message) -> Menu<T, Message> {
+        Menu {width, options, action, hovered_option: None, is_pressing: false, on_close}
     }
 }
 
-pub fn menu<T: Clone, Message>(width: u32, options: Box<[(String, Box<[(String, T)]>)]>, action: Box<dyn Fn(T) -> Message>) -> Menu<T, Message> {
-    Menu::new(width, options, action)
+pub fn menu<T: Clone, Message: Clone>(width: u32, options: Box<[(String, Box<[(String, T)]>)]>, action: Box<dyn Fn(T) -> Message>, on_close: Message) -> Menu<T, Message> {
+    Menu::new(width, options, action, on_close)
 }
 
-impl<T: Clone, Message, Renderer> Widget<Message, Renderer> for Menu<T, Message>
+impl<T: Clone, Message: Clone, Renderer> Widget<Message, Renderer> for Menu<T, Message>
 where Renderer: text::Renderer
 {
     fn width(&self) -> Length {
@@ -42,7 +44,7 @@ where Renderer: text::Renderer
         _renderer: &Renderer,
         limits: &layout::Limits
     ) -> layout::Node {
-        layout::Node::new(Size::new((&self).width as f32, limits.max().height))
+        layout::Node::new(Size::new(self.width.clone() as f32, limits.max().height))
     }
 
     fn draw(
@@ -74,7 +76,7 @@ where Renderer: text::Renderer
                 content: name,
                 bounds: Rectangle {
                     x: bounds.center_x(),
-                    y: 10.0 + (30.0 * (2.0 * i as f32)) + (30.0 * count_options as f32),
+                    y: bounds.y + 10.0 + (30.0 * (2.0 * i as f32)) + (30.0 * count_options as f32),
                     width: bounds.width,
                     height: bounds.height,
                 },
@@ -101,8 +103,8 @@ where Renderer: text::Renderer
                 renderer.fill_quad(Quad {
                     bounds: Rectangle {
                         x: 76.0,
-                        y: 8.0 + (30.0 * (2.0 * i.clone() as f32 + 1.0)) + (30.0 * (count_options.clone() + j.clone()) as f32),
-                        width: self.width as f32 - 90.0,
+                        y: bounds.y.clone() + 8.0 + (30.0 * (2.0 * i.clone() as f32 + 1.0)) + (30.0 * (count_options.clone() + j.clone()) as f32),
+                        width: self.width.clone() as f32 - 90.0,
                         height: 25.0,
                     },
                     border_radius: 5.0.into(),
@@ -116,7 +118,7 @@ where Renderer: text::Renderer
                     content: name,
                     bounds: Rectangle {
                         x: 80.0,
-                        y: 10.0 + (30.0 * (2.0 * i.clone() as f32 + 1.0)) + (30.0 * (count_options.clone() + j.clone()) as f32),
+                        y: bounds.y.clone() + 10.0 + (30.0 * (2.0 * i.clone() as f32 + 1.0)) + (30.0 * (count_options.clone() + j.clone()) as f32),
                         width: bounds.clone().width,
                         height: bounds.clone().height,
                     },
@@ -150,7 +152,7 @@ where Renderer: text::Renderer
                 match mouse_event {
                     mouse::Event::ButtonReleased(mouse::Button::Left) => {
                         if cursor.is_over(layout.bounds()) {
-                            if let Some(pos) = self.hovered_option {
+                            if let Some(pos) = self.hovered_option.clone() {
                                 shell.publish((self.action)(((*self).options[pos.0].1[pos.1].1).clone()));
                                 Status::Captured
                             } else {
@@ -173,7 +175,7 @@ where Renderer: text::Renderer
                             let mut count_options = 0;
                             let mut hovered = false;
 
-                            if 76.0 > cursor_position.x || cursor_position.x > (self.width) as f32 - 14.0 {
+                            if 76.0 > cursor_position.x || cursor_position.x > (self.width.clone()) as f32 - 14.0 {
                                 self.hovered_option = None;
                                 Status::Ignored
                             } else {
@@ -208,6 +210,19 @@ where Renderer: text::Renderer
                     _ => Status::Ignored
                 }
             }
+            Event::Keyboard(keyboard_event) => {
+                match keyboard_event {
+                    keyboard::Event::KeyReleased { key_code, .. } => {
+                        if KeyCode::Escape == key_code {
+                            shell.publish(self.on_close.clone());
+                            Status::Captured
+                        } else {
+                            Status::Ignored
+                        }
+                    }
+                    _ => { Status::Ignored }
+                }
+            }
 
             _ => Status::Ignored
         }
@@ -216,7 +231,7 @@ where Renderer: text::Renderer
 
 }
 
-impl<'a, T: 'a+Clone, Message, Renderer> From<Menu<T, Message>> for Element<'a, Message, Renderer>
+impl<'a, T: 'a+Clone, Message: Clone, Renderer> From<Menu<T, Message>> for Element<'a, Message, Renderer>
 where Renderer: text::Renderer,
     Message: 'a
 {

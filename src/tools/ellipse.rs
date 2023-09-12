@@ -5,6 +5,8 @@ use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
 use iced::widget::canvas::path::arc::Elliptical;
+use mongodb::bson::{Bson, doc, Document};
+use crate::serde::{Deserialize, Serialize};
 
 use crate::tool::{Pending, Tool};
 
@@ -151,6 +153,36 @@ pub struct Ellipse {
     rotation: f32,
 }
 
+impl Serialize for Ellipse {
+    fn serialize(&self) -> Document {
+        doc! {
+            "center": self.center.serialize(),
+            "radii": self.radii.serialize(),
+            "rotation": self.rotation,
+        }
+    }
+}
+
+impl Deserialize for Ellipse {
+    fn deserialize(document: Document) -> Self where Self: Sized {
+        let mut ellipse = Ellipse {center: Point::default(), radii: Vector::default(), rotation: 0.0};
+
+        if let Some(Bson::Document(center)) = document.get("center") {
+            ellipse.center = Point::deserialize(center.clone());
+        }
+
+        if let Some(Bson::Document(radii)) = document.get("radii") {
+            ellipse.radii = Vector::deserialize(radii.clone());
+        }
+
+        if let Some(Bson::Double(rotation)) = document.get("rotation") {
+            ellipse.rotation = rotation.clone() as f32;
+        }
+
+        ellipse
+    }
+}
+
 impl Tool for Ellipse {
     fn add_to_frame(&self, frame: &mut Frame) {
         let ellipse = Path::new(|builder| {
@@ -174,6 +206,10 @@ impl Tool for Ellipse {
 
     fn boxed_clone(&self) -> Box<dyn Tool> {
         Box::new((*self).clone())
+    }
+
+    fn id(&self) -> String {
+        "Ellipse".into()
     }
 }
 

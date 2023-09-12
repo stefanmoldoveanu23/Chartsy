@@ -4,6 +4,8 @@ use iced::{mouse, Point, Rectangle, Renderer, keyboard, Vector, Color};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke, Style};
+use mongodb::bson::{Bson, doc, Document};
+use crate::serde::{Deserialize, Serialize};
 
 use crate::tool::{Pending, Tool};
 
@@ -132,6 +134,35 @@ pub struct Polygon {
     offsets: Vec<Vector>,
 }
 
+impl Serialize for Polygon {
+    fn serialize(&self) -> Document {
+        doc! {
+            "first": self.first.serialize(),
+            "offsets": self.offsets.iter().map(|offset| {offset.serialize()}).collect::<Vec<Document>>().as_slice(),
+        }
+    }
+}
+
+impl Deserialize for Polygon {
+    fn deserialize(document: Document) -> Self where Self: Sized {
+        let mut polygon = Polygon {first: Point::default(), offsets: vec![]};
+
+        if let Some(Bson::Document(first)) = document.get("first") {
+            polygon.first = Point::deserialize(first.clone());
+        }
+
+        if let Some(Bson::Array(offsets)) = document.get("offsets") {
+            for offset in offsets {
+                if let Bson::Document(offset) = offset {
+                    polygon.offsets.push(Vector::deserialize(offset.clone()));
+                }
+            }
+        }
+
+        polygon
+    }
+}
+
 impl Tool for Polygon {
     fn add_to_frame(&self, frame: &mut Frame) {
         let polygon = Path::new(|builder| {
@@ -149,6 +180,10 @@ impl Tool for Polygon {
 
     fn boxed_clone(&self) -> Box<dyn Tool> {
         Box::new((*self).clone())
+    }
+
+    fn id(&self) -> String {
+        "Polygon".into()
     }
 }
 

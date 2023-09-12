@@ -3,6 +3,8 @@ use iced::{mouse, Point, Rectangle, Renderer};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
+use mongodb::bson::{Bson, doc, Document};
+use crate::serde::{Deserialize, Serialize};
 
 use crate::tool::{Pending, Tool};
 
@@ -88,6 +90,31 @@ pub struct Line {
     end: Point,
 }
 
+impl Serialize for Line {
+    fn serialize(&self) -> Document {
+        doc! {
+            "start": self.start.serialize(),
+            "end": self.end.serialize(),
+        }
+    }
+}
+
+impl Deserialize for Line {
+    fn deserialize(document: Document) -> Self where Self: Sized {
+        let mut line = Line {start: Point::default(), end: Point::default()};
+
+        if let Some(Bson::Document(start)) = document.get("start") {
+            line.start = Point::deserialize(start.clone());
+        }
+
+        if let Some(Bson::Document(end)) = document.get("end") {
+            line.end = Point::deserialize(end.clone());
+        }
+
+        line
+    }
+}
+
 impl Tool for Line {
     fn add_to_frame(&self, frame: &mut Frame) {
         let line = Path::new(|builder| {
@@ -100,6 +127,10 @@ impl Tool for Line {
 
     fn boxed_clone(&self) -> Box<dyn Tool> {
         Box::new((*self).clone())
+    }
+
+    fn id(&self) -> String {
+        "Line".into()
     }
 }
 

@@ -3,6 +3,8 @@ use iced::{mouse, Point, Rectangle, Renderer, keyboard};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
+use mongodb::bson::{Bson, doc, Document};
+use crate::serde::{Deserialize, Serialize};
 
 use crate::tool::{Pending, Tool};
 
@@ -115,6 +117,36 @@ pub struct Triangle {
     point3: Point,
 }
 
+impl Serialize for Triangle {
+    fn serialize(&self) -> Document {
+        doc! {
+            "point1": self.point1.serialize(),
+            "point2": self.point2.serialize(),
+            "point3": self.point3.serialize(),
+        }
+    }
+}
+
+impl Deserialize for Triangle {
+    fn deserialize(document: Document) -> Self where Self: Sized {
+        let mut triangle = Triangle {point1: Point::default(), point2: Point::default(), point3: Point::default()};
+
+        if let Some(Bson::Document(point1)) = document.get("point1") {
+            triangle.point1 = Point::deserialize(point1.clone());
+        }
+
+        if let Some(Bson::Document(point2)) = document.get("point1") {
+            triangle.point2 = Point::deserialize(point2.clone());
+        }
+
+        if let Some(Bson::Document(point3)) = document.get("point1") {
+            triangle.point3 = Point::deserialize(point3.clone());
+        }
+
+        triangle
+    }
+}
+
 impl Tool for Triangle {
     fn add_to_frame(&self, frame: &mut Frame) {
         let triangle = Path::new(|builder| {
@@ -129,6 +161,10 @@ impl Tool for Triangle {
 
     fn boxed_clone(&self) -> Box<dyn Tool> {
         Box::new((*self).clone())
+    }
+
+    fn id(&self) -> String {
+        "Triangle".into()
     }
 }
 

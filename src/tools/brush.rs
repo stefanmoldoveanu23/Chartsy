@@ -5,6 +5,8 @@ use iced::{mouse, Point, Rectangle, Renderer, keyboard, Vector};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry};
+use mongodb::bson::{Bson, doc, Document};
+use crate::serde::{Deserialize, Serialize};
 
 use crate::tool::{Pending, Tool};
 
@@ -138,6 +140,38 @@ pub trait Brush: Send+Sync+Debug {
     fn add_end(point: Point, frame: &mut Frame) where Self:Sized;
 }
 
+impl<BrushType> Serialize for BrushType
+where BrushType: Brush+Clone+'static {
+    fn serialize(&self) -> Document {
+        doc! {
+            "start": self.get_start().serialize(),
+            "offsets": self.get_offsets().iter().map(|offset| {offset.serialize()}).collect::<Vec<Document>>().as_slice(),
+        }
+    }
+}
+
+impl<BrushType> Deserialize for BrushType
+    where BrushType: Brush+Clone+'static {
+    fn deserialize(document: Document) -> Self where Self: Sized {
+        let mut brush_start :Point= Point::default();
+        let mut brush_offsets :Vec<Vector>= vec![];
+
+        if let Some(Bson::Document(start)) = document.get("start") {
+            brush_start = Point::deserialize(start.clone());
+        }
+
+        if let Some(Bson::Array(offsets)) = document.get("offsets") {
+            for offset in offsets {
+                if let Bson::Document(offset) = offset {
+                    brush_offsets.push(Vector::deserialize(offset.clone()));
+                }
+            }
+        }
+
+        BrushType::new(brush_start, brush_offsets)
+    }
+}
+
 impl<BrushType> Tool for BrushType
 where BrushType: Brush+Clone+'static {
     fn add_to_frame(&self, frame: &mut Frame) {
@@ -153,5 +187,9 @@ where BrushType: Brush+Clone+'static {
 
     fn boxed_clone(&self) -> Box<dyn Tool> {
         Box::new((*self).clone())
+    }
+
+    fn id(&self) -> String {
+        BrushType::id()
     }
 }
