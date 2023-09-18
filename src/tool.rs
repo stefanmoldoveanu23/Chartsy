@@ -3,6 +3,7 @@ use iced::{mouse, Point, Rectangle, Renderer};
 use iced::widget::canvas::{event, Event, Frame, Geometry};
 use mongodb::bson::{Bson, Document};
 use crate::serde::{Deserialize, Serialize};
+use crate::theme::Theme;
 use crate::tools::{line::Line, rect::Rect, triangle::Triangle, polygon::Polygon, circle::Circle, ellipse::Ellipse};
 use crate::tools::brushes::{eraser::Eraser, pencil::Pencil, pen::Pen, airbrush::Airbrush};
 
@@ -47,7 +48,7 @@ pub trait Pending: Send+Sync {
 
     fn draw(
         &self,
-        renderer: &Renderer,
+        renderer: &Renderer<Theme>,
         bounds: Rectangle,
         cursor: mouse::Cursor,
     ) -> Geometry;

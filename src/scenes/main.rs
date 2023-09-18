@@ -1,6 +1,6 @@
 use std::any::Any;
 
-use iced::{Alignment, Command, Element, Length};
+use iced::{Alignment, Command, Element, Length, Renderer};
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{button, text, column, Container, Column, Scrollable};
 use iced_aw::{Card, modal};
@@ -12,6 +12,7 @@ use crate::scenes::scenes::Scenes;
 //use crate::menu::menu;
 use crate::mongo::{MongoRequest, MongoResponse};
 use crate::scenes::drawing::DrawingOptions;
+use crate::theme::Theme;
 
 #[derive(Clone)]
 enum MainAction {
@@ -116,8 +117,8 @@ impl Scene for Main {
         Command::none()
     }
 
-    fn view(&self) -> Element<Message> {
-        let container_entrance :Container<Message> = Container::new(column![
+    fn view(&self) -> Element<Message, Renderer<Theme>> {
+        let container_entrance :Container<Message, Renderer<Theme>> = Container::new(column![
             column![
                 text("Chartsy").width(Length::Shrink).size(50)
                 ]
@@ -141,7 +142,7 @@ impl Scene for Main {
             .align_items(Alignment::Center));
 
         let container_drawings =
-        Container::new(
+        Container::<Message, Renderer<Theme>>::new(
             Card::new(
                 text("Your drawings").horizontal_alignment(Horizontal::Center).size(25),
                 Container::new(
@@ -173,7 +174,7 @@ impl Scene for Main {
             .align_x(Horizontal::Center)
             .align_y(Vertical::Center);
 
-        modal(container_entrance, if self.showing_drawings {Some(container_drawings)} else {None})
+        modal::<Message, Renderer<Theme>>(container_entrance, if self.showing_drawings {Some(container_drawings)} else {None})
             .into()
 
     }

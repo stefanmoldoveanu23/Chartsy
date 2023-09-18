@@ -5,6 +5,7 @@ use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
 use mongodb::bson::{Bson, doc, Document};
 use crate::serde::{Deserialize, Serialize};
+use crate::theme::Theme;
 
 use crate::tool::{Pending, Tool};
 
@@ -48,7 +49,7 @@ impl Pending for LinePending {
 
     fn draw(
         &self,
-        renderer: &Renderer,
+        renderer: &Renderer<Theme>,
         bounds: Rectangle,
         cursor: Cursor
     ) -> Geometry {

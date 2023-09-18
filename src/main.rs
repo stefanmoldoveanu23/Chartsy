@@ -7,15 +7,16 @@ mod tools;
 mod mongo;
 mod config;
 mod serde;
+mod theme;
 
-use scene::{Message};
+use scene::{Message, Globals};
 use scenes::scenes::SceneLoader;
+use theme::Theme;
 
-use iced::{Application, Command, Element, executor, Settings, Size, Subscription, Theme, window};
+use iced::{Application, Command, Element, executor, Renderer, Settings, Size, Subscription, window};
 use iced::subscription::events;
 use iced_runtime::command::Action;
 use mongodb::Database;
-use crate::scene::Globals;
 
 pub fn main() -> iced::Result {
     Chartsy::run(Settings {
@@ -90,7 +91,7 @@ impl Application for Chartsy {
         }
     }
 
-    fn view(&self) -> Element<'_, Self::Message> {
+    fn view(&self) -> Element<'_, Self::Message, Renderer<Self::Theme>> {
         let scene = self.scene_loader.get().expect("Error getting scene.");
         scene.view()
     }

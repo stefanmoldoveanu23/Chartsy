@@ -1,15 +1,16 @@
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
-use iced::{Command, Element, Event, Size};
+use iced::{Command, Element, Event, Renderer, Size};
 use mongodb::{Database};
 use crate::mongo::{MongoRequest, MongoResponse};
 use crate::scenes::scenes::Scenes;
+use crate::theme::Theme;
 
 pub trait Scene: Send+Sync {
     fn new(options: Option<Box<dyn SceneOptions<Self>>>, globals: Globals) -> (Self, Command<Message>) where Self:Sized;
     fn get_title(&self) -> String;
     fn update(&mut self, message: Box<dyn Action>) -> Command<Message>;
-    fn view(&self) -> Element<'_, Message>;
+    fn view(&self) -> Element<'_, Message, Renderer<Theme>>;
     fn update_globals(&mut self, globals: Globals);
     fn clear(&self);
 }

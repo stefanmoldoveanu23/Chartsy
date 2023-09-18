@@ -2,12 +2,14 @@ use std::any::Any;
 use std::default::Default;
 use std::sync::Arc;
 
-use iced::{Alignment, Command, Element, event, Length, mouse, Point, Rectangle, Renderer, Theme};
+use iced::{Alignment, Color, Command, Element, event, Length, mouse, Point, Rectangle, Renderer};
 use iced::alignment::Horizontal;
 use iced::mouse::Cursor;
-use iced::widget::{button, text, column, row, canvas, Canvas};
+use iced::widget::{button, text, column, row, canvas, Canvas, Container};
 use iced::widget::canvas::{Cache, Event, Frame, Geometry, Path, Stroke};
 use iced_aw::card::Card;
+use iced_widget::canvas::{Fill, Style};
+use iced_widget::canvas::fill::Rule;
 
 use mongodb::bson::{doc, Document, Uuid};
 use mongodb::results::InsertManyResult;
@@ -17,6 +19,8 @@ use crate::tool::{self, Tool, Pending};
 use crate::tools::{line::LinePending, rect::RectPending, triangle::TrianglePending, polygon::PolygonPending, circle::CirclePending, ellipse::EllipsePending};
 use crate::tools::{brush::BrushPending, brushes::{pencil::Pencil, pen::Pen, airbrush::Airbrush, eraser::Eraser}};
 use crate::scenes::scenes::Scenes;
+
+use crate::theme::{container, Theme};
 
 use crate::mongo::{MongoRequest, MongoResponse};
 
@@ -29,14 +33,14 @@ unsafe impl Send for State {}
 unsafe impl Sync for State {}
 
 impl State {
-    pub fn view<'a>(&'a self, tools: &'a [Box<dyn Tool>], current_tool: &'a Box<dyn Pending>) -> Element<'a, Box<dyn Tool>> {
+    pub fn view<'a>(&'a self, tools: &'a [Box<dyn Tool>], current_tool: &'a Box<dyn Pending>) -> Element<'a, Box<dyn Tool>, iced_widget::renderer::Renderer<Theme>> {
         Canvas::new(DrawingVessel {
             state: Some(self),
             tools,
             current_tool,
         })
-            .width(Length::Fill)
-            .height(Length::Fill)
+            .width(Length::Fixed(50.0))
+            .height(Length::Fixed(50.0))
             .into()
     }
 
@@ -139,7 +143,8 @@ struct DrawingVessel<'a> {
     current_tool: &'a Box<dyn Pending>,
 }
 
-impl<'a> canvas::Program<Box<dyn Tool>> for DrawingVessel<'a> {
+impl<'a> canvas::Program<Box<dyn Tool>, iced_widget::renderer::Renderer<Theme>> for DrawingVessel<'a>
+{
     type State = Option<Box<dyn Pending>>;
 
     fn update(
@@ -176,21 +181,27 @@ impl<'a> canvas::Program<Box<dyn Tool>> for DrawingVessel<'a> {
     fn draw(
         &self,
         state: &Self::State,
-        renderer: &Renderer,
+        renderer: &iced_widget::renderer::Renderer<Theme>,
         _theme: &Theme,
         bounds: Rectangle,
         cursor: Cursor
     ) -> Vec<Geometry> {
+        let base = {
+            let mut frame = Frame::new(renderer, bounds.size());
+
+            frame.fill_rectangle(Point::ORIGIN, frame.size(), Fill { style: Style::Solid(Color::WHITE), rule: Rule::NonZero });
+
+            frame.stroke(
+                &Path::rectangle(Point::ORIGIN, frame.size()),
+                Stroke::default().with_width(2.0)
+            );
+
+            frame.into_geometry()
+        };
+
         let content = match self.state {
             None => {
-                let mut frame = Frame::new(renderer, bounds.size());
-
-                frame.stroke(
-                    &Path::rectangle(Point::ORIGIN, frame.size()),
-                    Stroke::default().with_width(2.0)
-                );
-
-                return vec![frame.into_geometry()];
+                return vec![base];
             }
             Some(state) => {
                 state.cache.draw(
@@ -207,14 +218,14 @@ impl<'a> canvas::Program<Box<dyn Tool>> for DrawingVessel<'a> {
 
         let pending = match state {
             None => {
-                return vec![content];
+                return vec![base, content];
             }
             Some(state) => {
                 state.draw(renderer, bounds, cursor)
             }
         };
 
-        vec![content, pending]
+        vec![base, content, pending]
     }
 
     fn mouse_interaction(
@@ -333,12 +344,11 @@ impl Scene for Box<Drawing> {
         Command::none()
     }
 
-    fn view(&self) -> Element<'_, Message> {
+    fn view(&self) -> Element<'_, Message, Renderer<Theme>> {
         if self.globals.get_window_height() == 0.0 {
             return Element::new(text(""));
         }
 
-        println!("{}", self.globals.get_window_height() - 70.0);
         row![
             Card::new(
                 text("Tools").horizontal_alignment(Horizontal::Center).size(25.0).height(Length::Fixed(50.0)),
@@ -372,7 +382,14 @@ impl Scene for Box<Drawing> {
             .max_height(self.globals.get_window_height() - 70.0),
             column![
                 text(format!("{}", self.get_title())).width(Length::Shrink).size(50),
-                self.state.view(&self.tools, &self.current_tool).map(|tool| {Message::DoAction(Box::new(DrawingAction::UseTool(tool)).into())}),
+                Container::new(
+                    self.state.view(&self.tools, &self.current_tool).map(|tool| {Message::DoAction(Box::new(DrawingAction::UseTool(tool)).into())})
+                )
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .center_x()
+                    .center_y()
+                    .style(container::Container::Canvas),
                 row![
                     button("Back").padding(8).on_press(Message::ChangeScene(Scenes::Main(None))),
                     button("Save").padding(8).on_press(Message::SendMongoRequest(
