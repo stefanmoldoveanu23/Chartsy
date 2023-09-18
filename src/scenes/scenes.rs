@@ -1,5 +1,5 @@
-use iced::Command;
-use crate::scene::{Message, Scene, SceneOptions};
+use iced::{Command};
+use crate::scene::{Globals, Message, Scene, SceneOptions};
 use crate::scenes::drawing::Drawing;
 use crate::scenes::main::Main;
 
@@ -21,7 +21,7 @@ pub struct SceneLoader {
 }
 
 impl SceneLoader {
-    pub fn load(&mut self, scene: Scenes) -> Command<Message> {
+    pub fn load(&mut self, scene: Scenes, globals: Globals) -> Command<Message> {
         match self.current_scene {
             Scenes::Main(_) => {
                 self.main = None
@@ -32,17 +32,16 @@ impl SceneLoader {
         }
 
         self.current_scene = scene;
-
         match &self.current_scene {
             Scenes::Main(options) => {
-                let (main, command) = Scene::new(options.clone());
+                let (main, command) = Scene::new(options.clone(), globals);
                 self.main = Some(main);
-                command
+                Command::batch(vec![command])
             }
             Scenes::Drawing(options) => {
-                let (drawing, command) = Scene::new(options.clone());
+                let (drawing, command) = Scene::new(options.clone(), globals);
                 self.drawing = Some(drawing);
-                command
+                Command::batch(vec![command])
             }
         }
     }
@@ -86,7 +85,7 @@ impl Default for SceneLoader {
     fn default() -> Self {
         SceneLoader {
             current_scene: Scenes::Main(None),
-            main: Some(Main::new(None).0),
+            main: Some(Main::new(None, Globals::default()).0),
             drawing: None,
         }
     }

@@ -3,19 +3,20 @@ use std::default::Default;
 use std::sync::Arc;
 
 use iced::{Alignment, Command, Element, event, Length, mouse, Point, Rectangle, Renderer, Theme};
+use iced::alignment::Horizontal;
 use iced::mouse::Cursor;
 use iced::widget::{button, text, column, row, canvas, Canvas};
 use iced::widget::canvas::{Cache, Event, Frame, Geometry, Path, Stroke};
+use iced_aw::card::Card;
 
 use mongodb::bson::{doc, Document, Uuid};
 use mongodb::results::InsertManyResult;
 
-use crate::scene::{Scene, Action, Message, SceneOptions};
+use crate::scene::{Scene, Action, Message, SceneOptions, Globals};
 use crate::tool::{self, Tool, Pending};
 use crate::tools::{line::LinePending, rect::RectPending, triangle::TrianglePending, polygon::PolygonPending, circle::CirclePending, ellipse::EllipsePending};
 use crate::tools::{brush::BrushPending, brushes::{pencil::Pencil, pen::Pen, airbrush::Airbrush, eraser::Eraser}};
 use crate::scenes::scenes::Scenes;
-use crate::menu::menu;
 
 use crate::mongo::{MongoRequest, MongoResponse};
 
@@ -85,6 +86,7 @@ pub struct Drawing {
     tools: Box<Vec<Box<dyn Tool>>>,
     count_saved: usize,
     current_tool: Box<dyn Pending>,
+    globals: Globals,
 }
 
 impl Drawing {
@@ -230,14 +232,15 @@ impl<'a> canvas::Program<Box<dyn Tool>> for DrawingVessel<'a> {
 }
 
 impl Scene for Box<Drawing> {
-    fn new(options: Option<Box<dyn SceneOptions<Box<Drawing>>>>) -> (Self, Command<Message>) where Self: Sized {
+    fn new(options: Option<Box<dyn SceneOptions<Box<Drawing>>>>, globals: Globals) -> (Self, Command<Message>) where Self: Sized {
         let mut drawing = Box::new(
             Drawing {
                 canvas_id: Uuid::new(),
                 state: State::default(),
                 tools: Box::new(vec![]),
                 count_saved: 0,
-                current_tool: Box::new(LinePending::None)
+                current_tool: Box::new(LinePending::None),
+                globals,
             }
         );
 
@@ -331,33 +334,42 @@ impl Scene for Box<Drawing> {
     }
 
     fn view(&self) -> Element<'_, Message> {
+        if self.globals.get_window_height() == 0.0 {
+            return Element::new(text(""));
+        }
+
+        println!("{}", self.globals.get_window_height() - 70.0);
         row![
-            menu(250, Box::<[(String, Box<[(String, Box<dyn Pending>)]>); 3]>::new(
-                    [
-                        (String::from("Geometry"), Box::new(
-                            [
-                                ("Line".into(), Box::new(LinePending::None)),
-                                ("Rectangle".into(), Box::new(RectPending::None)),
-                                ("Triangle".into(), Box::new(TrianglePending::None)),
-                                ("Polygon".into(), Box::new(PolygonPending::None)),
-                                ("Circle".into(), Box::new(CirclePending::None)),
-                                ("Ellipse".into(), Box::new(EllipsePending::None)),
-                            ])),
-                        (String::from("Brushes"), Box::new(
-                            [
-                                ("Pencil".into(), Box::new(BrushPending::<Pencil>::None)),
-                                ("Fountain pen".into(), Box::new(BrushPending::<Pen>::None)),
-                                ("Airbrush".into(), Box::new(BrushPending::<Airbrush>::None)),
-                            ])),
-                        (String::from("Eraser"), Box::new(
-                            [
-                                ("Eraser".into(), Box::new(BrushPending::<Eraser>::None)),
-                            ])),
-                    ]
-                ),
-                Box::new(|tool| {Message::DoAction(Box::new(DrawingAction::ChangeTool(tool)))}),
-                Message::DoAction(Box::new(DrawingAction::None))
-            ),
+            Card::new(
+                text("Tools").horizontal_alignment(Horizontal::Center).size(25.0).height(Length::Fixed(50.0)),
+                column![
+                    text("Geometry").horizontal_alignment(Horizontal::Center).size(20.0),
+                    column![
+                        button("Line").on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(LinePending::None))))),
+                        button("Rectangle").on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(RectPending::None))))),
+                        button("Triangle").on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(TrianglePending::None))))),
+                        button("Polygon").on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(PolygonPending::None))))),
+                        button("Circle").on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(CirclePending::None))))),
+                        button("Ellipse").on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(EllipsePending::None))))),
+                    ].spacing(5.0).padding(10.0),
+                    text("Brushes").horizontal_alignment(Horizontal::Center).size(20.0),
+                    column![
+                        button("Pencil").on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(BrushPending::<Pencil>::None))))),
+                        button("Fountain pen").on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(BrushPending::<Pen>::None))))),
+                        button("Airbrush").on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(BrushPending::<Airbrush>::None))))),
+                    ].spacing(5.0).padding(10.0),
+                    text("Eraser").horizontal_alignment(Horizontal::Center).size(20.0),
+                    column![
+                        button("Eraser").on_press(Message::DoAction(Box::new(DrawingAction::ChangeTool(Box::new(BrushPending::<Eraser>::None)))))
+                    ].spacing(5.0).padding(10.0),
+                ]
+                .spacing(15.0)
+                .height(Length::Fill)
+                .width(Length::Fixed(250.0)),
+            )
+            .height(Length::Fill)
+            .width(Length::Fixed(250.0))
+            .max_height(self.globals.get_window_height() - 70.0),
             column![
                 text(format!("{}", self.get_title())).width(Length::Shrink).size(50),
                 self.state.view(&self.tools, &self.current_tool).map(|tool| {Message::DoAction(Box::new(DrawingAction::UseTool(tool)).into())}),
@@ -377,6 +389,7 @@ impl Scene for Box<Drawing> {
                     )),
                 ]
             ]
+            .height(Length::Fill)
         ]
             .padding(0)
             .spacing(20)
@@ -384,6 +397,10 @@ impl Scene for Box<Drawing> {
             .height(Length::Fill)
             .align_items(Alignment::Center)
             .into()
+    }
+
+    fn update_globals(&mut self, globals: Globals) {
+        self.globals = globals;
     }
 
     fn clear(&self) { }

@@ -1,15 +1,16 @@
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
-use iced::{Command, Element};
+use iced::{Command, Element, Event, Size};
 use mongodb::{Database};
 use crate::mongo::{MongoRequest, MongoResponse};
 use crate::scenes::scenes::Scenes;
 
 pub trait Scene: Send+Sync {
-    fn new(options: Option<Box<dyn SceneOptions<Self>>>) -> (Self, Command<Message>) where Self:Sized;
+    fn new(options: Option<Box<dyn SceneOptions<Self>>>, globals: Globals) -> (Self, Command<Message>) where Self:Sized;
     fn get_title(&self) -> String;
     fn update(&mut self, message: Box<dyn Action>) -> Command<Message>;
     fn view(&self) -> Element<'_, Message>;
+    fn update_globals(&mut self, globals: Globals);
     fn clear(&self);
 }
 
@@ -55,4 +56,36 @@ pub enum Message {
     DoAction(Box<dyn Action>),
     DoneDatabaseInit(Result<Database, mongodb::error::Error>),
     SendMongoRequest((String, MongoRequest, fn(MongoResponse) -> Box<dyn Action>)),
+    Event(Event)
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct Globals {
+    window_size: Size,
+}
+
+impl Globals {
+    pub(crate) fn set_window_size(&mut self, size: Size) {
+        self.window_size = size;
+    }
+
+    pub(crate) fn get_window_height(&self) -> f32 {
+        self.window_size.height
+    }
+
+    pub(crate) fn get_window_width(&self) -> f32 {
+        self.window_size.width
+    }
+
+    pub (crate) fn get_window_size(&self) -> Size {
+        self.window_size
+    }
+}
+
+impl Default for Globals {
+    fn default() -> Self {
+        Globals {
+            window_size: Size::new(0.0, 0.0)
+        }
+    }
 }

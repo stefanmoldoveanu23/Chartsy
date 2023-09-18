@@ -7,7 +7,6 @@ use crate::tools::{line::Line, rect::Rect, triangle::Triangle, polygon::Polygon,
 use crate::tools::brushes::{eraser::Eraser, pencil::Pencil, pen::Pen, airbrush::Airbrush};
 
 pub trait Tool: Debug+Send+Sync+Serialize+Deserialize {
-
     fn add_to_frame(&self, frame: &mut Frame);
     fn boxed_clone(&self) -> Box<dyn Tool>;
     fn id(&self) -> String;

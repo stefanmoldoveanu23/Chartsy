@@ -4,7 +4,6 @@ mod scene;
 mod scenes;
 mod tool;
 mod tools;
-mod menu;
 mod mongo;
 mod config;
 mod serde;
@@ -12,8 +11,11 @@ mod serde;
 use scene::{Message};
 use scenes::scenes::SceneLoader;
 
-use iced::{Application, Command, Element, executor, Settings, Theme};
+use iced::{Application, Command, Element, executor, Settings, Size, Subscription, Theme, window};
+use iced::subscription::events;
+use iced_runtime::command::Action;
 use mongodb::Database;
+use crate::scene::Globals;
 
 pub fn main() -> iced::Result {
     Chartsy::run(Settings {
@@ -25,6 +27,7 @@ pub fn main() -> iced::Result {
 struct Chartsy {
     scene_loader: SceneLoader,
     mongo_db: Option<Database>,
+    globals: Globals,
 }
 
 impl Application for Chartsy {
@@ -34,7 +37,15 @@ impl Application for Chartsy {
     type Flags = ();
 
     fn new(_flags: Self::Flags) -> (Chartsy, Command<Self::Message>) {
-        (Chartsy{scene_loader: SceneLoader::default(), mongo_db: None}, Command::perform(mongo::connect_to_mongodb(), Message::DoneDatabaseInit))
+        (
+            Chartsy{scene_loader: SceneLoader::default(), mongo_db: None, globals: Globals::default()},
+            Command::batch(
+                vec![
+                    Command::single(Action::Window(window::Action::Maximize(true))),
+                    Command::perform(mongo::connect_to_mongodb(), Message::DoneDatabaseInit)
+                ]
+            )
+        )
     }
 
     fn title(&self) -> String {
@@ -45,7 +56,7 @@ impl Application for Chartsy {
 
         match message {
             Message::ChangeScene(scene) => {
-                self.scene_loader.load(scene)
+                self.scene_loader.load(scene, self.globals)
             }
             Message::DoAction(action) => {
                 let scene = self.scene_loader.get_mut().expect("Error getting scene.");
@@ -63,6 +74,15 @@ impl Application for Chartsy {
                     Some(db) => mongo::MongoRequest::send_request(db.clone(), request)
                 }
             }
+            Message::Event(event) => {
+                match event {
+                    iced::Event::Window(window::Event::Resized {width, height}) => {
+                        self.globals.set_window_size(Size::new(width as f32, height as f32));
+                    }
+                    _ => {}
+                }
+                Command::none()
+            }
             Message::Error(message) => {
                 eprintln!("{}", message);
                 Command::none()
@@ -73,5 +93,9 @@ impl Application for Chartsy {
     fn view(&self) -> Element<'_, Self::Message> {
         let scene = self.scene_loader.get().expect("Error getting scene.");
         scene.view()
+    }
+
+    fn subscription(&self) -> Subscription<Self::Message> {
+        events().map(Message::Event)
     }
 }

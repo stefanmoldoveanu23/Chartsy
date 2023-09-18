@@ -1,14 +1,15 @@
 use std::any::Any;
 
 use iced::{Alignment, Command, Element, Length};
-use iced::widget::{button, text, column, Container};
-use iced_aw::{modal};
+use iced::alignment::{Horizontal, Vertical};
+use iced::widget::{button, text, column, Container, Column, Scrollable};
+use iced_aw::{Card, modal};
 use mongodb::bson::{Uuid, doc, Document, Bson, UuidRepresentation};
 
-use crate::scene::{Scene, Action, Message, SceneOptions};
+use crate::scene::{Scene, Action, Message, SceneOptions, Globals};
 use crate::scenes::scenes::Scenes;
 
-use crate::menu::menu;
+//use crate::menu::menu;
 use crate::mongo::{MongoRequest, MongoResponse};
 use crate::scenes::drawing::DrawingOptions;
 
@@ -57,7 +58,7 @@ impl SceneOptions<Main> for MainOptions {
 }
 
 impl Scene for Main {
-    fn new(options: Option<Box<dyn SceneOptions<Main>>>) -> (Self, Command<Message>) where Self: Sized {
+    fn new(options: Option<Box<dyn SceneOptions<Main>>>, _globals: Globals) -> (Self, Command<Message>) where Self: Sized {
         let mut main = Main { showing_drawings: false, drawings: None };
         if let Some(options) = options {
             options.apply_options(&mut main);
@@ -115,7 +116,7 @@ impl Scene for Main {
         Command::none()
     }
 
-    fn view(&self) -> Element<'_, Message> {
+    fn view(&self) -> Element<Message> {
         let container_entrance :Container<Message> = Container::new(column![
             column![
                 text("Chartsy").width(Length::Shrink).size(50)
@@ -139,30 +140,45 @@ impl Scene for Main {
             .height(Length::Fill)
             .align_items(Alignment::Center));
 
-        let drawings :Box<[(String, Uuid)]>= match self.drawings.clone() {
-            Some(drawings) => {
-                drawings.iter().map(|uuid| {
-                    (uuid.to_string(), uuid.clone())
-                }).collect::<Box<[(String, Uuid)]>>()
-            }
-            None => {
-                Box::new([])
-            }
-        };
+        let container_drawings =
+        Container::new(
+            Card::new(
+                text("Your drawings").horizontal_alignment(Horizontal::Center).size(25),
+                Container::new(
+                    Scrollable::new(
+                        Column::with_children(
+                            if let Some(drawings) = self.drawings.clone() {
+                            drawings.clone().iter().map(|uuid| {
+                                Element::from(button(text(uuid)).on_press(
+                                    Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(Some(uuid.clone()))))))
+                                ))
+                            }).collect()
+                            } else {
+                                vec![]
+                            }
+                        )
+                    )
+                )
+                    .width(Length::Fixed(500.0))
+                    .height(Length::Fixed(300.0))
+                    .align_x(Horizontal::Center)
+                    .align_y(Vertical::Top)
+            )
+                .width(Length::Fixed(500.0))
+                .height(Length::Fixed(300.0))
+                .on_close(Message::DoAction(Box::new(MainAction::ShowDrawings)))
+        )
+            .padding(10)
+            .height(Length::Fill)
+            .align_x(Horizontal::Center)
+            .align_y(Vertical::Center);
 
-        let container_drawings = Container::new(
-            menu(600, Box::<[(String, Box<[(String, Uuid)]>); 1]>::new([
-                (String::from("Drawings"), drawings)
-            ]), Box::new(|uuid| { Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(Some(uuid)))))) }),
-                 Message::DoAction(Box::new(MainAction::ShowDrawings))))
-            .padding(20)
-            .width(Length::Fill)
-            .height(Length::Fill);
-
-        modal(self.showing_drawings.clone(), container_entrance, container_drawings)
+        modal(container_entrance, if self.showing_drawings {Some(container_drawings)} else {None})
             .into()
 
     }
+
+    fn update_globals(&mut self, _globals: Globals) { }
 
     fn clear(&self) { }
 }
