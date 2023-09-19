@@ -10,7 +10,7 @@ use crate::scene::{Scene, Action, Message, SceneOptions, Globals};
 use crate::scenes::scenes::Scenes;
 
 //use crate::menu::menu;
-use crate::mongo::{MongoRequest, MongoResponse};
+use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 use crate::scenes::drawing::DrawingOptions;
 use crate::theme::Theme;
 
@@ -82,17 +82,21 @@ impl Scene for Main {
                     return Command::perform(
                         async { },
                             move |_| {
-                            Message::SendMongoRequest((
-                                "canvases".into(),
-                                MongoRequest::Get(doc!{}),
+                            Message::SendMongoRequests(
+                                vec![
+                                    MongoRequest::new(
+                                        "canvases".into(),
+                                        MongoRequestType::Get(doc!{}),
+                                    )
+                                ],
                                 |res| {
-                                    if let MongoResponse::Get(cursor) = res {
-                                        Box::new(MainAction::LoadedDrawings(cursor))
+                                    if let Some(MongoResponse::Get(cursor)) = res.get(0) {
+                                        Box::new(MainAction::LoadedDrawings(cursor.clone()))
                                     } else {
                                         Box::new(MainAction::None)
                                     }
                                 }
-                                ))
+                            )
                         }
                     );
                 }

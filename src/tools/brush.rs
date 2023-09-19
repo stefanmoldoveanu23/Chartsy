@@ -6,6 +6,7 @@ use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry};
 use mongodb::bson::{Bson, doc, Document};
+use crate::canvas::canvas::CanvasAction;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 
@@ -25,7 +26,7 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
         &mut self,
         event: Event,
         cursor: Point,
-    ) -> (Status, Option<Box<dyn Tool>>) {
+    ) -> (Status, Option<CanvasAction>) {
         match event {
             Event::Mouse(mouse_event) => {
                 let message = match mouse_event {
@@ -68,7 +69,7 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
 
                                 *self = BrushPending::None;
 
-                                Some(Box::new(BrushType::new(start_clone, offsets_clone)).into())
+                                Some(CanvasAction::UseTool(Box::new(BrushType::new(start_clone, offsets_clone))).into())
                             }
                             _ => None
                         }

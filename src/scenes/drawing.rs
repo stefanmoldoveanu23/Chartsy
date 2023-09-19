@@ -1,16 +1,10 @@
 use std::any::Any;
-use std::default::Default;
 use std::sync::Arc;
 
-use iced::{Alignment, Color, Command, Element, event, Length, mouse, Point, Rectangle, Renderer};
+use iced::{Alignment, Command, Element, Length, Renderer};
 use iced::alignment::Horizontal;
-use iced::mouse::Cursor;
-use iced::widget::{button, text, column, row, canvas, Canvas, Container};
-use iced::widget::canvas::{Cache, Event, Frame, Geometry, Path, Stroke};
+use iced::widget::{button, text, column, row, Container};
 use iced_aw::card::Card;
-use iced_widget::canvas::{Fill, Style};
-use iced_widget::canvas::fill::Rule;
-
 use mongodb::bson::{doc, Document, Uuid};
 use mongodb::results::InsertManyResult;
 
@@ -19,40 +13,16 @@ use crate::tool::{self, Tool, Pending};
 use crate::tools::{line::LinePending, rect::RectPending, triangle::TrianglePending, polygon::PolygonPending, circle::CirclePending, ellipse::EllipsePending};
 use crate::tools::{brush::BrushPending, brushes::{pencil::Pencil, pen::Pen, airbrush::Airbrush, eraser::Eraser}};
 use crate::scenes::scenes::Scenes;
+use crate::canvas::canvas::{CanvasAction, State};
 
 use crate::theme::{container, Theme};
 
-use crate::mongo::{MongoRequest, MongoResponse};
-
-#[derive(Default)]
-struct State {
-    cache: Cache,
-}
-
-unsafe impl Send for State {}
-unsafe impl Sync for State {}
-
-impl State {
-    pub fn view<'a>(&'a self, tools: &'a [Box<dyn Tool>], current_tool: &'a Box<dyn Pending>) -> Element<'a, Box<dyn Tool>, iced_widget::renderer::Renderer<Theme>> {
-        Canvas::new(DrawingVessel {
-            state: Some(self),
-            tools,
-            current_tool,
-        })
-            .width(Length::Fixed(50.0))
-            .height(Length::Fixed(50.0))
-            .into()
-    }
-
-    pub fn request_redraw(&mut self) {
-        self.cache.clear();
-    }
-}
+use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 
 #[derive(Clone)]
 enum DrawingAction {
     None,
-    UseTool(Box<dyn Tool>),
+    CanvasAction(CanvasAction),
     ChangeTool(Box<dyn Pending>),
     Saved(Arc<InsertManyResult>),
     Loaded(Vec<Document>),
@@ -66,8 +36,8 @@ impl Action for DrawingAction {
     fn get_name(&self) -> String {
         match self {
             DrawingAction::None => String::from("None"),
-            DrawingAction::UseTool(_tool) => String::from("Use tool"),
-            DrawingAction::ChangeTool(_tool) => String::from("Change tool"),
+            DrawingAction::CanvasAction(_) => String::from("Canvas action"),
+            DrawingAction::ChangeTool(_) => String::from("Change tool"),
             DrawingAction::Saved(_) => String::from("Finished saving"),
             DrawingAction::Loaded(_) => String::from(format!("Finished loading from database")),
         }
@@ -88,6 +58,7 @@ pub struct Drawing {
     canvas_id: Uuid,
     state: State,
     tools: Box<Vec<Box<dyn Tool>>>,
+    undo_stack: Box<Vec<Box<dyn Tool>>>,
     count_saved: usize,
     current_tool: Box<dyn Pending>,
     globals: Globals,
@@ -137,111 +108,6 @@ impl SceneOptions<Box<Drawing>> for DrawingOptions {
     }
 }
 
-struct DrawingVessel<'a> {
-    state: Option<&'a State>,
-    tools: &'a [Box<dyn Tool>],
-    current_tool: &'a Box<dyn Pending>,
-}
-
-impl<'a> canvas::Program<Box<dyn Tool>, iced_widget::renderer::Renderer<Theme>> for DrawingVessel<'a>
-{
-    type State = Option<Box<dyn Pending>>;
-
-    fn update(
-        &self,
-        state: &mut Self::State,
-        event: Event,
-        bounds: Rectangle,
-        cursor: Cursor,
-    ) -> (event::Status, Option<Box<dyn Tool>>) {
-        let cursor_position =
-            if let Some(position) = cursor.position_in(bounds) {
-                position
-            } else {
-                return (event::Status::Ignored, None);
-            };
-
-        match state {
-            None => {
-                *state = Some((*self.current_tool).boxed_clone());
-                (event::Status::Captured, None)
-            },
-            Some(pending_state) => {
-                let new_tool = pending_state.id() != self.current_tool.id();
-                if new_tool {
-                    *state = Some((*self.current_tool).boxed_clone());
-                    (event::Status::Ignored, None)
-                } else {
-                    pending_state.update(event, cursor_position)
-                }
-            }
-        }
-    }
-
-    fn draw(
-        &self,
-        state: &Self::State,
-        renderer: &iced_widget::renderer::Renderer<Theme>,
-        _theme: &Theme,
-        bounds: Rectangle,
-        cursor: Cursor
-    ) -> Vec<Geometry> {
-        let base = {
-            let mut frame = Frame::new(renderer, bounds.size());
-
-            frame.fill_rectangle(Point::ORIGIN, frame.size(), Fill { style: Style::Solid(Color::WHITE), rule: Rule::NonZero });
-
-            frame.stroke(
-                &Path::rectangle(Point::ORIGIN, frame.size()),
-                Stroke::default().with_width(2.0)
-            );
-
-            frame.into_geometry()
-        };
-
-        let content = match self.state {
-            None => {
-                return vec![base];
-            }
-            Some(state) => {
-                state.cache.draw(
-                    renderer,
-                    bounds.size(),
-                    |frame| {
-                        for tool in self.tools {
-                            tool.add_to_frame(frame);
-                        }
-                    }
-                )
-            }
-        };
-
-        let pending = match state {
-            None => {
-                return vec![base, content];
-            }
-            Some(state) => {
-                state.draw(renderer, bounds, cursor)
-            }
-        };
-
-        vec![base, content, pending]
-    }
-
-    fn mouse_interaction(
-        &self,
-        _state: &Self::State,
-        bounds: Rectangle,
-        cursor: Cursor,
-    ) -> mouse::Interaction {
-        if cursor.is_over(bounds) {
-            mouse::Interaction::Crosshair
-        } else {
-            mouse::Interaction::default()
-        }
-    }
-}
-
 impl Scene for Box<Drawing> {
     fn new(options: Option<Box<dyn SceneOptions<Box<Drawing>>>>, globals: Globals) -> (Self, Command<Message>) where Self: Sized {
         let mut drawing = Box::new(
@@ -249,6 +115,7 @@ impl Scene for Box<Drawing> {
                 canvas_id: Uuid::new(),
                 state: State::default(),
                 tools: Box::new(vec![]),
+                undo_stack: Box::new(vec![]),
                 count_saved: 0,
                 current_tool: Box::new(LinePending::None),
                 globals,
@@ -265,17 +132,21 @@ impl Scene for Box<Drawing> {
                 Command::perform(
                     async {},
                     move |_| {
-                        Message::SendMongoRequest((
-                            "tools".into(),
-                            MongoRequest::Get(doc! {"canvas_id": uuid}),
+                        Message::SendMongoRequests(
+                            vec![
+                                MongoRequest::new(
+                                    "tools".into(),
+                                    MongoRequestType::Get(doc! {"canvas_id": uuid}),
+                                )
+                            ],
                             move |res| {
-                                if let MongoResponse::Get(cursor) = res {
-                                    Box::new(DrawingAction::Loaded(cursor))
+                                if let Some(MongoResponse::Get(cursor)) = res.get(0) {
+                                    Box::new(DrawingAction::Loaded(cursor.clone()))
                                 } else {
                                     Box::new(DrawingAction::None)
                                 }
                             }
-                        ))
+                        )
                     }
                 )
             )
@@ -287,11 +158,15 @@ impl Scene for Box<Drawing> {
                 Command::perform(
                     async {},
                         move |_| {
-                            Message::SendMongoRequest((
-                                "canvases".into(),
-                                MongoRequest::Insert(vec![doc!{"id": uuid}]),
+                            Message::SendMongoRequests(
+                                vec![
+                                    MongoRequest::new(
+                                        "canvases".into(),
+                                        MongoRequestType::Insert(vec![doc!{"id": uuid}]),
+                                    )
+                                ],
                                 |_| Box::new(DrawingAction::None),
-                                ))
+                            )
                         }
                 )
             )
@@ -306,9 +181,74 @@ impl Scene for Box<Drawing> {
         let message: &DrawingAction = message.as_any().downcast_ref::<DrawingAction>().expect("Panic downcasting to DrawingAction");
 
         match message {
-            DrawingAction::UseTool(tool) => {
-                self.tools.push(tool.clone());
-                self.state.request_redraw();
+            DrawingAction::CanvasAction(action) => {
+                match action {
+                    CanvasAction::UseTool(tool) => {
+                        self.tools.push(tool.clone());
+                        self.undo_stack = Box::new(vec![]);
+                        self.state.request_redraw();
+                    }
+                    CanvasAction::Save => {
+                        let tools = self.get_tools_serialized();
+                        let delete_lower_bound = self.count_saved;
+                        let delete_upper_bound = self.tools.len();
+
+                        return
+                            Command::perform(
+                                async {},
+                                move |_| {
+                                    Message::SendMongoRequests(
+                                        vec![
+                                            MongoRequest::new(
+                                                "tools".into(),
+                                                MongoRequestType::Delete(
+                                                    doc!{"order": {
+                                                        "$gte": delete_lower_bound as u32,
+                                                        "$lte": delete_upper_bound as u32,
+                                                    }}
+                                                )
+                                            ),
+                                            MongoRequest::new(
+                                                "tools".into(),
+                                                MongoRequestType::Insert(tools),
+                                            )
+                                        ],
+                                        move |responses| {
+                                            for response in responses {
+                                                if let MongoResponse::Insert(result) = response {
+                                                    return Box::new(DrawingAction::Saved(Arc::new(result)));
+                                                }
+                                                break
+                                            }
+
+                                            Box::new(DrawingAction::None)
+                                        }
+                                    )
+                                }
+                            );
+                    }
+                    CanvasAction::Undo => {
+                        if self.tools.len() > 0 {
+                            let opt = self.tools.pop();
+                            if let Some(tool) = opt {
+                                self.undo_stack.push(tool);
+                            }
+                            self.state.request_redraw();
+
+                            if self.count_saved > self.tools.len() {
+                                self.count_saved -= 1;
+                            }
+                        }
+                    }
+                    CanvasAction::Redo => {
+                        let opt = self.undo_stack.pop();
+
+                        if let Some(tool) = opt {
+                            self.tools.push(tool);
+                            self.state.request_redraw();
+                        }
+                    }
+                }
             }
             DrawingAction::ChangeTool(tool) => {
                 self.current_tool = (*tool).boxed_clone();
@@ -383,7 +323,15 @@ impl Scene for Box<Drawing> {
             column![
                 text(format!("{}", self.get_title())).width(Length::Shrink).size(50),
                 Container::new(
-                    self.state.view(&self.tools, &self.current_tool).map(|tool| {Message::DoAction(Box::new(DrawingAction::UseTool(tool)).into())})
+                    self.state.view(
+                        &self.tools,
+                        &self.current_tool
+                    ).map(
+                        |action|
+                        {
+                            Message::DoAction(Box::new(DrawingAction::CanvasAction(action)).into())
+                        }
+                    )
                 )
                     .width(Length::Fill)
                     .height(Length::Fill)
@@ -392,18 +340,7 @@ impl Scene for Box<Drawing> {
                     .style(container::Container::Canvas),
                 row![
                     button("Back").padding(8).on_press(Message::ChangeScene(Scenes::Main(None))),
-                    button("Save").padding(8).on_press(Message::SendMongoRequest(
-                        (
-                            "tools".into(),
-                            MongoRequest::Insert(self.get_tools_serialized()),
-                            |response| {
-                                match response {
-                                    MongoResponse::Insert(result) => Box::new(DrawingAction::Saved(Arc::new(result))),
-                                    _ => Box::new(DrawingAction::None),
-                                }
-                            }
-                        )
-                    )),
+                    button("Save").padding(8).on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Save)))),
                 ]
             ]
             .height(Length::Fill)

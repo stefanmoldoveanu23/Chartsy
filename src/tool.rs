@@ -2,6 +2,7 @@ use std::fmt::Debug;
 use iced::{mouse, Point, Rectangle, Renderer};
 use iced::widget::canvas::{event, Event, Frame, Geometry};
 use mongodb::bson::{Bson, Document};
+use crate::canvas::canvas::CanvasAction;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 use crate::tools::{line::Line, rect::Rect, triangle::Triangle, polygon::Polygon, circle::Circle, ellipse::Ellipse};
@@ -44,7 +45,7 @@ pub trait Pending: Send+Sync {
         &mut self,
         event: Event,
         cursor: Point,
-    ) -> (event::Status, Option<Box<dyn Tool>>);
+    ) -> (event::Status, Option<CanvasAction>);
 
     fn draw(
         &self,

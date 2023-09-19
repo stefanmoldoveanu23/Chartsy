@@ -56,7 +56,7 @@ pub enum Message {
     ChangeScene(Scenes),
     DoAction(Box<dyn Action>),
     DoneDatabaseInit(Result<Database, mongodb::error::Error>),
-    SendMongoRequest((String, MongoRequest, fn(MongoResponse) -> Box<dyn Action>)),
+    SendMongoRequests(Vec<MongoRequest>, fn(Vec<MongoResponse>) -> Box<dyn Action>),
     Event(Event)
 }
 
@@ -78,7 +78,7 @@ impl Globals {
         self.window_size.width
     }
 
-    pub (crate) fn get_window_size(&self) -> Size {
+    pub(crate) fn get_window_size(&self) -> Size {
         self.window_size
     }
 }

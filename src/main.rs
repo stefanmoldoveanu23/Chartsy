@@ -8,6 +8,7 @@ mod mongo;
 mod config;
 mod serde;
 mod theme;
+mod canvas;
 
 use scene::{Message, Globals};
 use scenes::scenes::SceneLoader;
@@ -69,10 +70,10 @@ impl Application for Chartsy {
                 println!("Successfully connected to database.");
                 Command::none()
             }
-            Message::SendMongoRequest(request) => {
+            Message::SendMongoRequests(requests, response_handler) => {
                 match &self.mongo_db {
                     None => Command::none(),
-                    Some(db) => mongo::MongoRequest::send_request(db.clone(), request)
+                    Some(db) => mongo::MongoRequest::send_requests(db.clone(), (requests, response_handler))
                 }
             }
             Message::Event(event) => {

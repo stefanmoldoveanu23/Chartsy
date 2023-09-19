@@ -5,6 +5,7 @@ use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
 use mongodb::bson::{Bson, doc, Document};
+use crate::canvas::canvas::CanvasAction;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 
@@ -21,7 +22,7 @@ impl Pending for RectPending {
         &mut self,
         event: Event,
         cursor: Point,
-    ) -> (Status, Option<Box<dyn Tool>>) {
+    ) -> (Status, Option<CanvasAction>) {
         match event {
             Event::Mouse(mouse_event) => {
                 let message = match mouse_event {
@@ -35,7 +36,7 @@ impl Pending for RectPending {
                                 let start_clone = start.clone();
 
                                 *self = RectPending::None;
-                                Some(Box::new(Rect { start: start_clone, end: cursor }).into())
+                                Some(CanvasAction::UseTool(Box::new(Rect { start: start_clone, end: cursor })).into())
                             }
                         }
                     }
