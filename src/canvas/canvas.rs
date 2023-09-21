@@ -1,166 +1,379 @@
-use iced::{Color, Element, event, keyboard, Length, Point, Rectangle};
-use iced::advanced::mouse;
-use iced::mouse::Cursor;
-use iced::widget::canvas;
-use iced_widget::canvas::fill::Rule;
+use std::sync::Arc;
+use iced::advanced::layout::{Limits, Node};
+use iced::advanced::renderer::Style;
+use iced::advanced::{Clipboard, Layout, Shell, Widget};
+use iced::advanced::widget::{Tree, tree};
+use iced::{Element, Event, Length, Rectangle, Size, Renderer, Command};
+use iced::event::Status;
+use iced::mouse::{Cursor, Interaction};
+use iced_widget::canvas;
+use mongodb::bson::{doc, Document, Uuid};
+use crate::canvas::layer::{CanvasAction, Layer};
+use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
+use crate::scene::Message;
+use crate::scenes::drawing::DrawingAction;
 use crate::theme::Theme;
+use crate::tool;
 use crate::tool::{Pending, Tool};
+use crate::tools::line::LinePending;
 
-#[derive(Default)]
 pub struct State {
     cache: canvas::Cache,
+}
+
+pub struct Canvas {
+    pub(crate) id: Uuid,
+    pub(crate) width: Length,
+    pub(crate) height: Length,
+    pub(crate) layers: Box<Vec<State>>,
+    pub(crate) current_layer: usize,
+    pub(crate) tools: Box<Vec<(Arc<dyn Tool>, usize)>>,
+    pub(crate) undo_stack: Box<Vec<(Arc<dyn Tool>, usize)>>,
+    pub(crate) tool_layers: Box<Vec<Vec<Arc<dyn Tool>>>>,
+    pub(crate) count_saved: usize,
+    pub(crate) default_tool: Box<dyn Pending>,
+    pub(crate) current_tool: Box<dyn Pending>,
 }
 
 unsafe impl Send for State {}
 unsafe impl Sync for State {}
 
-impl State {
-    pub fn view<'a>(&'a self, tools: &'a [Box<dyn Tool>], current_tool: &'a Box<dyn Pending>) -> Element<'a, CanvasAction, iced_widget::renderer::Renderer<Theme>> {
-        canvas::Canvas::new(Canvas {
-            state: Some(self),
-            tools,
-            current_tool,
-        })
-            .width(Length::Fixed(800.0))
-            .height(Length::Fixed(600.0))
-            .into()
+impl Canvas {
+    pub(crate) fn new() -> Self {
+        Canvas {
+            id: Uuid::new(),
+            width: Length::Fill,
+            height: Length::Fill,
+            layers: Box::new(vec![State {cache: canvas::Cache::default()}]),
+            current_layer: 0,
+            tools: Box::new(vec![]),
+            undo_stack: Box::new(vec![]),
+            tool_layers: Box::new(vec![vec![]]),
+            count_saved: 0,
+            default_tool: Box::new(LinePending::None),
+            current_tool: Box::new(LinePending::None),
+        }
     }
 
-    pub fn request_redraw(&mut self) {
-        self.cache.clear();
+    pub fn get_layer_count(&self) -> usize {
+        self.layers.len()
     }
-}
 
-struct Canvas<'a> {
-    state: Option<&'a State>,
-    tools: &'a [Box<dyn Tool>],
-    current_tool: &'a Box<dyn Pending>,
-}
+    fn get_tools_serialized(&self) -> Vec<Document> {
+        let mut vec = vec![];
 
-impl<'a> canvas::Program<CanvasAction, iced_widget::renderer::Renderer<Theme>> for Canvas<'a>
-{
-    type State = Option<Box<dyn Pending>>;
+        for pos in self.count_saved..self.tools.len() {
+            let val = self.tools.get(pos);
 
-    fn update(
-        &self,
-        state: &mut Self::State,
-        event: canvas::Event,
-        bounds: Rectangle,
-        cursor: Cursor,
-    ) -> (event::Status, Option<CanvasAction>) {
-        if let canvas::Event::Keyboard(event) = event {
-            match event {
-                keyboard::Event::KeyPressed {key_code, modifiers} => {
-                    if key_code == keyboard::KeyCode::Z && modifiers == keyboard::Modifiers::CTRL {
-                        return (event::Status::Captured, Some(CanvasAction::Undo))
-                    } else if key_code == keyboard::KeyCode::S && modifiers == keyboard::Modifiers::CTRL {
-                        return (event::Status::Captured, Some(CanvasAction::Save))
-                    } else if key_code == keyboard::KeyCode::Y && modifiers == keyboard::Modifiers::CTRL {
-                        return (event::Status::Captured, Some(CanvasAction::Redo))
+            if let Some((tool, layer)) = val {
+                let mut document = tool.serialize();
+                document.insert("order", pos.clone() as u32);
+                document.insert("canvas_id", self.id);
+                document.insert("name", tool.id());
+                document.insert("layer", *layer as u32);
+
+                vec.push(document);
+            }
+        }
+
+        vec
+    }
+
+    fn clear_cache(&mut self, layer: usize) {
+        let layer = self.layers.get(layer);
+        if let Some(state) = layer {
+            state.cache.clear();
+        }
+    }
+
+    pub(crate) fn width(mut self, width: Length) -> Self {
+        self.width = width;
+        self
+    }
+
+    pub(crate) fn height(mut self, height: Length) -> Self {
+        self.height = height;
+        self
+    }
+
+    pub(crate) fn update(&mut self, message: CanvasAction) -> Command<Message> {
+
+        match message {
+            CanvasAction::UseTool(tool) => {
+                self.tools.push((tool.clone(), self.current_layer));
+                self.tool_layers[self.current_layer].push(tool.clone());
+                self.undo_stack = Box::new(vec![]);
+                self.clear_cache(self.current_layer);
+            }
+            CanvasAction::AddLayer => {
+                self.tool_layers.push(vec![]);
+                self.layers.push(State {cache: canvas::Cache::default()});
+                self.current_tool = self.default_tool.clone();
+                self.current_layer = self.layers.len() - 1;
+
+                let id = self.id.clone();
+                let layers = self.layers.len();
+                return Command::perform(
+                    async {},
+                    move |_| {
+                        Message::SendMongoRequests(
+                            vec![
+                                MongoRequest::new(
+                                    "canvases".into(),
+                                    MongoRequestType::Update(
+                                        doc! { "id": id },
+                                        doc! { "$set": { "layers": layers as u32 } }
+                                    )
+                                )
+                            ],
+                            |_| {
+                                Box::new(DrawingAction::None)
+                            }
+                        )
+                    }
+                );
+            }
+            CanvasAction::ActivateLayer(layer) => {
+                self.current_tool = self.default_tool.clone();
+                self.current_layer = layer;
+            }
+            CanvasAction::Save => {
+                let tools = self.get_tools_serialized();
+                if tools.is_empty() {
+                    return Command::none();
+                }
+                let delete_lower_bound = self.count_saved;
+                let delete_upper_bound = self.tools.len();
+
+                return
+                    Command::perform(
+                        async {},
+                        move |_| {
+                            Message::SendMongoRequests(
+                                vec![
+                                    MongoRequest::new(
+                                        "tools".into(),
+                                        MongoRequestType::Delete(
+                                            doc!{"order": {
+                                                "$gte": delete_lower_bound as u32,
+                                                "$lte": delete_upper_bound as u32,
+                                            }}
+                                        )
+                                    ),
+                                    MongoRequest::new(
+                                        "tools".into(),
+                                        MongoRequestType::Insert(tools),
+                                    )
+                                ],
+                                move |responses| {
+                                    for response in responses {
+                                        if let MongoResponse::Insert(result) = response {
+                                            return Box::new(DrawingAction::CanvasAction(CanvasAction::Saved(Arc::new(result))));
+                                        }
+                                        break
+                                    }
+
+                                    Box::new(DrawingAction::None)
+                                }
+                            )
+                        }
+                    );
+            }
+            CanvasAction::Undo => {
+                if self.tools.len() > 0 {
+                    let opt = self.tools.pop();
+                    if let Some((tool, layer)) = opt {
+                        self.tool_layers[layer].pop();
+                        self.undo_stack.push((tool.clone(), layer));
+
+                        self.clear_cache(layer);
+                    }
+
+                    if self.count_saved > self.tools.len() {
+                        self.count_saved -= 1;
                     }
                 }
-                _ => {}
             }
-        }
+            CanvasAction::Redo => {
+                let opt = self.undo_stack.pop();
 
-        let cursor_position =
-            if let Some(position) = cursor.position_in(bounds) {
-                position
-            } else {
-                return (event::Status::Ignored, None);
-            };
+                if let Some((tool, layer)) = opt {
+                    self.tools.push((tool.clone(), layer));
+                    self.tool_layers[layer].push(tool.clone());
+                    self.clear_cache(layer);
+                }
+            }
+            CanvasAction::ChangeTool(tool) => {
+                self.current_tool = (*tool).boxed_clone();
+            }
+            CanvasAction::Saved(insert_result) => {
+                self.count_saved += insert_result.inserted_ids.len();
 
-        match state {
-            None => {
-                *state = Some((*self.current_tool).boxed_clone());
-                (event::Status::Captured, None)
-            },
-            Some(pending_state) => {
-                let new_tool = pending_state.id() != self.current_tool.id();
-                if new_tool {
-                    *state = Some((*self.current_tool).boxed_clone());
-                    (event::Status::Ignored, None)
-                } else {
-                    pending_state.update(event, cursor_position)
+                for (key, value) in insert_result.inserted_ids.iter() {
+                    println!("Inserted key {} with value {}.", key, value);
+                }
+            }
+            CanvasAction::Loaded(layers, tools) => {
+                self.tools = Box::new(vec![]);
+                self.tool_layers = Box::new(vec![vec![]; layers]);
+                self.layers = Box::new(vec![]);
+
+                for tool in tools {
+                    let tool = tool::get_deserialized(tool.clone());
+
+                    match tool {
+                        Some((tool, layer)) => {
+                            self.tools.push((tool.clone(), layer));
+                            self.tool_layers[layer].push(tool.clone());
+                        }
+                        None => {
+                            eprintln!("Failed to get correct type of tool.");
+                        }
+                    }
+                }
+
+                self.count_saved = self.tools.len();
+                for layer in 0..layers {
+                    self.layers.push(State {cache: canvas::Cache::default()});
+                    self.clear_cache(layer);
                 }
             }
         }
+        Command::none()
+    }
+}
+
+impl<'a> From<&'a Canvas> for Element<'a, Message, Renderer<Theme>> {
+    fn from(value: &'a Canvas) -> Self {
+        Element::new(CanvasVessel::new(value)).map(|action| {Message::DoAction(Box::new(DrawingAction::CanvasAction(action)))})
+    }
+}
+
+struct CanvasVessel<'a> {
+    width: Length,
+    height: Length,
+    states: &'a [State],
+    layers: Box<Vec<canvas::Canvas<Layer<'a>, CanvasAction, Renderer<Theme>>>>,
+    current_layer: usize,
+}
+
+impl<'a> CanvasVessel<'a> {
+    fn new(canvas: &'a Canvas) -> Self {
+        let mut vessel = CanvasVessel {
+            width: canvas.width,
+            height: canvas.height,
+            states: &canvas.layers,
+            layers: Box::new(vec![]),
+            current_layer: canvas.current_layer,
+        };
+
+        vessel.layers = Box::new(
+            vessel.states.iter().enumerate().map(|(pos, state)| {
+                canvas::Canvas::new(
+                    Layer {
+                        state: Some(&state.cache),
+                        tools: &(canvas.tool_layers[pos]),
+                        current_tool: &canvas.current_tool,
+                    }
+                )
+            }).collect()
+        );
+
+        vessel
+
+    }
+}
+
+impl<'a> Widget<CanvasAction, Renderer<Theme>> for CanvasVessel<'a> {
+    fn width(&self) -> Length {
+        self.width
+    }
+
+    fn height(&self) -> Length {
+        self.height
+    }
+
+    fn layout(
+        &self,
+        _renderer: &Renderer<Theme>,
+        limits: &Limits
+    ) -> Node {
+        let limits = limits.width(self.width).height(self.height);
+        let size = limits.resolve(Size::ZERO);
+
+        Node::new(size)
     }
 
     fn draw(
         &self,
-        state: &Self::State,
-        renderer: &iced_widget::renderer::Renderer<Theme>,
-        _theme: &Theme,
-        bounds: Rectangle,
-        cursor: Cursor
-    ) -> Vec<canvas::Geometry> {
-        let base = {
-            let mut frame = canvas::Frame::new(renderer, bounds.size());
-
-            frame.fill_rectangle(
-                Point::ORIGIN,
-                frame.size(),
-                canvas::Fill {
-                    style: canvas::Style::Solid(Color::WHITE),
-                    rule: Rule::NonZero }
+        state: &Tree,
+        renderer: &mut Renderer<Theme>,
+        theme: &Theme,
+        style: &Style,
+        layout: Layout<'_>,
+        cursor: Cursor,
+        viewport: &Rectangle
+    ) {
+        for layer in self.layers.iter() {
+            layer.draw(
+                state,
+                renderer,
+                theme,
+                style,
+                layout,
+                cursor,
+                viewport,
             );
+        }
+    }
 
-            frame.stroke(
-                &canvas::Path::rectangle(Point::ORIGIN, frame.size()),
-                canvas::Stroke::default().with_width(2.0)
-            );
+    fn tag(&self) -> tree::Tag {
+        struct Tag<T>(T);
+        tree::Tag::of::<Tag<<Layer<'_> as canvas::Program<CanvasAction, Renderer<Theme>>>::State>>()
+    }
 
-            frame.into_geometry()
-        };
+    fn state(&self) -> tree::State {
+        tree::State::new(<Layer<'_> as canvas::Program<CanvasAction, Renderer<Theme>>>::State::default())
+    }
 
-        let content = match self.state {
-            None => {
-                return vec![base];
-            }
-            Some(state) => {
-                state.cache.draw(
-                    renderer,
-                    bounds.size(),
-                    |frame| {
-                        for tool in self.tools {
-                            tool.add_to_frame(frame);
-                        }
-                    }
-                )
-            }
-        };
-
-        let pending = match state {
-            None => {
-                return vec![base, content];
-            }
-            Some(state) => {
-                state.draw(renderer, bounds, cursor)
-            }
-        };
-
-        vec![base, content, pending]
+    fn on_event(
+        &mut self,
+        state: &mut Tree,
+        event: Event,
+        layout: Layout<'_>,
+        cursor: Cursor,
+        renderer: &Renderer<Theme>,
+        clipboard: &mut dyn Clipboard,
+        shell: &mut Shell<'_, CanvasAction>,
+        viewport: &Rectangle
+    ) -> Status {
+        let layer = &mut self.layers[self.current_layer];
+        layer.on_event(
+            state,
+            event,
+            layout,
+            cursor,
+            renderer,
+            clipboard,
+            shell,
+            viewport,
+        )
     }
 
     fn mouse_interaction(
         &self,
-        _state: &Self::State,
-        bounds: Rectangle,
+        state: &Tree,
+        layout: Layout<'_>,
         cursor: Cursor,
-    ) -> mouse::Interaction {
-        if cursor.is_over(bounds) {
-            mouse::Interaction::Crosshair
-        } else {
-            mouse::Interaction::default()
-        }
+        viewport: &Rectangle,
+        renderer: &Renderer<Theme>
+    ) -> Interaction {
+        self.layers[self.current_layer].mouse_interaction(
+            state,
+            layout,
+            cursor,
+            viewport,
+            renderer
+        )
     }
-}
-
-#[derive(Clone)]
-pub enum CanvasAction {
-    UseTool(Box<dyn Tool>),
-    Save,
-    Undo,
-    Redo,
 }

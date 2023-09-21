@@ -1,8 +1,9 @@
 use std::fmt::Debug;
+use std::sync::Arc;
 use iced::{mouse, Point, Rectangle, Renderer};
 use iced::widget::canvas::{event, Event, Frame, Geometry};
 use mongodb::bson::{Bson, Document};
-use crate::canvas::canvas::CanvasAction;
+use crate::canvas::layer::CanvasAction;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 use crate::tools::{line::Line, rect::Rect, triangle::Triangle, polygon::Polygon, circle::Circle, ellipse::Ellipse};
@@ -14,19 +15,24 @@ pub trait Tool: Debug+Send+Sync+Serialize+Deserialize {
     fn id(&self) -> String;
 }
 
-pub fn get_deserialized(document: Document) -> Option<Box<dyn Tool>> {
+pub fn get_deserialized(document: Document) -> Option<(Arc<dyn Tool>, usize)> {
+    let mut layer :usize= 0;
+    if let Some(Bson::Int32(layer_count)) = document.get("layer") {
+        layer = *layer_count as usize;
+    }
+
     if let Some(Bson::String(name)) = document.get("name") {
         match &name[..] {
-            "Line" => Some(Box::new(Line::deserialize(document))),
-            "Rect" => Some(Box::new(Rect::deserialize(document))),
-            "Triangle" => Some(Box::new(Triangle::deserialize(document))),
-            "Polygon" => Some(Box::new(Polygon::deserialize(document))),
-            "Circle" => Some(Box::new(Circle::deserialize(document))),
-            "Ellipse" => Some(Box::new(Ellipse::deserialize(document))),
-            "FountainPen" => Some(Box::new(Pen::deserialize(document))),
-            "Pencil" => Some(Box::new(Pencil::deserialize(document))),
-            "Airbrush" => Some(Box::new(Airbrush::deserialize(document))),
-            "Eraser" => Some(Box::new(Eraser::deserialize(document))),
+            "Line" => Some((Arc::new(Line::deserialize(document)), layer)),
+            "Rect" => Some((Arc::new(Rect::deserialize(document)), layer)),
+            "Triangle" => Some((Arc::new(Triangle::deserialize(document)), layer)),
+            "Polygon" => Some((Arc::new(Polygon::deserialize(document)), layer)),
+            "Circle" => Some((Arc::new(Circle::deserialize(document)), layer)),
+            "Ellipse" => Some((Arc::new(Ellipse::deserialize(document)), layer)),
+            "FountainPen" => Some((Arc::new(Pen::deserialize(document)), layer)),
+            "Pencil" => Some((Arc::new(Pencil::deserialize(document)), layer)),
+            "Airbrush" => Some((Arc::new(Airbrush::deserialize(document)), layer)),
+            "Eraser" => Some((Arc::new(Eraser::deserialize(document)), layer)),
             _ => None
         }
     } else {

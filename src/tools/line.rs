@@ -1,10 +1,11 @@
 use std::fmt::{Debug};
+use std::sync::Arc;
 use iced::{mouse, Point, Rectangle, Renderer};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
 use mongodb::bson::{Bson, doc, Document};
-use crate::canvas::canvas::CanvasAction;
+use crate::canvas::layer::CanvasAction;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 
@@ -35,7 +36,7 @@ impl Pending for LinePending {
                                 let start_clone = start.clone();
 
                                 *self = LinePending::None;
-                                Some(CanvasAction::UseTool(Box::new(Line{start:start_clone, end:cursor})).into())
+                                Some(CanvasAction::UseTool(Arc::new(Line{start:start_clone, end:cursor})).into())
                             }
                         }
                     }

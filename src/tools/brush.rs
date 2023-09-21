@@ -1,12 +1,13 @@
 use std::fmt::{Debug};
 use std::marker::PhantomData;
 use std::ops::{Add, Sub};
+use std::sync::Arc;
 use iced::{mouse, Point, Rectangle, Renderer, keyboard, Vector};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry};
 use mongodb::bson::{Bson, doc, Document};
-use crate::canvas::canvas::CanvasAction;
+use crate::canvas::layer::CanvasAction;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 
@@ -69,7 +70,7 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
 
                                 *self = BrushPending::None;
 
-                                Some(CanvasAction::UseTool(Box::new(BrushType::new(start_clone, offsets_clone))).into())
+                                Some(CanvasAction::UseTool(Arc::new(BrushType::new(start_clone, offsets_clone))).into())
                             }
                             _ => None
                         }

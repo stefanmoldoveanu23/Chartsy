@@ -1,3 +1,3 @@
 pub mod scenes;
 mod main;
-mod drawing;
+pub mod drawing;

@@ -1,11 +1,12 @@
 use std::fmt::{Debug};
 use std::ops::{Add, Sub};
+use std::sync::Arc;
 use iced::{mouse, Point, Rectangle, Renderer, keyboard, Vector, Color};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke, Style};
 use mongodb::bson::{Bson, doc, Document};
-use crate::canvas::canvas::CanvasAction;
+use crate::canvas::layer::CanvasAction;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 
@@ -45,7 +46,7 @@ impl Pending for PolygonPending {
                                     if cursor.distance(first_clone) < RADIUS {
                                         offsets_clone.push(first_clone.sub(last_clone));
                                         *self = PolygonPending::None;
-                                        Some(CanvasAction::UseTool(Box::new(Polygon { first: first_clone, offsets: offsets_clone })).into())
+                                        Some(CanvasAction::UseTool(Arc::new(Polygon { first: first_clone, offsets: offsets_clone })).into())
                                     } else {
                                         offsets_clone.push(cursor.sub(last_clone));
                                         *self = PolygonPending::Drawing(first_clone, cursor, offsets_clone);

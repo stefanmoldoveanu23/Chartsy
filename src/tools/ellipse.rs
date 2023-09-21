@@ -1,12 +1,13 @@
 use std::fmt::{Debug};
 use std::ops::{Add, Sub};
+use std::sync::Arc;
 use iced::{mouse, Point, Rectangle, Renderer, keyboard, Vector};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
 use iced::widget::canvas::path::arc::Elliptical;
 use mongodb::bson::{Bson, doc, Document};
-use crate::canvas::canvas::CanvasAction;
+use crate::canvas::layer::CanvasAction;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 
@@ -67,7 +68,7 @@ impl Pending for EllipsePending {
                                 *self = EllipsePending::None;
 
                                 let (center, radii, rotation) = EllipsePending::convert_data(center_clone, point1_clone, cursor);
-                                Some(CanvasAction::UseTool(Box::new(Ellipse { center, radii, rotation })).into())
+                                Some(CanvasAction::UseTool(Arc::new(Ellipse { center, radii, rotation })).into())
                             }
                         }
                     }
