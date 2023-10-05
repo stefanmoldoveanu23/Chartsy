@@ -88,6 +88,28 @@ pub(crate) mod scrollable {
     }
 }
 
+pub(crate) mod slider {
+    use iced::widget::slider::{Appearance, StyleSheet};
+    use iced_style::theme::Slider;
+    use crate::theme::Theme;
+
+    impl StyleSheet for Theme {
+        type Style = Slider;
+
+        fn active(&self, style: &Self::Style) -> Appearance {
+            iced::Theme::Light.active(style)
+        }
+
+        fn hovered(&self, style: &Self::Style) -> Appearance {
+            iced::Theme::Light.hovered(style)
+        }
+
+        fn dragging(&self, style: &Self::Style) -> Appearance {
+            iced::Theme::Light.dragging(style)
+        }
+    }
+}
+
 pub(crate) mod modal {
     use iced_aw::modal::StyleSheet;
     use iced_aw::style::modal::Appearance;
@@ -111,6 +133,48 @@ pub(crate) mod card {
 
         fn active(&self, _style: &Self::Style) -> Appearance {
             Appearance::default()
+        }
+    }
+}
+
+pub(crate) mod color_picker {
+    use iced_aw::color_picker::{Appearance, StyleSheet};
+    use crate::theme::Theme;
+
+    impl StyleSheet for Theme {
+        type Style = iced_aw::style::color_picker::ColorPickerStyles;
+
+        fn active(&self, style: &Self::Style) -> Appearance {
+            iced::Theme::Light.active(style)
+        }
+
+        fn selected(&self, style: &Self::Style) -> Appearance {
+            iced::Theme::Light.selected(style)
+        }
+
+        fn hovered(&self, style: &Self::Style) -> Appearance {
+            iced::Theme::Light.hovered(style)
+        }
+
+        fn focused(&self, style: &Self::Style) -> Appearance {
+            iced::Theme::Light.focused(style)
+        }
+    }
+}
+
+pub(crate) mod tab_bar {
+    use iced_aw::tab_bar::{Appearance, StyleSheet};
+    use crate::theme::Theme;
+
+    impl StyleSheet for Theme {
+        type Style = iced_aw::style::tab_bar::TabBarStyles;
+
+        fn active(&self, style: &Self::Style, is_active: bool) -> Appearance {
+            iced::Theme::Light.active(style, is_active)
+        }
+
+        fn hovered(&self, style: &Self::Style, is_active: bool) -> Appearance {
+            iced::Theme::Light.hovered(style, is_active)
         }
     }
 }

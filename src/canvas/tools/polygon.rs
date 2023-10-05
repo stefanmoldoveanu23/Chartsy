@@ -4,13 +4,14 @@ use std::sync::Arc;
 use iced::{mouse, Point, Rectangle, Renderer, keyboard, Vector, Color};
 use iced::event::Status;
 use iced::mouse::Cursor;
-use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke, Style};
+use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
 use mongodb::bson::{Bson, doc, Document};
 use crate::canvas::layer::CanvasAction;
+use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 
-use crate::tool::{Pending, Tool};
+use crate::canvas::tool::{Pending, Tool};
 
 const RADIUS: f32 = 10.0;
 
@@ -25,6 +26,7 @@ impl Pending for PolygonPending {
         &mut self,
         event: Event,
         cursor: Point,
+        style: Style,
     ) -> (Status, Option<CanvasAction>) {
         match event {
             Event::Mouse(mouse_event) => {
@@ -46,7 +48,7 @@ impl Pending for PolygonPending {
                                     if cursor.distance(first_clone) < RADIUS {
                                         offsets_clone.push(first_clone.sub(last_clone));
                                         *self = PolygonPending::None;
-                                        Some(CanvasAction::UseTool(Arc::new(Polygon { first: first_clone, offsets: offsets_clone })).into())
+                                        Some(CanvasAction::UseTool(Arc::new(Polygon { first: first_clone, offsets: offsets_clone, style })).into())
                                     } else {
                                         offsets_clone.push(cursor.sub(last_clone));
                                         *self = PolygonPending::Drawing(first_clone, cursor, offsets_clone);
@@ -80,6 +82,7 @@ impl Pending for PolygonPending {
         renderer: &Renderer<Theme>,
         bounds: Rectangle,
         cursor: Cursor,
+        style: Style,
     ) -> Geometry {
         let mut frame = Frame::new(renderer, bounds.size());
 
@@ -91,8 +94,7 @@ impl Pending for PolygonPending {
                         p.circle(*first, RADIUS);
                     });
 
-                    let mut cyan_fill = Fill::default();
-                    cyan_fill.style = Style::Solid(Color::from_rgba8(0, 255, 255, 0.3));
+                    let cyan_fill = Fill::from(Color::from_rgba8(0, 255, 255, 0.3));
                     frame.fill(&snap, cyan_fill);
 
                     let stroke = Path::new(|p| {
@@ -110,12 +112,26 @@ impl Pending for PolygonPending {
                         p.line_to(*first);
                     });
 
-                    frame.stroke(&stroke, Stroke::default().with_width(2.0));
+                    if let Some((width, color, _, _)) = style.stroke {
+                        frame.stroke(&stroke, Stroke::default().with_width(width).with_color(color));
+                    }
+                    if let Some((color, _)) = style.fill {
+                        frame.fill(&stroke, Fill::from(color));
+                    }
                 }
             }
         };
 
         frame.into_geometry()
+    }
+
+    fn shape_style(&self, style: &mut Style) {
+        if style.stroke.is_none() {
+            style.stroke = Some((2.0, Color::BLACK, false, false));
+        }
+        if style.fill.is_none() {
+            style.fill = Some((Color::TRANSPARENT, false));
+        }
     }
 
     fn id(&self) -> String {
@@ -135,6 +151,7 @@ impl Pending for PolygonPending {
 pub struct Polygon {
     first: Point,
     offsets: Vec<Vector>,
+    style: Style,
 }
 
 impl Serialize for Polygon {
@@ -142,13 +159,14 @@ impl Serialize for Polygon {
         doc! {
             "first": self.first.serialize(),
             "offsets": self.offsets.iter().map(|offset| {offset.serialize()}).collect::<Vec<Document>>().as_slice(),
+            "style": self.style.serialize(),
         }
     }
 }
 
 impl Deserialize for Polygon {
     fn deserialize(document: Document) -> Self where Self: Sized {
-        let mut polygon = Polygon {first: Point::default(), offsets: vec![]};
+        let mut polygon = Polygon {first: Point::default(), offsets: vec![], style: Style::default()};
 
         if let Some(Bson::Document(first)) = document.get("first") {
             polygon.first = Point::deserialize(first.clone());
@@ -160,6 +178,10 @@ impl Deserialize for Polygon {
                     polygon.offsets.push(Vector::deserialize(offset.clone()));
                 }
             }
+        }
+
+        if let Some(Bson::Document(style)) = document.get("style") {
+            polygon.style = Style::deserialize(style.clone());
         }
 
         polygon
@@ -178,7 +200,12 @@ impl Tool for Polygon {
             }
         });
 
-        frame.stroke(&polygon, Stroke::default().with_width(2.0));
+        if let Some((width, color, _, _)) = self.style.stroke {
+            frame.stroke(&polygon, Stroke::default().with_width(width).with_color(color));
+        }
+        if let Some((color, _)) = self.style.fill {
+            frame.fill(&polygon, Fill::from(color));
+        }
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

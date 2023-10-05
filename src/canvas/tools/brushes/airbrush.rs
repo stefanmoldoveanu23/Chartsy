@@ -2,12 +2,12 @@ use std::f32::consts::PI;
 use std::fmt::{Debug};
 use std::ops::{Add, Sub};
 use iced::{Color, Point, Vector};
-use iced::widget::canvas::{Fill, Frame, Path, Style};
-use iced::widget::canvas::fill::Rule;
-use crate::tool::Tool;
+use iced::widget::canvas::{Fill, Frame, Path};
+use crate::canvas::tool::Tool;
 use rand::{rngs::StdRng, SeedableRng, Rng};
+use crate::canvas::style::Style;
 
-use crate::tools::brush::Brush;
+use crate::canvas::tools::brush::Brush;
 
 #[derive(Default, Debug, Clone)]
 struct Seed(pub [u8; 32]);
@@ -48,26 +48,34 @@ impl SeedableRng for RNG {
 pub struct Airbrush {
     start: Point,
     offsets: Vec<Vector>,
+    style: Style,
 }
 
 impl Airbrush {
-    fn spray(point: Point, rng: &mut StdRng, frame: &mut Frame) {
+    fn spray(point: Point, rng: &mut StdRng, frame: &mut Frame, style: Style) {
+        let mut radius = 1.2;
+        let mut fill = Color::BLACK;
+        if let Some((width, color, _, _)) = style.stroke {
+            radius = width;
+            fill = color;
+        }
+
         let spray = Path::new(|builder| {
             for _ in 0..5 {
                 let offset = Vector::new(10.0 * (rng.gen_range(0.0..1.0) * 2.0 * PI).cos(), 10.0 * (rng.gen_range(0.0..1.0) * 2.0 * PI).sin());
 
-                builder.circle(point.add(offset), 1.2);
+                builder.circle(point.add(offset), radius);
             }
         });
 
-        frame.fill(&spray, Fill { style: Style::Solid(Color::BLACK), rule: Rule::NonZero });
+        frame.fill(&spray, Fill::from(fill));
     }
 }
 
 
 impl Brush for Airbrush {
-    fn new(start: Point, offsets: Vec<Vector>) -> Self where Self: Sized {
-        Airbrush { start, offsets }
+    fn new(start: Point, offsets: Vec<Vector>, style: Style) -> Self where Self: Sized {
+        Airbrush { start, offsets, style }
     }
 
     fn id() -> String where Self: Sized {
@@ -81,19 +89,22 @@ impl Brush for Airbrush {
     fn get_offsets(&self) -> Vec<Vector> {
         self.offsets.clone()
     }
+    fn get_style(&self) -> Style {
+        self.style.clone()
+    }
 
-    fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame) where Self: Sized {
+    fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame, style: Style) where Self: Sized {
         let rng = RNG(Seed::new(point1, point2));
         let mut rng = StdRng::from_seed(rng.0.0);
 
-        Airbrush::spray(point1, &mut rng, frame);
+        Airbrush::spray(point1, &mut rng, frame, style);
     }
 
-    fn add_end(point: Point, frame: &mut Frame) where Self: Sized {
+    fn add_end(point: Point, frame: &mut Frame, style: Style) where Self: Sized {
         let rng = RNG(Seed::new(point, Point::new(0.0, 0.0)));
         let mut rng = StdRng::from_seed(rng.0.0);
 
-        Airbrush::spray(point, &mut rng, frame);
+        Airbrush::spray(point, &mut rng, frame, style);
     }
 }
 

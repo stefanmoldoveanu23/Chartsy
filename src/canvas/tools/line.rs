@@ -1,15 +1,16 @@
 use std::fmt::{Debug};
 use std::sync::Arc;
-use iced::{mouse, Point, Rectangle, Renderer};
+use iced::{Color, mouse, Point, Rectangle, Renderer};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
 use mongodb::bson::{Bson, doc, Document};
 use crate::canvas::layer::CanvasAction;
+use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 
-use crate::tool::{Pending, Tool};
+use crate::canvas::tool::{Pending, Tool};
 
 #[derive(Clone)]
 pub enum LinePending {
@@ -21,7 +22,8 @@ impl Pending for LinePending {
     fn update(
         &mut self,
         event: Event,
-        cursor: Point
+        cursor: Point,
+        style: Style,
     ) -> (Status, Option<CanvasAction>) {
         match event {
             Event::Mouse(mouse_event) => {
@@ -36,7 +38,7 @@ impl Pending for LinePending {
                                 let start_clone = start.clone();
 
                                 *self = LinePending::None;
-                                Some(CanvasAction::UseTool(Arc::new(Line{start:start_clone, end:cursor})).into())
+                                Some(CanvasAction::UseTool(Arc::new(Line{start:start_clone, end:cursor, style})).into())
                             }
                         }
                     }
@@ -53,7 +55,8 @@ impl Pending for LinePending {
         &self,
         renderer: &Renderer<Theme>,
         bounds: Rectangle,
-        cursor: Cursor
+        cursor: Cursor,
+        style: Style,
     ) -> Geometry {
         let mut frame = Frame::new(renderer, bounds.size());
 
@@ -66,12 +69,24 @@ impl Pending for LinePending {
                         p.line_to(cursor_position);
                     });
 
-                    frame.stroke(&stroke, Stroke::default().with_width(2.0));
+                    if let Some((width, color, _, _)) = style.stroke {
+                        frame.stroke(&stroke, Stroke::default().with_width(width).with_color(color));
+                    }
                 }
             }
         };
 
         frame.into_geometry()
+    }
+
+    fn shape_style(&self, style: &mut Style) {
+        if style.stroke.is_none() {
+            style.stroke = Some((2.0, Color::BLACK, false, false));
+        }
+
+        if style.fill.is_none() {
+            style.fill = Some((Color::TRANSPARENT, false));
+        }
     }
 
     fn id(&self) -> String {
@@ -91,6 +106,7 @@ impl Pending for LinePending {
 pub struct Line {
     start: Point,
     end: Point,
+    style: Style,
 }
 
 impl Serialize for Line {
@@ -104,7 +120,7 @@ impl Serialize for Line {
 
 impl Deserialize for Line {
     fn deserialize(document: Document) -> Self where Self: Sized {
-        let mut line = Line {start: Point::default(), end: Point::default()};
+        let mut line = Line { start: Point::default(), end: Point::default(), style: Style::default() };
 
         if let Some(Bson::Document(start)) = document.get("start") {
             line.start = Point::deserialize(start.clone());
@@ -112,6 +128,10 @@ impl Deserialize for Line {
 
         if let Some(Bson::Document(end)) = document.get("end") {
             line.end = Point::deserialize(end.clone());
+        }
+
+        if let Some(Bson::Document(style)) = document.get("style") {
+            line.style = Style::deserialize(style.clone());
         }
 
         line
@@ -125,7 +145,9 @@ impl Tool for Line {
             builder.line_to(self.end);
         });
 
-        frame.stroke(&line, Stroke::default().with_width(2.0));
+        if let Some((width, color, _, _)) = self.style.stroke {
+            frame.stroke(&line, Stroke::default().with_width(width).with_color(color));
+        }
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

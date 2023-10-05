@@ -1,15 +1,16 @@
 use std::fmt::{Debug};
 use std::sync::Arc;
-use iced::{mouse, Point, Rectangle, Renderer, keyboard};
+use iced::{mouse, Point, Rectangle, Renderer, keyboard, Color};
 use iced::event::Status;
 use iced::mouse::Cursor;
-use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
+use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
 use mongodb::bson::{Bson, doc, Document};
 use crate::canvas::layer::CanvasAction;
+use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 
-use crate::tool::{Pending, Tool};
+use crate::canvas::tool::{Pending, Tool};
 
 #[derive(Clone)]
 pub enum TrianglePending {
@@ -23,6 +24,7 @@ impl Pending for TrianglePending {
         &mut self,
         event: Event,
         cursor: Point,
+        style: Style,
     ) -> (Status, Option<CanvasAction>) {
         match event {
             Event::Mouse(mouse_event) => {
@@ -42,7 +44,7 @@ impl Pending for TrianglePending {
                                 let point2_clone = point2.clone();
 
                                 *self = TrianglePending::None;
-                                Some(CanvasAction::UseTool(Arc::new(Triangle { point1: point1_clone, point2: point2_clone, point3: cursor })).into())
+                                Some(CanvasAction::UseTool(Arc::new(Triangle { point1: point1_clone, point2: point2_clone, point3: cursor, style })).into())
                             }
                         }
                     }
@@ -70,6 +72,7 @@ impl Pending for TrianglePending {
         renderer: &Renderer<Theme>,
         bounds: Rectangle,
         cursor: Cursor,
+        style: Style,
     ) -> Geometry {
         let mut frame = Frame::new(renderer, bounds.size());
 
@@ -82,7 +85,12 @@ impl Pending for TrianglePending {
                         p.line_to(cursor_position);
                     });
 
-                    frame.stroke(&stroke, Stroke::default().with_width(2.0));
+                    if let Some((width, color, _, _)) = style.stroke {
+                        frame.stroke(&stroke, Stroke::default().with_width(width).with_color(color));
+                    }
+                    if let Some((color, _)) = style.fill {
+                        frame.fill(&stroke, Fill::from(color));
+                    }
                 }
                 TrianglePending::Two(point1, point2) => {
                     let stroke = Path::new(|p| {
@@ -92,12 +100,26 @@ impl Pending for TrianglePending {
                         p.line_to(*point1);
                     });
 
-                    frame.stroke(&stroke, Stroke::default().with_width(2.0));
+                    if let Some((width, color, _, _)) = style.stroke {
+                        frame.stroke(&stroke, Stroke::default().with_width(width).with_color(color));
+                    }
+                    if let Some((color, _)) = style.fill {
+                        frame.fill(&stroke, Fill::from(color));
+                    }
                 }
             }
         };
 
         frame.into_geometry()
+    }
+
+    fn shape_style(&self, style: &mut Style) {
+        if style.stroke.is_none() {
+            style.stroke = Some((2.0, Color::BLACK, false, false));
+        }
+        if style.fill.is_none() {
+            style.fill = Some((Color::TRANSPARENT, false));
+        }
     }
 
     fn id(&self) -> String {
@@ -118,6 +140,7 @@ pub struct Triangle {
     point1: Point,
     point2: Point,
     point3: Point,
+    style: Style,
 }
 
 impl Serialize for Triangle {
@@ -126,13 +149,14 @@ impl Serialize for Triangle {
             "point1": self.point1.serialize(),
             "point2": self.point2.serialize(),
             "point3": self.point3.serialize(),
+            "style": self.style.serialize(),
         }
     }
 }
 
 impl Deserialize for Triangle {
     fn deserialize(document: Document) -> Self where Self: Sized {
-        let mut triangle = Triangle {point1: Point::default(), point2: Point::default(), point3: Point::default()};
+        let mut triangle = Triangle {point1: Point::default(), point2: Point::default(), point3: Point::default(), style: Style::default()};
 
         if let Some(Bson::Document(point1)) = document.get("point1") {
             triangle.point1 = Point::deserialize(point1.clone());
@@ -144,6 +168,10 @@ impl Deserialize for Triangle {
 
         if let Some(Bson::Document(point3)) = document.get("point1") {
             triangle.point3 = Point::deserialize(point3.clone());
+        }
+
+        if let Some(Bson::Document(style)) = document.get("style") {
+            triangle.style = Style::deserialize(style.clone());
         }
 
         triangle
@@ -159,7 +187,12 @@ impl Tool for Triangle {
             builder.close();
         });
 
-        frame.stroke(&triangle, Stroke::default().with_width(2.0));
+        if let Some((width, color, _, _)) = self.style.stroke {
+            frame.stroke(&triangle, Stroke::default().with_width(width).with_color(color));
+        }
+        if let Some((color, _)) = self.style.fill {
+            frame.fill(&triangle, Fill::from(color));
+        }
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

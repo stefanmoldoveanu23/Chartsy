@@ -4,14 +4,17 @@ use iced::{mouse, Point, Rectangle, Renderer};
 use iced::widget::canvas::{event, Event, Frame, Geometry};
 use mongodb::bson::{Bson, Document};
 use crate::canvas::layer::CanvasAction;
+use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
-use crate::tools::{line::Line, rect::Rect, triangle::Triangle, polygon::Polygon, circle::Circle, ellipse::Ellipse};
-use crate::tools::brushes::{eraser::Eraser, pencil::Pencil, pen::Pen, airbrush::Airbrush};
+use crate::canvas::tools::{line::Line, rect::Rect, triangle::Triangle, polygon::Polygon, circle::Circle, ellipse::Ellipse};
+use crate::canvas::tools::brushes::{eraser::Eraser, pencil::Pencil, pen::Pen, airbrush::Airbrush};
 
 pub trait Tool: Debug+Send+Sync+Serialize+Deserialize {
     fn add_to_frame(&self, frame: &mut Frame);
+
     fn boxed_clone(&self) -> Box<dyn Tool>;
+
     fn id(&self) -> String;
 }
 
@@ -51,6 +54,7 @@ pub trait Pending: Send+Sync {
         &mut self,
         event: Event,
         cursor: Point,
+        style: Style,
     ) -> (event::Status, Option<CanvasAction>);
 
     fn draw(
@@ -58,11 +62,15 @@ pub trait Pending: Send+Sync {
         renderer: &Renderer<Theme>,
         bounds: Rectangle,
         cursor: mouse::Cursor,
+        style: Style,
     ) -> Geometry;
+
+    fn shape_style(&self, style: &mut Style);
 
     fn id(&self) -> String;
 
     fn default() -> Self where Self:Sized;
+
     fn boxed_clone(&self) -> Box<dyn Pending>;
 }
 

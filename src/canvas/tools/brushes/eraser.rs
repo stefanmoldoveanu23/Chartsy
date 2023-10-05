@@ -2,12 +2,12 @@ use std::f32::consts::PI;
 use std::fmt::{Debug};
 use std::ops::{Add, Sub};
 use iced::{Color, Point, Vector};
-use iced::widget::canvas::{Fill, Frame, Path, Style};
-use iced::widget::canvas::fill::Rule;
+use iced::widget::canvas::{Fill, Frame, Path};
+use crate::canvas::style::Style;
 
-use crate::tool::Tool;
+use crate::canvas::tool::Tool;
 
-use crate::tools::brush::Brush;
+use crate::canvas::tools::brush::Brush;
 
 #[derive(Debug, Clone)]
 pub struct Eraser {
@@ -17,7 +17,7 @@ pub struct Eraser {
 
 
 impl Brush for Eraser {
-    fn new(start: Point, offsets: Vec<Vector>) -> Self where Self: Sized {
+    fn new(start: Point, offsets: Vec<Vector>, _style: Style) -> Self where Self: Sized {
         Eraser { start, offsets }
     }
 
@@ -32,8 +32,11 @@ impl Brush for Eraser {
     fn get_offsets(&self) -> Vec<Vector> {
         self.offsets.clone()
     }
+    fn get_style(&self) -> Style {
+        Style::default()
+    }
 
-    fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame) where Self: Sized {
+    fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame, _style: Style) where Self: Sized {
         let offset = point2.sub(point1);
 
         let angle = offset.y.atan2(offset.x) + PI / 2.0;
@@ -43,7 +46,7 @@ impl Brush for Eraser {
             builder.circle(point1, 10.0);
         });
 
-        frame.fill(&circle, Fill {style: Style::Solid(Color::WHITE), rule: Rule::NonZero});
+        frame.fill(&circle, Fill::from(Color::WHITE));
 
         let quad = Path::new(|builder| {
             builder.move_to(point1.add(offset));
@@ -53,15 +56,15 @@ impl Brush for Eraser {
             builder.close();
         });
 
-        frame.fill(&quad, Fill {style: Style::Solid(Color::WHITE), rule: Rule::NonZero});
+        frame.fill(&quad, Fill::from(Color::WHITE));
     }
 
-    fn add_end(point: Point, frame: &mut Frame) where Self: Sized {
+    fn add_end(point: Point, frame: &mut Frame, _style: Style) where Self: Sized {
         let circle = Path::new(|builder| {
             builder.circle(point, 10.0);
         });
 
-        frame.fill(&circle, Fill {style: Style::Solid(Color::WHITE), rule: Rule::NonZero});
+        frame.fill(&circle, Fill::from(Color::WHITE));
     }
 }
 

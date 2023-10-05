@@ -1,21 +1,20 @@
 use std::sync::Arc;
 use iced::advanced::layout::{Limits, Node};
-use iced::advanced::renderer::Style;
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::advanced::widget::{Tree, tree};
 use iced::{Element, Event, Length, Rectangle, Size, Renderer, Command};
 use iced::event::Status;
 use iced::mouse::{Cursor, Interaction};
-use iced_widget::canvas;
+use iced::widget::canvas;
 use mongodb::bson::{doc, Document, Uuid};
 use crate::canvas::layer::{CanvasAction, Layer};
+use crate::canvas::style::Style;
 use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 use crate::scene::Message;
 use crate::scenes::drawing::DrawingAction;
 use crate::theme::Theme;
-use crate::tool;
-use crate::tool::{Pending, Tool};
-use crate::tools::line::LinePending;
+use super::tool::{self, Pending, Tool};
+use super::tools::line::LinePending;
 
 pub struct State {
     cache: canvas::Cache,
@@ -33,6 +32,7 @@ pub struct Canvas {
     pub(crate) count_saved: usize,
     pub(crate) default_tool: Box<dyn Pending>,
     pub(crate) current_tool: Box<dyn Pending>,
+    pub(crate) style: Style,
 }
 
 unsafe impl Send for State {}
@@ -52,6 +52,7 @@ impl Canvas {
             count_saved: 0,
             default_tool: Box::new(LinePending::None),
             current_tool: Box::new(LinePending::None),
+            style: Style::default(),
         }
     }
 
@@ -104,6 +105,9 @@ impl Canvas {
                 self.tool_layers[self.current_layer].push(tool.clone());
                 self.undo_stack = Box::new(vec![]);
                 self.clear_cache(self.current_layer);
+            }
+            CanvasAction::UpdateStyle(update) => {
+                return self.style.update(update);
             }
             CanvasAction::AddLayer => {
                 self.tool_layers.push(vec![]);
@@ -205,6 +209,8 @@ impl Canvas {
             }
             CanvasAction::ChangeTool(tool) => {
                 self.current_tool = (*tool).boxed_clone();
+                self.default_tool = (*tool).boxed_clone();
+                self.current_tool.shape_style(&mut self.style);
             }
             CanvasAction::Saved(insert_result) => {
                 self.count_saved += insert_result.inserted_ids.len();
@@ -274,6 +280,8 @@ impl<'a> CanvasVessel<'a> {
                         state: Some(&state.cache),
                         tools: &(canvas.tool_layers[pos]),
                         current_tool: &canvas.current_tool,
+                        style: &canvas.style,
+                        active: pos == vessel.current_layer,
                     }
                 )
             }).collect()
@@ -309,7 +317,7 @@ impl<'a> Widget<CanvasAction, Renderer<Theme>> for CanvasVessel<'a> {
         state: &Tree,
         renderer: &mut Renderer<Theme>,
         theme: &Theme,
-        style: &Style,
+        style: &iced::advanced::renderer::Style,
         layout: Layout<'_>,
         cursor: Cursor,
         viewport: &Rectangle

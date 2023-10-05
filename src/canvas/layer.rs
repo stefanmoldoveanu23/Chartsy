@@ -1,13 +1,13 @@
 use std::sync::Arc;
-use iced::{Color, event, keyboard, Point, Rectangle};
+use iced::{Color, event, keyboard, Point, Rectangle, Renderer};
 use iced::advanced::mouse;
 use iced::mouse::Cursor;
-use iced::widget::canvas;
-use iced_widget::canvas::fill::Rule;
+use iced::widget::canvas::{self, fill::Rule};
 use mongodb::bson::Document;
 use mongodb::results::InsertManyResult;
+use crate::canvas::style::{Style, StyleUpdate};
 use crate::theme::Theme;
-use crate::tool::{Pending, Tool};
+use crate::canvas::tool::{Pending, Tool};
 
 #[derive(Default)]
 pub struct State {
@@ -21,9 +21,11 @@ pub struct Layer<'a> {
     pub(crate) state: Option<&'a canvas::Cache>,
     pub(crate) tools: &'a [Arc<dyn Tool>],
     pub(crate) current_tool: &'a Box<dyn Pending>,
+    pub(crate) style: &'a Style,
+    pub active: bool,
 }
 
-impl<'a> canvas::Program<CanvasAction, iced_widget::renderer::Renderer<Theme>> for Layer<'a>
+impl<'a> canvas::Program<CanvasAction, Renderer<Theme>> for Layer<'a>
 {
     type State = Option<Box<dyn Pending>>;
 
@@ -34,6 +36,10 @@ impl<'a> canvas::Program<CanvasAction, iced_widget::renderer::Renderer<Theme>> f
         bounds: Rectangle,
         cursor: Cursor,
     ) -> (event::Status, Option<CanvasAction>) {
+        if !self.active {
+            return (event::Status::Ignored, None);
+        }
+
         if let canvas::Event::Keyboard(event) = event {
             match event {
                 keyboard::Event::KeyPressed {key_code, modifiers} => {
@@ -67,7 +73,7 @@ impl<'a> canvas::Program<CanvasAction, iced_widget::renderer::Renderer<Theme>> f
                     *state = Some((*self.current_tool).boxed_clone());
                     (event::Status::Ignored, None)
                 } else {
-                    pending_state.update(event, cursor_position)
+                    pending_state.update(event, cursor_position, self.style.clone())
                 }
             }
         }
@@ -76,11 +82,12 @@ impl<'a> canvas::Program<CanvasAction, iced_widget::renderer::Renderer<Theme>> f
     fn draw(
         &self,
         state: &Self::State,
-        renderer: &iced_widget::renderer::Renderer<Theme>,
+        renderer: &Renderer<Theme>,
         _theme: &Theme,
         bounds: Rectangle,
         cursor: Cursor
     ) -> Vec<canvas::Geometry> {
+
         let base = {
             let mut frame = canvas::Frame::new(renderer, bounds.size());
 
@@ -117,12 +124,16 @@ impl<'a> canvas::Program<CanvasAction, iced_widget::renderer::Renderer<Theme>> f
             }
         };
 
+        if !self.active {
+            return vec![base, content];
+        }
+
         let pending = match state {
             None => {
                 return vec![base, content];
             }
             Some(state) => {
-                state.draw(renderer, bounds, cursor)
+                state.draw(renderer, bounds, cursor, self.style.clone())
             }
         };
 
@@ -147,6 +158,7 @@ impl<'a> canvas::Program<CanvasAction, iced_widget::renderer::Renderer<Theme>> f
 pub enum CanvasAction {
     UseTool(Arc<dyn Tool>),
     ChangeTool(Box<dyn Pending>),
+    UpdateStyle(StyleUpdate),
     AddLayer,
     ActivateLayer(usize),
     Save,

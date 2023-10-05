@@ -1,20 +1,22 @@
 use std::fmt::{Debug};
 use iced::{Point, Vector};
 use iced::widget::canvas::{Frame, Path, Stroke};
-use crate::tool::Tool;
+use crate::canvas::style::Style;
+use crate::canvas::tool::Tool;
 
-use crate::tools::brush::Brush;
+use crate::canvas::tools::brush::Brush;
 
 #[derive(Debug, Clone)]
 pub struct Pencil {
     start: Point,
     offsets: Vec<Vector>,
+    style: Style,
 }
 
 
 impl Brush for Pencil {
-    fn new(start: Point, offsets: Vec<Vector>) -> Self where Self: Sized {
-        Pencil {start, offsets}
+    fn new(start: Point, offsets: Vec<Vector>, style: Style) -> Self where Self: Sized {
+        Pencil {start, offsets, style}
     }
 
     fn id() -> String where Self: Sized {
@@ -29,16 +31,22 @@ impl Brush for Pencil {
         self.offsets.clone()
     }
 
-    fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame) where Self: Sized {
+    fn get_style(&self) -> Style {
+        self.style.clone()
+    }
+
+    fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame, style: Style) where Self: Sized {
         let line = Path::new(|builder| {
             builder.move_to(point1);
             builder.line_to(point2);
         });
 
-        frame.stroke(&line, Stroke::default().with_width(2.0));
+        if let Some((width, color, _, _)) = style.stroke {
+            frame.stroke(&line, Stroke::default().with_width(width).with_color(color));
+        }
     }
 
-    fn add_end(_point: Point, _frame: &mut Frame) where Self: Sized { }
+    fn add_end(_point: Point, _frame: &mut Frame, _style: Style) where Self: Sized { }
 }
 
 impl Into<Box<dyn Tool>> for Box<Pencil> {

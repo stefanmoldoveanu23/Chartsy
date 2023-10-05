@@ -1,17 +1,18 @@
 use std::fmt::{Debug};
 use std::ops::{Add, Sub};
 use std::sync::Arc;
-use iced::{mouse, Point, Rectangle, Renderer, keyboard, Vector};
+use iced::{Color, mouse, Point, Rectangle, Renderer, Vector};
 use iced::event::Status;
 use iced::mouse::Cursor;
-use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
+use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
 use iced::widget::canvas::path::arc::Elliptical;
 use mongodb::bson::{Bson, doc, Document};
 use crate::canvas::layer::CanvasAction;
+use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 
-use crate::tool::{Pending, Tool};
+use crate::canvas::tool::{Pending, Tool};
 
 #[derive(Clone)]
 pub enum EllipsePending {
@@ -47,6 +48,7 @@ impl Pending for EllipsePending {
         &mut self,
         event: Event,
         cursor: Point,
+        style: Style,
     ) -> (Status, Option<CanvasAction>) {
         match event {
             Event::Mouse(mouse_event) => {
@@ -68,7 +70,7 @@ impl Pending for EllipsePending {
                                 *self = EllipsePending::None;
 
                                 let (center, radii, rotation) = EllipsePending::convert_data(center_clone, point1_clone, cursor);
-                                Some(CanvasAction::UseTool(Arc::new(Ellipse { center, radii, rotation })).into())
+                                Some(CanvasAction::UseTool(Arc::new(Ellipse { center, radii, rotation, style })).into())
                             }
                         }
                     }
@@ -76,16 +78,6 @@ impl Pending for EllipsePending {
                 };
 
                 (Status::Captured, message)
-            }
-            Event::Keyboard(key_event) => {
-                match key_event {
-                    keyboard::Event::KeyPressed { key_code: keyboard::KeyCode::S, .. } => {
-                        *self = EllipsePending::None;
-
-                        (Status::Captured, None)
-                    }
-                    _ => (Status::Ignored, None)
-                }
             }
             _ => (Status::Ignored, None)
         }
@@ -96,6 +88,7 @@ impl Pending for EllipsePending {
         renderer: &Renderer<Theme>,
         bounds: Rectangle,
         cursor: Cursor,
+        style: Style,
     ) -> Geometry {
         let mut frame = Frame::new(renderer, bounds.size());
 
@@ -108,7 +101,9 @@ impl Pending for EllipsePending {
                         p.line_to(cursor_position);
                     });
 
-                    frame.stroke(&stroke, Stroke::default().with_width(2.0));
+                    if let Some((width, color, _, _)) = style.stroke {
+                        frame.stroke(&stroke, Stroke::default().with_width(width).with_color(color));
+                    }
                 }
                 EllipsePending::Two(center, point) => {
                     let stroke = Path::new(|p| {
@@ -128,12 +123,26 @@ impl Pending for EllipsePending {
                         }
                     });
 
-                    frame.stroke(&stroke, Stroke::default().with_width(2.0));
+                    if let Some((width, color, _, _)) = style.stroke {
+                        frame.stroke(&stroke, Stroke::default().with_width(width).with_color(color));
+                    }
+                    if let Some((color, _)) = style.fill {
+                        frame.fill(&stroke, Fill::from(color));
+                    }
                 }
             }
         };
 
         frame.into_geometry()
+    }
+
+    fn shape_style(&self, style: &mut Style) {
+        if style.stroke.is_none() {
+            style.stroke = Some((2.0, Color::BLACK, false, false));
+        }
+        if style.fill.is_none() {
+            style.fill = Some((Color::TRANSPARENT, false));
+        }
     }
 
     fn id(&self) -> String {
@@ -154,6 +163,7 @@ pub struct Ellipse {
     center: Point,
     radii: Vector,
     rotation: f32,
+    style: Style,
 }
 
 impl Serialize for Ellipse {
@@ -162,13 +172,14 @@ impl Serialize for Ellipse {
             "center": self.center.serialize(),
             "radii": self.radii.serialize(),
             "rotation": self.rotation,
+            "style": self.style.serialize(),
         }
     }
 }
 
 impl Deserialize for Ellipse {
     fn deserialize(document: Document) -> Self where Self: Sized {
-        let mut ellipse = Ellipse {center: Point::default(), radii: Vector::default(), rotation: 0.0};
+        let mut ellipse = Ellipse {center: Point::default(), radii: Vector::default(), rotation: 0.0, style: Style::default()};
 
         if let Some(Bson::Document(center)) = document.get("center") {
             ellipse.center = Point::deserialize(center.clone());
@@ -180,6 +191,10 @@ impl Deserialize for Ellipse {
 
         if let Some(Bson::Double(rotation)) = document.get("rotation") {
             ellipse.rotation = rotation.clone() as f32;
+        }
+
+        if let Some(Bson::Document(style)) = document.get("style") {
+            ellipse.style = Style::deserialize(style.clone());
         }
 
         ellipse
@@ -204,7 +219,12 @@ impl Tool for Ellipse {
             }
         });
 
-        frame.stroke(&ellipse, Stroke::default().with_width(2.0));
+        if let Some((width, color, _, _)) = self.style.stroke {
+            frame.stroke(&ellipse, Stroke::default().with_width(width).with_color(color));
+        }
+        if let Some((color, _)) = self.style.fill {
+            frame.fill(&ellipse, Fill::from(color));
+        }
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

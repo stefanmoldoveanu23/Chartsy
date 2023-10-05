@@ -2,13 +2,12 @@
 
 mod scene;
 mod scenes;
-mod tool;
-mod tools;
 mod mongo;
 mod config;
 mod serde;
 mod theme;
 mod canvas;
+mod color_picker;
 
 use scene::{Message, Globals};
 use scenes::scenes::SceneLoader;

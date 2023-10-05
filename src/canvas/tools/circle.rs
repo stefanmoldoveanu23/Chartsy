@@ -1,15 +1,16 @@
 use std::fmt::{Debug};
 use std::sync::Arc;
-use iced::{mouse, Point, Rectangle, Renderer, keyboard};
+use iced::{mouse, Point, Rectangle, Renderer, keyboard, Color};
 use iced::event::Status;
 use iced::mouse::Cursor;
-use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
+use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
 use mongodb::bson::{Bson, doc, Document};
 use crate::canvas::layer::CanvasAction;
+use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 
-use crate::tool::{Pending, Tool};
+use crate::canvas::tool::{Pending, Tool};
 
 #[derive(Clone)]
 pub enum CirclePending {
@@ -22,7 +23,9 @@ impl Pending for CirclePending {
         &mut self,
         event: Event,
         cursor: Point,
+        style: Style,
     ) -> (Status, Option<CanvasAction>) {
+
         match event {
             Event::Mouse(mouse_event) => {
                 let message = match mouse_event {
@@ -36,7 +39,7 @@ impl Pending for CirclePending {
                                 let center_clone = center.clone();
 
                                 *self = CirclePending::None;
-                                Some(CanvasAction::UseTool(Arc::new(Circle { center: center_clone, radius: cursor.distance(center_clone) })).into())
+                                Some(CanvasAction::UseTool(Arc::new(Circle { center: center_clone, radius: cursor.distance(center_clone), style: style.clone() })).into())
                             }
                         }
                     }
@@ -64,6 +67,7 @@ impl Pending for CirclePending {
         renderer: &Renderer<Theme>,
         bounds: Rectangle,
         cursor: Cursor,
+        style: Style,
     ) -> Geometry {
         let mut frame = Frame::new(renderer, bounds.size());
 
@@ -75,12 +79,29 @@ impl Pending for CirclePending {
                         p.circle(*center, cursor_position.distance(*center));
                     });
 
-                    frame.stroke(&stroke, Stroke::default().with_width(2.0));
+                    if let Some((width, color, _, _)) = style.stroke {
+                        frame.stroke(&stroke, Stroke::default().with_width(width).with_color(color));
+                    }
+                    if let Some((color, _)) = style.fill {
+                        frame.fill(
+                            &stroke,
+                            Fill::from(color)
+                        );
+                    }
                 }
             }
         };
 
         frame.into_geometry()
+    }
+
+    fn shape_style(&self, style: &mut Style) {
+        if style.stroke.is_none() {
+            style.stroke = Some((2.0, Color::BLACK, false, false));
+        }
+        if style.fill.is_none() {
+            style.fill = Some((Color::TRANSPARENT, false));
+        }
     }
 
     fn id(&self) -> String {
@@ -100,6 +121,7 @@ impl Pending for CirclePending {
 pub struct Circle {
     center: Point,
     radius: f32,
+    style: Style,
 }
 
 impl Serialize for Circle {
@@ -107,20 +129,25 @@ impl Serialize for Circle {
         doc! {
             "center": self.center.serialize(),
             "radius": self.radius,
+            "style": self.style.serialize(),
         }
     }
 }
 
 impl Deserialize for Circle {
     fn deserialize(document: Document) -> Self where Self: Sized {
-        let mut circle = Circle {center: Point::default(), radius: 0.0};
+        let mut circle = Circle {center: Point::default(), radius: 0.0, style: Style::default() };
 
         if let Some(Bson::Document(center)) = document.get("center") {
             circle.center = Point::deserialize(center.clone());
         }
 
         if let Some(Bson::Double(radius)) = document.get("radius") {
-            circle.radius = radius.clone() as f32;
+            circle.radius = *radius as f32;
+        }
+
+        if let Some(Bson::Document(style)) = document.get("style") {
+            circle.style = Style::deserialize(style.clone());
         }
 
         circle
@@ -133,7 +160,12 @@ impl Tool for Circle {
             builder.circle(self.center, self.radius.clone());
         });
 
-        frame.stroke(&circle, Stroke::default().with_width(2.0));
+        if let Some((width, color, _, _)) = self.style.stroke {
+            frame.stroke(&circle, Stroke::default().with_width(width).with_color(color));
+        }
+        if let Some((color, _)) = self.style.fill {
+            frame.fill(&circle, Fill::from(color));
+        }
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

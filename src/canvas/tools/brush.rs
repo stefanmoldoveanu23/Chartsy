@@ -2,16 +2,17 @@ use std::fmt::{Debug};
 use std::marker::PhantomData;
 use std::ops::{Add, Sub};
 use std::sync::Arc;
-use iced::{mouse, Point, Rectangle, Renderer, keyboard, Vector};
+use iced::{mouse, Point, Rectangle, Renderer, keyboard, Vector, Color};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry};
 use mongodb::bson::{Bson, doc, Document};
 use crate::canvas::layer::CanvasAction;
+use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 
-use crate::tool::{Pending, Tool};
+use crate::canvas::tool::{Pending, Tool};
 
 #[derive(Clone)]
 pub enum BrushPending<BrushType>
@@ -27,6 +28,7 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
         &mut self,
         event: Event,
         cursor: Point,
+        style: Style,
     ) -> (Status, Option<CanvasAction>) {
         match event {
             Event::Mouse(mouse_event) => {
@@ -70,7 +72,7 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
 
                                 *self = BrushPending::None;
 
-                                Some(CanvasAction::UseTool(Arc::new(BrushType::new(start_clone, offsets_clone))).into())
+                                Some(CanvasAction::UseTool(Arc::new(BrushType::new(start_clone, offsets_clone, style))).into())
                             }
                             _ => None
                         }
@@ -99,6 +101,7 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
         renderer: &Renderer<Theme>,
         bounds: Rectangle,
         cursor: Cursor,
+        style: Style,
     ) -> Geometry {
         let mut frame = Frame::new(renderer, bounds.size());
 
@@ -108,7 +111,7 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
                     let mut pos = *start;
 
                     for offset in offsets.clone() {
-                        BrushType::add_stroke_piece(pos, pos.add(offset), &mut frame);
+                        BrushType::add_stroke_piece(pos, pos.add(offset), &mut frame, style.clone());
                         pos = pos.add(offset.clone());
                     }
                 }
@@ -117,6 +120,12 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
         };
 
         frame.into_geometry()
+    }
+
+    fn shape_style(&self, style: &mut Style) {
+        if style.stroke.is_none() {
+            style.stroke = Some((2.0, Color::BLACK, false, false));
+        }
     }
 
     fn id(&self) -> String {
@@ -133,14 +142,15 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
 }
 
 pub trait Brush: Send+Sync+Debug {
-    fn new(start: Point, offsets: Vec<Vector>) -> Self where Self:Sized;
+    fn new(start: Point, offsets: Vec<Vector>, style: Style) -> Self where Self:Sized;
     fn id() -> String where Self:Sized;
 
     fn get_start(&self) -> Point;
     fn get_offsets(&self) -> Vec<Vector>;
+    fn get_style(&self) -> Style;
 
-    fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame) where Self:Sized;
-    fn add_end(point: Point, frame: &mut Frame) where Self:Sized;
+    fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame, style: Style) where Self:Sized;
+    fn add_end(point: Point, frame: &mut Frame, style: Style) where Self:Sized;
 }
 
 impl<BrushType> Serialize for BrushType
@@ -149,6 +159,7 @@ where BrushType: Brush+Clone+'static {
         doc! {
             "start": self.get_start().serialize(),
             "offsets": self.get_offsets().iter().map(|offset| {offset.serialize()}).collect::<Vec<Document>>().as_slice(),
+            "style": self.get_style().serialize(),
         }
     }
 }
@@ -158,6 +169,7 @@ impl<BrushType> Deserialize for BrushType
     fn deserialize(document: Document) -> Self where Self: Sized {
         let mut brush_start :Point= Point::default();
         let mut brush_offsets :Vec<Vector>= vec![];
+        let mut brush_style :Style= Style::default();
 
         if let Some(Bson::Document(start)) = document.get("start") {
             brush_start = Point::deserialize(start.clone());
@@ -171,7 +183,11 @@ impl<BrushType> Deserialize for BrushType
             }
         }
 
-        BrushType::new(brush_start, brush_offsets)
+        if let Some(Bson::Document(style)) = document.get("style") {
+            brush_style = Style::deserialize(style.clone());
+        }
+
+        BrushType::new(brush_start, brush_offsets, brush_style)
     }
 }
 
@@ -181,11 +197,11 @@ where BrushType: Brush+Clone+'static {
         let mut pos = self.get_start();
 
         for offset in self.get_offsets() {
-            BrushType::add_stroke_piece(pos, pos.add(offset), frame);
+            BrushType::add_stroke_piece(pos, pos.add(offset), frame, self.get_style());
             pos = pos.add(offset.clone());
         }
 
-        BrushType::add_end(pos, frame);
+        BrushType::add_end(pos, frame, self.get_style());
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {
