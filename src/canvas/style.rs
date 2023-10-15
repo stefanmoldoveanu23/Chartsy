@@ -91,26 +91,16 @@ impl Style {
 
             column.push(Button::new("Stroke color").on_press(StyleUpdate::ToggleStrokeColor).into());
             if visibility_color {
-                let picker = ColorPicker::new(StyleUpdate::StrokeColor);
+                let picker = ColorPicker::new(StyleUpdate::StrokeColor).color(color);
                 column.push(picker.into());
-
-                let color = color.clone();
-                column.push(Slider::new(0.0..=255.0, color.a * 255.0, move |alpha| {
-                    StyleUpdate::StrokeColor(Color::new(color.r, color.g, color.b, alpha / 255.0))
-                }).into());
             }
         }
 
         if let Some((color, visibility)) = self.fill {
             column.push(Button::new("Fill").on_press(StyleUpdate::ToggleFill).into());
             if visibility {
-                let picker = ColorPicker::new(StyleUpdate::Fill);
+                let picker = ColorPicker::new(StyleUpdate::Fill).color(color);
                 column.push(picker.into());
-
-                let color = color.clone();
-                column.push(Slider::new(0.0..=255.0, color.a * 255.0, move |alpha| {
-                    StyleUpdate::Fill(Color::new(color.r, color.g, color.b, alpha / 255.0))
-                }).into());
             }
         }
 
