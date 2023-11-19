@@ -10,11 +10,15 @@ use crate::theme::Theme;
 use crate::canvas::tools::{line::Line, rect::Rect, triangle::Triangle, polygon::Polygon, circle::Circle, ellipse::Ellipse};
 use crate::canvas::tools::brushes::{eraser::Eraser, pencil::Pencil, pen::Pen, airbrush::Airbrush};
 
+/// Any tool that can be used on the [canvas](crate::canvas::canvas::Canvas).
 pub trait Tool: Debug+Send+Sync+Serialize+Deserialize {
+    /// Adds the [Tool] to the given [Frame].
     fn add_to_frame(&self, frame: &mut Frame);
 
+    /// Creates a clone of the [Tool] and encloses it into a [Box].
     fn boxed_clone(&self) -> Box<dyn Tool>;
 
+    /// Returns a unique identifier for the [Tool].
     fn id(&self) -> String;
 }
 
@@ -49,7 +53,27 @@ impl Clone for Box<dyn Tool> {
     }
 }
 
+/// A version of a [Tool] to be used for easily marking the its drawing progress.
+/// It is advised to be implemented as an enum where each variant represents a state in the shaping
+/// of the [Tool], as it is intended to be used as the State type for the canvas'
+/// [Program](iced::widget::canvas::Program).
+///
+/// # Example
+/// ```no_run
+/// enum Triangle {
+///     None,
+///     One(Point),
+///     Two(Point, Point),
+/// }
+///
+/// impl Pending for Triangle {
+///     ...
+/// }
+/// ```
+///
 pub trait Pending: Send+Sync {
+    /// Handles an [Event] on the [canvas](crate::canvas::canvas::Canvas). To be used in the
+    /// Programs' [update function](iced::widget::canvas::Program::update).
     fn update(
         &mut self,
         event: Event,
@@ -57,6 +81,8 @@ pub trait Pending: Send+Sync {
         style: Style,
     ) -> (event::Status, Option<CanvasAction>);
 
+    /// Draws the [pending tool](Pending) on the [canvas](crate::canvas::canvas::Canvas). To be
+    /// used in the Programs' [draw function](iced::widget::canvas::Program::draw).
     fn draw(
         &self,
         renderer: &Renderer<Theme>,
@@ -65,12 +91,16 @@ pub trait Pending: Send+Sync {
         style: Style,
     ) -> Geometry;
 
+    /// Modifies the given [Style] to make available or unavailable settings as necessary.
     fn shape_style(&self, style: &mut Style);
 
+    /// Returns a unique identifier for the [pending tool](Pending).
     fn id(&self) -> String;
 
+    /// Returns a default version of the [pending tool](Pending).
     fn default() -> Self where Self:Sized;
 
+    /// Returns a clone of the [pending tool](Pending) enclosed in a [Box].
     fn boxed_clone(&self) -> Box<dyn Pending>;
 }
 

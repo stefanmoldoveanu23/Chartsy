@@ -6,6 +6,10 @@ use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 use crate::color_picker::ColorPicker;
 
+/// A structure used to define the style of the drawn [tools](crate::canvas::tool::Tool).
+///
+/// Each field is an option that is locked/unlocked when switching to a
+/// [pending tool](crate::canvas::tool::Pending) by the [shape_style function](crate::canvas::tool::Pending::shape_style).
 #[derive(Debug, Default, Clone)]
 pub struct Style {
     pub(crate) stroke: Option<(f32, Color, bool, bool)>,
@@ -13,6 +17,7 @@ pub struct Style {
 }
 
 impl Style {
+    /// Modifies the stroke width of the [pending tool](crate::canvas::tool::Pending).
     pub(crate) fn stroke_width(mut self, stroke_width: impl Into<f32>) -> Self {
         if let Some((_, color, v1, v2)) = self.stroke {
             self.stroke = Some((stroke_width.into(), color, v1, v2));
@@ -23,6 +28,7 @@ impl Style {
         self
     }
 
+    /// Modifies the stroke color of the [pending tool](crate::canvas::tool::Pending).
     pub(crate) fn stroke_color(mut self, stroke_color: impl Into<Color>) -> Self {
         if let Some((width, _, v1, v2)) = self.stroke {
             self.stroke = Some((width, stroke_color.into(), v1, v2));
@@ -33,6 +39,7 @@ impl Style {
         self
     }
 
+    /// Modifies the fill color of the [pending tool](crate::canvas::tool::Pending).
     pub(crate) fn fill(mut self, fill: impl Into<Color>) -> Self {
         if let Some((_, visible)) = self.fill {
             self.fill = Some((fill.into(), visible));
@@ -43,6 +50,7 @@ impl Style {
         self
     }
 
+    /// Updates the [Style] based on user input.
     pub(crate) fn update(&mut self, message: StyleUpdate) -> Command<Message> {
         match message {
             StyleUpdate::ToggleStrokeWidth => {
@@ -80,6 +88,7 @@ impl Style {
         Command::none()
     }
 
+    /// Returns an interactable settings section for the [Style].
     pub(crate) fn view<'a>(&self) -> Element<'a, StyleUpdate, Renderer<Theme>> {
         let mut column :Vec<Element<'a, StyleUpdate, Renderer<Theme>>>= vec![];
 
@@ -108,6 +117,7 @@ impl Style {
     }
 }
 
+/// An enum of possible modifications a user can make to the [Style].
 #[derive(Clone)]
 pub enum StyleUpdate {
     ToggleStrokeWidth,

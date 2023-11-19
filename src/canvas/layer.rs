@@ -9,14 +9,6 @@ use crate::canvas::style::{Style, StyleUpdate};
 use crate::theme::Theme;
 use crate::canvas::tool::{Pending, Tool};
 
-#[derive(Default)]
-pub struct State {
-    cache: canvas::Cache,
-}
-
-unsafe impl Send for State {}
-unsafe impl Sync for State {}
-
 pub struct Layer<'a> {
     pub(crate) state: Option<&'a canvas::Cache>,
     pub(crate) tools: &'a [Arc<dyn Tool>],

@@ -126,6 +126,8 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
         if style.stroke.is_none() {
             style.stroke = Some((2.0, Color::BLACK, false, false));
         }
+
+        style.fill = None;
     }
 
     fn id(&self) -> String {

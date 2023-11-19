@@ -25,6 +25,13 @@ pub fn main() -> iced::Result {
     })
 }
 
+/// The model for the [Application].
+///
+/// Its purpose is to manage the basic aspects of the drawing app:
+/// - transitioning between different scenes, including the handling of
+/// closing and opening a scene using a [SceneLoader];
+/// - communication with a [Database];
+/// - holding and passing of global values, using the [Globals] structure.
 struct Chartsy {
     scene_loader: SceneLoader,
     mongo_db: Option<Database>,
@@ -50,7 +57,7 @@ impl Application for Chartsy {
     }
 
     fn title(&self) -> String {
-        String::from("Title")
+        String::from("Chartsy")
     }
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {

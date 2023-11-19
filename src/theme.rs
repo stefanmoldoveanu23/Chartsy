@@ -1,6 +1,7 @@
 use iced::application::{StyleSheet, Appearance};
 use iced_style::theme::Application;
 
+/// Custom theme created for the drawing [Application].
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Theme;
 
@@ -12,21 +13,22 @@ impl StyleSheet for Theme {
     }
 }
 
+/// Module that implements the [text](iced::widget::text::Text) [StyleSheet] for the custom [Theme].
 pub(crate) mod text {
-    use iced::Color;
     use iced::widget::text::{StyleSheet, Appearance};
     use crate::theme::Theme;
     use iced_style::theme::Text;
 
     impl StyleSheet for Theme {
-        type Style = ();
+        type Style = Text;
 
-        fn appearance(&self, _style: Self::Style) -> Appearance {
-            iced::Theme::Light.appearance(Text::Color(Color::BLACK))
+        fn appearance(&self, style: Self::Style) -> Appearance {
+            iced::Theme::Light.appearance(style)
         }
     }
 }
 
+/// Module that implements the [button](iced::widget::button::Button) [StyleSheet] for the custom [Theme].
 pub(crate) mod button {
     use iced::widget::button::{StyleSheet, Appearance};
     use crate::theme::Theme;
@@ -41,6 +43,8 @@ pub(crate) mod button {
     }
 }
 
+/// Module that implements the [container](iced::widget::container::Container) [StyleSheet]
+/// for the custom [Theme].
 pub(crate) mod container {
     use iced::widget::container::{Appearance, StyleSheet};
     use iced::Color;
@@ -70,6 +74,8 @@ pub(crate) mod container {
     }
 }
 
+/// Module that implements the [scrollable](iced::widget::scrollable::Scrollable) [StyleSheet]
+/// for the custom [Theme].
 pub(crate) mod scrollable {
     use iced::widget::scrollable::{Scrollbar, StyleSheet};
     use iced_style::theme::Scrollable;
@@ -88,6 +94,8 @@ pub(crate) mod scrollable {
     }
 }
 
+/// Module that implements the [slider](iced::widget::slider::Slider) [StyleSheet] for the
+/// custom [Theme].
 pub(crate) mod slider {
     use iced::widget::slider::{Appearance, StyleSheet};
     use iced_style::theme::Slider;
@@ -110,6 +118,7 @@ pub(crate) mod slider {
     }
 }
 
+/// Module that implements the [modal](iced_aw::modal::Modal) [StyleSheet] for the custom [Theme].
 pub(crate) mod modal {
     use iced_aw::modal::StyleSheet;
     use iced_aw::style::modal::Appearance;
@@ -124,6 +133,7 @@ pub(crate) mod modal {
     }
 }
 
+/// Module that implements the [card](iced_aw::card::Card) [StyleSheet] for the custom [Theme].
 pub(crate) mod card {
     use iced_aw::card::{Appearance, StyleSheet};
     use crate::theme::Theme;
@@ -137,31 +147,8 @@ pub(crate) mod card {
     }
 }
 
-pub(crate) mod color_picker {
-    use iced_aw::color_picker::{Appearance, StyleSheet};
-    use crate::theme::Theme;
-
-    impl StyleSheet for Theme {
-        type Style = iced_aw::style::color_picker::ColorPickerStyles;
-
-        fn active(&self, style: &Self::Style) -> Appearance {
-            iced::Theme::Light.active(style)
-        }
-
-        fn selected(&self, style: &Self::Style) -> Appearance {
-            iced::Theme::Light.selected(style)
-        }
-
-        fn hovered(&self, style: &Self::Style) -> Appearance {
-            iced::Theme::Light.hovered(style)
-        }
-
-        fn focused(&self, style: &Self::Style) -> Appearance {
-            iced::Theme::Light.focused(style)
-        }
-    }
-}
-
+/// Module that implements the [tab_bar](iced_aw::tab_bar::TabBar) [StyleSheet] for the
+/// custom [Theme].
 pub(crate) mod tab_bar {
     use iced_aw::tab_bar::{Appearance, StyleSheet};
     use crate::theme::Theme;

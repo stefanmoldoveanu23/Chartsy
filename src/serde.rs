@@ -1,11 +1,15 @@
 use iced::{Color, Point, Vector};
 use mongodb::bson::{Bson, doc, Document};
 
+/// An object with this trait can be turned into a mongo [Document].
 pub trait Serialize {
+    /// Serializes the object.
     fn serialize(&self) -> Document;
 }
 
+/// An object with this trait can be deserialized from a mongo [Document].
 pub trait Deserialize {
+    /// Deserialized the [Document], returning an instance.
     fn deserialize(document: Document) -> Self where Self:Sized;
 }
 

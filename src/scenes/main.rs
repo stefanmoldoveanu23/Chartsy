@@ -14,6 +14,12 @@ use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 use crate::scenes::drawing::DrawingOptions;
 use crate::theme::Theme;
 
+/// The [Messages](Action) of the main [Scene]:
+/// - [None](MainAction::None) for when no action is required;
+/// - [ShowDrawings](MainAction::ShowDrawings), which opens a [modal](modal::Modal)
+/// with a list of the drawings;
+/// - [LoadedDrawings](MainAction::LoadedDrawings), which receives the list of drawings from
+/// the [Database](mongodb::Database).
 #[derive(Clone)]
 enum MainAction {
     None,
@@ -41,12 +47,17 @@ impl Into<Box<dyn Action + 'static>> for Box<MainAction> {
     }
 }
 
+/// The main [Scene] of the [Application](crate::Chartsy).
+///
+/// Allows the user to create a new [Drawing](crate::scenes::drawing::Drawing) or to open an already
+/// existing one.
 #[derive(Clone)]
 pub struct Main {
     showing_drawings: bool,
     drawings: Option<Vec<Uuid>>,
 }
 
+/// The [Main] scene has no options.
 #[derive(Debug, Clone, Copy)]
 pub struct MainOptions {}
 

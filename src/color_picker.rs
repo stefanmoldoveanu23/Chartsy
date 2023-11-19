@@ -9,6 +9,9 @@ use iced::mouse::{Button, Cursor, Interaction};
 use iced::widget::Slider;
 use crate::theme::Theme;
 
+/// A basic color picker widget.
+///
+/// Features a section of [colors](Color) to pick from, and a [slider](Slider) for transparency.
 pub struct ColorPicker<'a, Message> {
     hovering: Option<iced::Color>,
     on_submit: fn(iced::Color) -> Message,
@@ -20,6 +23,8 @@ pub struct ColorPicker<'a, Message> {
 
 impl<'a, Message> ColorPicker<'a, Message>
 where Message: Clone + 'a {
+    /// Computes the grid dimensions for the [ColorPicker], and initializes a new instance
+    /// given the submit function.
     pub fn new(on_submit: fn(iced::Color) -> Message) -> Self {
         let row_size = ((250.0 - 10.0) / 40.0) as usize;
         let col_size = (Color::size() as f32 / row_size as f32).ceil() as usize;
@@ -38,6 +43,7 @@ where Message: Clone + 'a {
         }
     }
 
+    /// Changes the width of the [ColorPicker].
     pub fn width(mut self, width: f32) -> Self {
         self.width = width;
 
@@ -48,6 +54,7 @@ where Message: Clone + 'a {
         self
     }
 
+    /// Changes the [color](iced::Color) of the [ColorPicker].
     pub fn color(mut self, color: iced::Color) -> Self {
         self.alpha = color.a;
         self.slider = Slider::new(
@@ -247,6 +254,7 @@ where Message: Clone {
     }
 }
 
+/// A fixed list of colors to choose from.
 enum Color {
     BLACK,
     WHITE,
@@ -259,6 +267,7 @@ enum Color {
 }
 
 impl Color {
+    /// Turns a [Color] to an [iced::Color].
     fn to_color(&self) -> iced::Color {
         match self {
             Color::BLACK => iced::Color::BLACK,
@@ -272,6 +281,7 @@ impl Color {
         }
     }
 
+    /// Returns the [iced::Color] corresponding to the grid position.
     fn get(idx: usize) -> iced::Color {
         match idx {
             0 => Color::BLACK.to_color(),
@@ -286,6 +296,7 @@ impl Color {
         }
     }
 
+    /// Returns a list of all of the [Color] options.
     fn values() -> Vec<Self> {
         vec![
             Color::BLACK,
@@ -299,6 +310,7 @@ impl Color {
         ]
     }
 
+    /// Returns the number of [Color] options.
     fn size() -> usize {
         8
     }

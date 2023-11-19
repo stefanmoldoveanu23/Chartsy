@@ -6,6 +6,9 @@ use crate::scene::{Action, Message};
 
 use crate::config::{MONGO_NAME, MONGO_PASS};
 
+/// Attempts to connect to the mongo [Database].
+///
+/// Returns an error upon failure.
 pub async fn connect_to_mongodb() -> Result<Database, mongodb::error::Error>
     where
         Client: Send + 'static,
@@ -18,6 +21,11 @@ pub async fn connect_to_mongodb() -> Result<Database, mongodb::error::Error>
     Ok(client.database("chartsy"))
 }
 
+/// The four [Database] request types:
+/// - [Get](MongoRequestType::Get), with the filter set in a [Document].
+/// - [Insert](MongoRequestType::Insert), with the requested [Documents](Document).
+/// - [Update](MongoRequestType::Update), with the filter [Document] and the replacement.
+/// - [Delete](MongoRequestType::Delete), with the filter [Document].
 #[derive(Debug, Clone)]
 pub enum MongoRequestType {
     Get(Document),
@@ -26,6 +34,9 @@ pub enum MongoRequestType {
     Delete(Document),
 }
 
+/// A request to be sent to a mongo [Database].
+///
+/// Contains the name of the altered [Collection], and the [request type](MongoRequestType).
 #[derive(Debug, Clone)]
 pub struct MongoRequest {
     collection_name: String,
@@ -33,6 +44,7 @@ pub struct MongoRequest {
 }
 
 impl MongoRequest {
+    /// Creates a new [MongoRequest] using the given data.
     pub fn new(collection_name: String, request_type: MongoRequestType) -> Self {
         MongoRequest {
             collection_name,
@@ -40,6 +52,8 @@ impl MongoRequest {
         }
     }
 
+    /// Sends a [Get](MongoRequestType::Get) request to the given [Database] and returns
+    /// a list of the results.
     async fn handle_get(database: &Database, collection_name: String, filter: Document)
         -> Result<Vec<Document>, mongodb::error::Error> {
         let collection :Collection<Result<Document, mongodb::error::Error>>= database.collection(&*collection_name);
@@ -84,6 +98,8 @@ impl MongoRequest {
         }
     }
 
+    /// Sends an [Insert](MongoRequestType::Insert) request to the given [Database] and returns
+    /// the [inserted ids](InsertManyResult).
     async fn handle_insert(database: &Database, collection_name: String, documents: Vec<Document>)
         -> Result<InsertManyResult, mongodb::error::Error>
     {
@@ -91,6 +107,8 @@ impl MongoRequest {
         collection.insert_many(documents, None).await
     }
 
+    /// Sends an [Update](MongoRequestType::Update) request to the given [Database] and returns
+    /// the [results](UpdateResult).
     async fn handle_update(database: &Database, collection_name: String, filter: Document, update: Document)
         -> Result<UpdateResult, mongodb::error::Error>
     {
@@ -98,6 +116,8 @@ impl MongoRequest {
         collection.update_many(filter.clone(), update.clone(), None).await
     }
 
+    /// Sends a [Delete](MongoRequestType::Delete) request to the given [Database] and returns
+    /// the [number of deleted records](DeleteResult).
     async fn handle_delete(database: &Database, collection_name: String, filter: Document)
         -> Result<DeleteResult, mongodb::error::Error>
     {
@@ -105,6 +125,11 @@ impl MongoRequest {
         collection.delete_many(filter.clone(), None).await
     }
 
+    /// Sends a list of requests to the given [Database].
+    ///
+    /// The requests field is a tuple comprised of:
+    /// - a [Vec] of [MongoRequests](MongoRequest);
+    /// - a function that takes the [Vec] of [MongoResponses](MongoResponse) and returns a [Message](Action).
     pub fn send_requests(database: Database, requests: (Vec<Self>, fn(Vec<MongoResponse>) -> Box<dyn Action>))
                         -> Command<Message> {
 
@@ -174,6 +199,11 @@ impl MongoRequest {
     }
 }
 
+/// The response to a [MongoRequest] sent to a [Database]:
+/// - [Get](MongoResponse::Get), with a list of [Documents](Document);
+/// - [Insert](MongoResponse::Insert), with the list of [inserted ids](InsertManyResult);
+/// - [Update](MongoResponse::Update), with the [update results](UpdateResult);
+/// - [Delete](MongoResponse::Delete), with the [number of deleted records](DeleteResult).
 pub enum MongoResponse {
     Get(Vec<Document>),
     Insert(InsertManyResult),

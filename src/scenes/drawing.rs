@@ -18,6 +18,11 @@ use crate::theme::Theme;
 
 use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 
+/// The [Messages](Action) for the [Drawing] scene:
+/// - [None](DrawingAction::None), for when no action is required;
+/// - [CanvasAction](DrawingAction::CanvasAction), for when the user interacts with the canvas;
+/// to be sent to the [Canvas] instance for handling;
+/// - [TabSelection](DrawingAction::TabSelection), which handles the options tab for drawing.
 #[derive(Clone)]
 pub(crate) enum DrawingAction {
     None,
@@ -49,6 +54,10 @@ impl Into<Box<dyn Action + 'static>> for Box<DrawingAction> {
     }
 }
 
+/// The drawing scene of the [Application](crate::Chartsy).
+///
+/// Split into a section where the user can choose [Tools](crate::canvas::tool::Tool) and
+/// modify the drawing [Style](crate::canvas::style::Style), and the [Canvas].
 pub struct Drawing {
     canvas: Canvas,
     active_tab: TabIds,
@@ -58,12 +67,14 @@ pub struct Drawing {
 impl Drawing {
 }
 
+/// Contains the [uuid](Uuid) of the current [Drawing].
 #[derive(Debug, Clone, Copy)]
 pub struct DrawingOptions {
     uuid: Option<Uuid>,
 }
 
 impl DrawingOptions {
+    /// Returns a new instance with the given [uuid](Uuid).
     pub(crate) fn new(uuid: Option<Uuid>) -> Self {
         DrawingOptions { uuid }
     }
@@ -91,13 +102,18 @@ impl Scene for Box<Drawing> {
             }
         );
 
-        if let Some(options) = options {
-            options.apply_options(&mut drawing);
+        let set_tool = Command::perform(
+            async {},
+            |_| {
+                Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::ChangeTool(Box::new(LinePending::None)))))
+            }
+        );
+        let init_data:Command<Message>=
+            if let Some(options) = options {
+                options.apply_options(&mut drawing);
 
-            let uuid = drawing.canvas.id.clone();
+                let uuid = drawing.canvas.id.clone();
 
-            (
-                drawing,
                 Command::perform(
                     async {},
                     move |_| {
@@ -135,12 +151,9 @@ impl Scene for Box<Drawing> {
                         )
                     }
                 )
-            )
-        } else {
-            let uuid = drawing.canvas.id.clone();
+            } else {
+                let uuid = drawing.canvas.id.clone();
 
-            (
-                drawing,
                 Command::perform(
                     async {},
                         move |_| {
@@ -157,8 +170,17 @@ impl Scene for Box<Drawing> {
                             )
                         }
                 )
+            };
+
+        return (
+            drawing,
+            Command::batch(
+                [
+                    set_tool,
+                    init_data,
+                ]
             )
-        }
+        )
     }
 
     fn get_title(&self) -> String {
@@ -274,6 +296,9 @@ impl Scene for Box<Drawing> {
     fn clear(&self) { }
 }
 
+/// The tabs in the selection section:
+/// - [Tools](TabIds::Tools), for selecting the used [Tool](crate::canvas::tool::Tool);
+/// - [Style](TabIds::Style), for modifying the tools [Style](crate::canvas::style::Style).
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum TabIds {
     Tools,
