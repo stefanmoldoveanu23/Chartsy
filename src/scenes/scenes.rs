@@ -1,5 +1,6 @@
 use iced::{Command};
 use crate::scene::{Globals, Message, Scene, SceneOptions};
+use crate::scenes::auth::Auth;
 use crate::scenes::drawing::Drawing;
 use crate::scenes::main::Main;
 
@@ -8,6 +9,7 @@ use crate::scenes::main::Main;
 pub enum Scenes {
     Main(Option<Box<dyn SceneOptions<Main>>>),
     Drawing(Option<Box<dyn SceneOptions<Box<Drawing>>>>),
+    Auth(Option<Box<dyn SceneOptions<Auth>>>),
 }
 
 /// An enum that is returned when an unusual behaviour occurs during the handling of [Scenes](Scene).
@@ -23,6 +25,7 @@ pub struct SceneLoader {
     current_scene: Scenes,
     main: Option<Main>,
     drawing: Option<Box<Drawing>>,
+    auth: Option<Auth>,
 }
 
 impl SceneLoader {
@@ -41,9 +44,16 @@ impl SceneLoader {
                 }
                 self.drawing = None
             }
+            Scenes::Auth(_) => {
+                if let Some(auth) = &self.auth {
+                    auth.clear();
+                }
+                self.auth = None;
+            }
         }
 
         self.current_scene = scene;
+
         match &self.current_scene {
             Scenes::Main(options) => {
                 let (main, command) = Scene::new(options.clone(), globals);
@@ -53,6 +63,11 @@ impl SceneLoader {
             Scenes::Drawing(options) => {
                 let (drawing, command) = Scene::new(options.clone(), globals);
                 self.drawing = Some(drawing);
+                Command::batch(vec![command])
+            }
+            Scenes::Auth(options) => {
+                let (auth, command) = Scene::new(options.clone(), globals);
+                self.auth = Some(auth);
                 Command::batch(vec![command])
             }
         }
@@ -69,6 +84,12 @@ impl SceneLoader {
             }
             Scenes::Drawing(_) => {
                 match self.drawing {
+                    None => Err(SceneErr::Error),
+                    Some(ref mut scene) => Ok(scene)
+                }
+            }
+            Scenes::Auth(_) => {
+                match self.auth {
                     None => Err(SceneErr::Error),
                     Some(ref mut scene) => Ok(scene)
                 }
@@ -91,6 +112,12 @@ impl SceneLoader {
                     Some(ref scene) => Ok(scene)
                 }
             }
+            Scenes::Auth(_) => {
+                match self.auth {
+                    None => Err(SceneErr::Error),
+                    Some(ref scene) => Ok(scene)
+                }
+            }
         }
     }
 }
@@ -101,6 +128,7 @@ impl Default for SceneLoader {
             current_scene: Scenes::Main(None),
             main: Some(Main::new(None, Globals::default()).0),
             drawing: None,
+            auth: None,
         }
     }
 }

@@ -3,6 +3,7 @@ use std::fmt::{Debug, Formatter};
 use iced::{Command, Element, Event, Renderer, Size};
 use mongodb::{Database};
 use crate::mongo::{MongoRequest, MongoResponse};
+use crate::scenes::auth::User;
 use crate::scenes::scenes::Scenes;
 use crate::theme::Theme;
 
@@ -82,18 +83,25 @@ pub enum Message {
     Error(String),
     ChangeScene(Scenes),
     DoAction(Box<dyn Action>),
+    UpdateGlobals(Globals),
     DoneDatabaseInit(Result<Database, mongodb::error::Error>),
     SendMongoRequests(Vec<MongoRequest>, fn(Vec<MongoResponse>) -> Box<dyn Action>),
     Event(Event)
 }
 
 /// The [Applications](crate::Chartsy) global values.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct Globals {
+    user: Option<User>,
     window_size: Size,
 }
 
 impl Globals {
+    /// Updates the value of the user.
+    pub(crate) fn set_user (&mut self, user: Option<User>) { self.user = user; }
+
+    pub(crate) fn get_user (&self) -> Option<User> { self.user.clone() }
+
     /// Updates the value of the window_size.
     pub(crate) fn set_window_size(&mut self, size: Size) {
         self.window_size = size;
@@ -118,6 +126,7 @@ impl Globals {
 impl Default for Globals {
     fn default() -> Self {
         Globals {
+            user: None,
             window_size: Size::new(0.0, 0.0)
         }
     }

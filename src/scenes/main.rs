@@ -2,14 +2,14 @@ use std::any::Any;
 
 use iced::{Alignment, Command, Element, Length, Renderer};
 use iced::alignment::{Horizontal, Vertical};
-use iced::widget::{button, text, column, Container, Column, Scrollable};
+use iced::widget::{button, text, column, row, Container, Column, Scrollable, horizontal_space};
 use iced_aw::{Card, modal};
 use mongodb::bson::{Uuid, doc, Document, Bson, UuidRepresentation};
 
 use crate::scene::{Scene, Action, Message, SceneOptions, Globals};
+use crate::scenes::auth::{AuthOptions, TabIds};
 use crate::scenes::scenes::Scenes;
 
-//use crate::menu::menu;
 use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 use crate::scenes::drawing::DrawingOptions;
 use crate::theme::Theme;
@@ -24,7 +24,8 @@ use crate::theme::Theme;
 enum MainAction {
     None,
     ShowDrawings,
-    LoadedDrawings(Vec<Document>)
+    LoadedDrawings(Vec<Document>),
+    LogOut,
 }
 
 impl Action for MainAction {
@@ -33,7 +34,12 @@ impl Action for MainAction {
     }
 
     fn get_name(&self) -> String {
-        String::from("No actions in main!")
+        match self {
+            MainAction::None => String::from("None"),
+            MainAction::ShowDrawings => String::from("Show drawings"),
+            MainAction::LoadedDrawings(_) => String::from("Loaded drawings"),
+            MainAction::LogOut => String::from("Logged out"),
+        }
     }
 
     fn boxed_clone(&self) -> Box<dyn Action + 'static> {
@@ -55,6 +61,7 @@ impl Into<Box<dyn Action + 'static>> for Box<MainAction> {
 pub struct Main {
     showing_drawings: bool,
     drawings: Option<Vec<Uuid>>,
+    globals: Globals,
 }
 
 /// The [Main] scene has no options.
@@ -70,8 +77,8 @@ impl SceneOptions<Main> for MainOptions {
 }
 
 impl Scene for Main {
-    fn new(options: Option<Box<dyn SceneOptions<Main>>>, _globals: Globals) -> (Self, Command<Message>) where Self: Sized {
-        let mut main = Main { showing_drawings: false, drawings: None };
+    fn new(options: Option<Box<dyn SceneOptions<Main>>>, globals: Globals) -> (Self, Command<Message>) where Self: Sized {
+        let mut main = Main { showing_drawings: false, drawings: None, globals };
         if let Some(options) = options {
             options.apply_options(&mut main);
         }
@@ -126,6 +133,17 @@ impl Scene for Main {
 
                 self.drawings = Some(list);
             }
+            MainAction::LogOut => {
+                self.globals.set_user(None);
+                let globals = self.globals.clone();
+
+                return Command::perform(
+                    async { },
+                    |_| {
+                        Message::UpdateGlobals(globals)
+                    }
+                );
+            }
             _ => {}
         }
 
@@ -133,7 +151,32 @@ impl Scene for Main {
     }
 
     fn view(&self) -> Element<Message, Renderer<Theme>> {
+        let container_auth :Element<Message, Renderer<Theme>>= if let Some(user) = self.globals.get_user() {
+            row![
+                horizontal_space(Length::Fill),
+                row![
+                    text(format!("Welcome, {}!", user.get_username())).vertical_alignment(Vertical::Bottom),
+                    button("Log Out").padding(8).on_press(Message::DoAction(Box::new(MainAction::LogOut))),
+                ]
+                    .align_items(Alignment::Center)
+                    .width(Length::Shrink)
+                    .spacing(20)
+            ].into()
+        } else {
+            row![
+                horizontal_space(Length::Fill),
+                row![
+                    button("Register").padding(8).on_press(Message::ChangeScene(Scenes::Auth(Some(Box::new(AuthOptions::new(TabIds::Register)))))),
+                    button("Log In").padding(8).on_press(Message::ChangeScene(Scenes::Auth(Some(Box::new(AuthOptions::new(TabIds::LogIn)))))),
+                ]
+                    .width(Length::Shrink)
+                    .spacing(10)
+                ,
+            ].into()
+        };
+
         let container_entrance :Container<Message, Renderer<Theme>> = Container::new(column![
+            container_auth,
             column![
                 text("Chartsy").width(Length::Shrink).size(50)
                 ]
@@ -145,10 +188,10 @@ impl Scene for Main {
                 button("Start new Drawing").padding(8).on_press(Message::ChangeScene(Scenes::Drawing(None))),
                 button("Continue drawing").padding(8).on_press(Message::DoAction(Box::new(MainAction::ShowDrawings))),
                 ]
-                .spacing(20)
-                .height(Length::FillPortion(3))
-                .width(Length::Fill)
-                .align_items(Alignment::Center),
+                    .spacing(20)
+                    .height(Length::FillPortion(3))
+                    .width(Length::Fill)
+                    .align_items(Alignment::Center),
         ]
             .spacing(20)
             .padding(20)
@@ -194,7 +237,7 @@ impl Scene for Main {
 
     }
 
-    fn update_globals(&mut self, _globals: Globals) { }
+    fn update_globals(&mut self, globals: Globals) { self.globals = globals; }
 
     fn clear(&self) { }
 }

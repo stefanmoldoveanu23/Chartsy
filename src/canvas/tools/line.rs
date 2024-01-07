@@ -114,6 +114,7 @@ impl Serialize for Line {
         doc! {
             "start": self.start.serialize(),
             "end": self.end.serialize(),
+            "style": self.style.serialize(),
         }
     }
 }
@@ -145,7 +146,9 @@ impl Tool for Line {
             builder.line_to(self.end);
         });
 
+        println!("Trying to draw a line!");
         if let Some((width, color, _, _)) = self.style.stroke {
+            println!("Drew a line!");
             frame.stroke(&line, Stroke::default().with_width(width).with_color(color));
         }
     }

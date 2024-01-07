@@ -133,11 +133,11 @@ impl Serialize for Style {
         let mut document = doc!{};
 
         if let Some((width, color, _, _)) = self.stroke {
-            document.insert("stroke", doc!{ "width": width, "color": vec![color.r, color.g, color.b, color.a] });
+            document.insert("stroke", doc!{ "width": width, "color": color.serialize() });
         };
 
         if let Some((color, _)) = self.fill {
-            document.insert("fill", vec![color.r, color.g, color.b, color.a]);
+            document.insert("fill", color.serialize());
         }
 
         document

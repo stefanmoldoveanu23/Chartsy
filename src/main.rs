@@ -64,11 +64,19 @@ impl Application for Chartsy {
 
         match message {
             Message::ChangeScene(scene) => {
-                self.scene_loader.load(scene, self.globals)
+                self.scene_loader.load(scene, self.globals.clone())
             }
             Message::DoAction(action) => {
                 let scene = self.scene_loader.get_mut().expect("Error getting scene.");
                 scene.update(action)
+            }
+            Message::UpdateGlobals(globals) => {
+                self.globals = globals;
+
+                let scene = self.scene_loader.get_mut().expect("Error getting scene.");
+                scene.update_globals(self.globals.clone());
+
+                Command::none()
             }
             Message::DoneDatabaseInit(result) => {
                 self.mongo_db = Some(result.expect("Error connecting to database."));

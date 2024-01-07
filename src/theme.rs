@@ -28,6 +28,45 @@ pub(crate) mod text {
     }
 }
 
+pub(crate) mod text_input {
+    use iced::Color;
+    use iced::widget::text_input::{StyleSheet, Appearance};
+    use crate::theme::Theme;
+    use iced_style::theme::TextInput;
+
+    impl StyleSheet for Theme {
+        type Style = TextInput;
+
+        fn active(&self, style: &Self::Style) -> Appearance {
+            iced::Theme::Light.active(style)
+        }
+
+        fn focused(&self, style: &Self::Style) -> Appearance {
+            iced::Theme::Light.focused(style)
+        }
+
+        fn placeholder_color(&self, style: &Self::Style) -> Color {
+            iced::Theme::Light.placeholder_color(style)
+        }
+
+        fn value_color(&self, style: &Self::Style) -> Color {
+            iced::Theme::Light.value_color(style)
+        }
+
+        fn disabled_color(&self, style: &Self::Style) -> Color {
+            iced::Theme::Light.disabled_color(style)
+        }
+
+        fn selection_color(&self, style: &Self::Style) -> Color {
+            iced::Theme::Light.selection_color(style)
+        }
+
+        fn disabled(&self, style: &Self::Style) -> Appearance {
+            iced::Theme::Light.disabled(style)
+        }
+    }
+}
+
 /// Module that implements the [button](iced::widget::button::Button) [StyleSheet] for the custom [Theme].
 pub(crate) mod button {
     use iced::widget::button::{StyleSheet, Appearance};
