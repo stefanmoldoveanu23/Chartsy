@@ -16,7 +16,9 @@ use theme::Theme;
 use iced::{Application, Command, Element, executor, Renderer, Settings, Size, Subscription, window};
 use iced::subscription::events;
 use iced_runtime::command::Action;
+use lettre::{AsyncSmtpTransport, AsyncStd1Executor, AsyncTransport};
 use mongodb::Database;
+use crate::config::{EMAIL_PASS, EMAIL_USERNAME};
 
 pub fn main() -> iced::Result {
     Chartsy::run(Settings {
@@ -45,12 +47,18 @@ impl Application for Chartsy {
     type Flags = ();
 
     fn new(_flags: Self::Flags) -> (Chartsy, Command<Self::Message>) {
+
+
         (
-            Chartsy{scene_loader: SceneLoader::default(), mongo_db: None, globals: Globals::default()},
+            Chartsy{
+                scene_loader: SceneLoader::default(),
+                mongo_db: None,
+                globals: Globals::default()
+            },
             Command::batch(
                 vec![
                     Command::single(Action::Window(window::Action::Maximize(true))),
-                    Command::perform(mongo::connect_to_mongodb(), Message::DoneDatabaseInit)
+                    Command::perform(mongo::connect_to_mongodb(), Message::DoneDatabaseInit),
                 ]
             )
         )
@@ -63,6 +71,9 @@ impl Application for Chartsy {
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
 
         match message {
+            Message::None => {
+                Command::none()
+            }
             Message::ChangeScene(scene) => {
                 self.scene_loader.load(scene, self.globals.clone())
             }
@@ -89,6 +100,25 @@ impl Application for Chartsy {
                     None => Command::none(),
                     Some(db) => mongo::MongoRequest::send_requests(db.clone(), (requests, response_handler))
                 }
+            }
+            Message::SendSmtpMail(mail) => {
+                Command::perform(
+                    async {
+                        let connection = AsyncSmtpTransport::<AsyncStd1Executor>::from_url(
+                            &*format!("smtps://{}:{}@smtp.gmail.com:465/", EMAIL_USERNAME, EMAIL_PASS)
+                        ).unwrap().build();
+
+                        let result = connection.send(mail).await;
+                        if let Err(ref err) = result {
+                            println!("Error sending mail! {}", err);
+                        } else {
+                            println!("Mail sent successfully!");
+                        }
+
+                        result
+                    },
+                    |_result| Message::None
+                )
             }
             Message::Event(event) => {
                 match event {

@@ -1,34 +1,61 @@
 use std::any::Any;
+use std::ops::Deref;
 use iced::{Element, Length, Renderer};
 use iced::widget::{column, text, text_input, button, container, vertical_space, row, horizontal_space};
 use iced_aw::{TabLabel, Tabs};
 use iced_runtime::Command;
+use lettre::message::MultiPart;
 use mongodb::bson::{doc, Document};
+use rand::Rng;
+use crate::config::EMAIL_ADDRESS;
 use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::scenes::scenes::Scenes;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 
+/// User account registration fields; possible values are:
+/// - [Email(String)](RegisterField::Email);
+/// - [Username(String)](RegisterField::Username);
+/// - [Password(String)](RegisterField::Password);
+/// - [Code(String)](RegisterField::Code), which refers to the email validation code.
 #[derive(Clone)]
 enum RegisterField {
     Email(String),
     Username(String),
     Password(String),
+    Code(String),
 }
 
+/// User account authentication fields; possible values are:
+/// - [Email(String)](LogInField::Email);
+/// - [Password(String)](LoginField::Password).
 #[derive(Clone)]
 enum LogInField {
     Email(String),
     Password(String),
 }
 
+/// Possible messages for the authentication page:
+/// - [RegisterTextFieldUpdate(RegisterField)](AuthAction::RegisterTextFieldUpdate), for when a field from the registration
+/// form has been modified;
+/// - [LogInTextFieldUpdate(LogInField)](AuthAction::LogInTextFieldUpdate), for when a field from the authentication
+/// form has been modified;
+/// - [SendRegister(bool)](AuthAction::SendRegister), that handles registration; when the parameter is false, it adds
+/// the user data to the database; when it is true, it sends an email with a verification code;
+/// - [ValidateEmail](AuthAction::ValidateEmail), that handles email validation attempts;
+/// - [DoneRegistration](AuthAction::DoneRegistration), that signals when a new user has been successfully registered;
+/// - [SendLogIn](AuthAction::SendLogIn), that attempts to authenticate a user;
+/// - [LoggedIn(User)](AuthAction::LoggedIn), that signals when a user has been successfully authenticated;
+/// - [TabSelection(TabIds)](AuthAction::TabSelection), that changes the currently selected tab.
 #[derive(Clone)]
 enum AuthAction {
     None,
     RegisterTextFieldUpdate(RegisterField),
     LogInTextFieldUpdate(LogInField),
-    SendRegister,
+    SendRegister(bool),
+    ValidateEmail,
+    DoneRegistration,
     SendLogIn,
     LoggedIn(User),
     TabSelection(TabIds),
@@ -42,7 +69,9 @@ impl Action for AuthAction {
             AuthAction::None => String::from("None"),
             AuthAction::RegisterTextFieldUpdate(_) => String::from("Modified register text input field"),
             AuthAction::LogInTextFieldUpdate(_) => String::from("Modified log in text input field"),
-            AuthAction::SendRegister => String::from("Register attempt"),
+            AuthAction::SendRegister(_) => String::from("Register attempt"),
+            AuthAction::ValidateEmail => String::from("Validate email address"),
+            AuthAction::DoneRegistration => String::from("Successful registration"),
             AuthAction::SendLogIn => String::from("Log In attempt"),
             AuthAction::LoggedIn(_) => String::from("Logged in successfully"),
             AuthAction::TabSelection(_) => String::from("Select tab"),
@@ -56,6 +85,7 @@ impl Into<Box<dyn Action + 'static>> for Box<AuthAction> {
     fn into(self) -> Box<dyn Action + 'static> { Box::new(*self) }
 }
 
+/// Structure for the user data: the email, username, and the hash of the password.
 #[derive(Default, Debug, Clone)]
 pub struct User {
     email: String,
@@ -64,9 +94,12 @@ pub struct User {
 }
 
 impl User {
+    /// Returns the email of the [user](User).
     pub fn get_email(&self) -> String { self.email.clone() }
+    /// Returns the username of the [user](User).
     pub fn get_username(&self) -> String { self.username.clone() }
 
+    /// Tests whether the given password is the same as the [users](User).
     pub fn test_password(&self, password: &String) -> bool {
         pwhash::bcrypt::verify(password, &*self.password_hash)
     }
@@ -90,11 +123,13 @@ impl Deserialize for User {
     }
 }
 
+/// The fields of a registration form: email, username, password and email verification code.
 #[derive(Default, Clone)]
-struct RegisterForm {
+pub struct RegisterForm {
     email: String,
     username: String,
     password: String,
+    code: String,
 }
 
 impl Serialize for RegisterForm {
@@ -103,10 +138,13 @@ impl Serialize for RegisterForm {
             "email": self.email.clone(),
             "username": self.username.clone(),
             "password": self.password.clone(),
+            "code": self.code.clone(),
+            "validated": false,
         }
     }
 }
 
+/// The fields of an authentication form: email and password.
 #[derive(Default, Clone)]
 struct LogInForm {
     email: String,
@@ -117,18 +155,23 @@ impl Serialize for LogInForm {
     fn serialize(&self) -> Document {
         doc! {
             "email": self.email.clone(),
+            "validated": true,
         }
     }
 }
 
+/// Model for authentication scene. Holds the [id](TabIds) of the currently active tab, the data for the [registration form](RegisterForm),
+/// the data for the [authentication form](LogInForm), the user input value of the email verification code, and the global data.
 #[derive(Clone)]
 pub struct Auth {
     active_tab: TabIds,
     register_form: RegisterForm,
     log_in_form: LogInForm,
+    register_code: Option<String>,
     globals: Globals,
 }
 
+/// The options for the authentication page. Holds the initial [tab id](TabIds).
 #[derive(Debug, Clone, Copy)]
 pub struct AuthOptions {
     active_tab: Option<TabIds>,
@@ -150,9 +193,65 @@ impl SceneOptions<Auth> for AuthOptions {
     fn boxed_clone(&self) -> Box<dyn SceneOptions<Auth>> { Box::new(*self) }
 }
 
+impl Auth {
+    /// [Mongo request chain function](MongoRequestType::Chain) that checks whether a user already exists.
+    pub fn check_user_exists(res: MongoResponse, document: Document) -> Option<MongoRequest>
+    {
+        match res {
+            MongoResponse::Get(res) => {
+                if res.len() > 0 {
+                    None
+                } else {
+                    Some(MongoRequest::new(
+                        "users".into(),
+                        MongoRequestType::Insert(
+                            vec![
+                                document
+                            ]
+                        )
+                    ))
+                }
+            }
+            _ => None
+        }
+    }
+
+    /// [Mongo request chain function](MongoRequestType::Chain) that sets the validated field as true for a given user.
+    pub fn set_email_validated(res: MongoResponse, document: Document) -> Option<MongoRequest>
+    {
+        let email = document.get_str("email");
+        if email.is_err() {
+            return None;
+        }
+
+        match res {
+            MongoResponse::Get(res) => {
+                if res.len() > 0 {
+                    Some(MongoRequest::new(
+                        "users".into(),
+                        MongoRequestType::Update(
+                            doc! {
+                                "email": email.unwrap(),
+                            },
+                            doc! {
+                                "$set": {
+                                    "validated": true,
+                                },
+                            }
+                        )
+                    ))
+                } else {
+                    None
+                }
+            }
+            _ => None
+        }
+    }
+}
+
 impl Scene for Auth {
     fn new(options: Option<Box<dyn SceneOptions<Self>>>, globals: Globals) -> (Self, Command<Message>) where Self: Sized {
-        let mut auth = Auth { active_tab: TabIds::LogIn, register_form: RegisterForm::default(), log_in_form: LogInForm::default(), globals };
+        let mut auth = Auth { active_tab: TabIds::LogIn, register_form: RegisterForm::default(), log_in_form: LogInForm::default(), register_code: None, globals };
         if let Some(options) = options {
             options.apply_options(&mut auth);
         }
@@ -177,6 +276,9 @@ impl Scene for Auth {
                     RegisterField::Password(password) => {
                         self.register_form.password = password.clone();
                     }
+                    RegisterField::Code(code) => {
+                        self.register_code = Some(code.clone());
+                    }
                 }
             }
             AuthAction::LogInTextFieldUpdate(field) => {
@@ -189,9 +291,68 @@ impl Scene for Auth {
                     }
                 }
             }
-            AuthAction::SendRegister => {
-                let mut register_form = self.register_form.clone();
-                register_form.password = pwhash::bcrypt::hash(register_form.password).unwrap();
+            AuthAction::SendRegister(added_to_db) => {
+                return if *added_to_db {
+                    let mail = lettre::Message::builder()
+                        .from(format!("Chartsy <{}>", EMAIL_ADDRESS).parse().unwrap())
+                        .to(format!("{} <{}>", self.register_form.username.clone(), self.register_form.email.clone()).parse().unwrap())
+                        .subject("Code validation for Chartsy account")
+                        .multipart(MultiPart::alternative_plain_html(
+                            String::from(format!("Use the following code to validate your email address:\n{}", self.register_form.code)),
+                            String::from(format!("<p>Use the following code to validate your email address:</p><h1>{}</h1>", self.register_form.code))
+                        )).unwrap();
+
+                    self.register_code = Some("".into());
+
+                    Command::perform(
+                        async {},
+                        |_| Message::SendSmtpMail(mail)
+                    )
+                } else {
+                    let mut rng = rand::thread_rng();
+                    self.register_form.code = (0..6).map(|_| rng.gen_range(0..=9).to_string()).collect();
+
+                    let mut register_form = self.register_form.clone();
+                    register_form.password = pwhash::bcrypt::hash(register_form.password).unwrap();
+
+                    Command::perform(
+                        async {},
+                        move |_| {
+                            Message::SendMongoRequests(
+                                vec![
+                                    MongoRequest::new(
+                                        "users".into(),
+                                        MongoRequestType::Chain(
+                                            Box::new(MongoRequestType::Get(
+                                                doc! {
+                                                "email": register_form.email.clone(),
+                                            }
+                                            )),
+                                            vec![
+                                                (register_form.serialize(), Auth::check_user_exists)
+                                            ]
+                                        )
+                                    )
+                                ],
+                                |res| {
+                                    if let Some(MongoResponse::Chain(insert)) = res.get(0) {
+                                        match insert.deref() {
+                                            MongoResponse::Insert(_) => Box::new(AuthAction::SendRegister(true)),
+                                            _ => Box::new(AuthAction::None)
+                                        }
+                                    } else {
+                                        Box::new(AuthAction::None)
+                                    }
+                                }
+                            )
+                        }
+                    )
+                }
+            }
+            AuthAction::ValidateEmail => {
+                let register_code = self.register_code.clone();
+                let register_form = self.register_form.clone();
+                self.register_code = Some("".into());
 
                 return Command::perform(
                     async { },
@@ -200,16 +361,31 @@ impl Scene for Auth {
                             vec![
                                 MongoRequest::new(
                                     "users".into(),
-                                    MongoRequestType::Insert(
+                                    MongoRequestType::Chain(
+                                        Box::new(MongoRequestType::Get(
+                                                doc!{
+                                                    "email": register_form.email.clone(),
+                                                    "code": register_code,
+                                                }
+                                        )),
                                         vec![
-                                            register_form.serialize()
+                                            (doc!{"email": register_form.email}, Auth::set_email_validated)
                                         ]
                                     )
                                 )
                             ],
                             |res| {
-                                if let Some(MongoResponse::Insert(_insert_result)) = res.get(0) {
-                                    Box::new(AuthAction::TabSelection(TabIds::LogIn))
+                                if let Some(MongoResponse::Chain(res)) = res.get(0) {
+                                    match res.deref() {
+                                        MongoResponse::Update(update_result) => {
+                                            if update_result.modified_count > 0 {
+                                                Box::new(AuthAction::DoneRegistration)
+                                            } else {
+                                                Box::new(AuthAction::None)
+                                            }
+                                        }
+                                        _ => Box::new(AuthAction::None)
+                                    }
                                 } else {
                                     Box::new(AuthAction::None)
                                 }
@@ -217,6 +393,10 @@ impl Scene for Auth {
                         )
                     }
                 );
+            }
+            AuthAction::DoneRegistration => {
+                self.register_code = None;
+                self.active_tab = TabIds::LogIn;
             }
             AuthAction::SendLogIn => {
                 let log_in_form = self.log_in_form.clone();
@@ -292,26 +472,39 @@ impl Scene for Auth {
                             (
                                 TabIds::Register,
                                 TabLabel::Text("Register".into()),
-                                column![
-                                    text("Email:"),
-                                    text_input(
-                                        "Input email...",
-                                        &*self.register_form.email
-                                    ).on_input(|value| {Message::DoAction(Box::new(AuthAction::RegisterTextFieldUpdate(RegisterField::Email(value))))}),
-                                    text("Username:"),
-                                    text_input(
-                                        "Input username...",
-                                        &*self.register_form.username
-                                    ).on_input(|value| {Message::DoAction(Box::new(AuthAction::RegisterTextFieldUpdate(RegisterField::Username(value))))}),
-                                    text("Password:"),
-                                    text_input(
-                                        "Input password...",
-                                        &*self.register_form.password
-                                    ).on_input(|value| {Message::DoAction(Box::new(AuthAction::RegisterTextFieldUpdate(RegisterField::Password(value))))})
-                                        .password(),
-                                    button("Register").on_press(Message::DoAction(Box::new(AuthAction::SendRegister)))
-                                ]
-                                    .into()
+                                if let Some(code) = &self.register_code {
+                                    column![
+                                        text("A code has been sent to your email address:"),
+                                        text_input(
+                                            "Input register code...",
+                                            code
+                                        ).on_input(|value| {Message::DoAction(Box::new(AuthAction::RegisterTextFieldUpdate(RegisterField::Code(value))))}),
+                                        button("Validate").on_press(Message::DoAction(Box::new(AuthAction::ValidateEmail)))
+                                    ]
+                                        .into()
+                                } else {
+                                    column![
+                                        text("Email:"),
+                                        text_input(
+                                            "Input email...",
+                                            &*self.register_form.email
+                                        ).on_input(|value| {Message::DoAction(Box::new(AuthAction::RegisterTextFieldUpdate(RegisterField::Email(value))))}),
+                                        text("Username:"),
+                                        text_input(
+                                            "Input username...",
+                                            &*self.register_form.username
+                                        ).on_input(|value| {Message::DoAction(Box::new(AuthAction::RegisterTextFieldUpdate(RegisterField::Username(value))))}),
+                                        text("Password:"),
+                                        text_input(
+                                            "Input password...",
+                                            &*self.register_form.password
+                                        ).on_input(|value| {Message::DoAction(Box::new(AuthAction::RegisterTextFieldUpdate(RegisterField::Password(value))))})
+                                            .password(),
+                                        button("Register").on_press(Message::DoAction(Box::new(AuthAction::SendRegister(false))))
+                                    ]
+                                        .into()
+                                }
+
                             ),
                             (
                                 TabIds::LogIn,

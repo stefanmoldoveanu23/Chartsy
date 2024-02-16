@@ -73,19 +73,23 @@ impl Debug for dyn Action {
 /// - [ChangeScene](Message::ChangeScene), for handling transitions between [Scenes](Scene);
 /// - [DoAction](Message::DoAction), which is passed to the [update](Scene::update) function
 /// of the current [Scene];
+/// - [UpdateGlobals](Message::UpdateGlobals), to update the global values in the current [Scene](Scene);
 /// - [DoneDatabaseInit](Message::DoneDatabaseInit), which signals that the mongo [Database]
 /// connection was completed successfully;
 /// - [SendMongoRequests](Message::SendMongoRequests), for sending [MongoRequests](MongoRequest)
 /// to the [Database];
+/// - [SendSmtpMail](Message::SendSmtpMail), to send an e-mail using the official email address;
 /// - [Event](Message::Event), for handling [Events](Event).
 #[derive(Debug, Clone)]
 pub enum Message {
+    None,
     Error(String),
     ChangeScene(Scenes),
     DoAction(Box<dyn Action>),
     UpdateGlobals(Globals),
     DoneDatabaseInit(Result<Database, mongodb::error::Error>),
     SendMongoRequests(Vec<MongoRequest>, fn(Vec<MongoResponse>) -> Box<dyn Action>),
+    SendSmtpMail(lettre::Message),
     Event(Event)
 }
 
@@ -100,6 +104,7 @@ impl Globals {
     /// Updates the value of the user.
     pub(crate) fn set_user (&mut self, user: Option<User>) { self.user = user; }
 
+    /// Returns the user data.
     pub(crate) fn get_user (&self) -> Option<User> { self.user.clone() }
 
     /// Updates the value of the window_size.
