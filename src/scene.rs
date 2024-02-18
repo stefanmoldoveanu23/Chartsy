@@ -2,6 +2,7 @@ use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use iced::{Command, Element, Event, Renderer, Size};
 use mongodb::{Database};
+use crate::errors::error::Error;
 use crate::mongo::{MongoRequest, MongoResponse};
 use crate::scenes::auth::User;
 use crate::scenes::scenes::Scenes;
@@ -20,6 +21,8 @@ pub trait Scene: Send+Sync {
     /// Returns a view of the [Scene]; to be called in the [view](iced::Application::view)
     /// function of the [Application](crate::Chartsy).
     fn view(&self) -> Element<'_, Message, Renderer<Theme>>;
+    /// Returns the [scenes](Scene) own error handler action.
+    fn get_error_handler(&self, error: Error) -> Box<dyn Action>;
     /// Updates the [global values](Globals) when they change externally.
     fn update_globals(&mut self, globals: Globals);
     /// Handles closing the [Scene].
@@ -83,11 +86,11 @@ impl Debug for dyn Action {
 #[derive(Debug, Clone)]
 pub enum Message {
     None,
-    Error(String),
+    Error(Error),
     ChangeScene(Scenes),
     DoAction(Box<dyn Action>),
     UpdateGlobals(Globals),
-    DoneDatabaseInit(Result<Database, mongodb::error::Error>),
+    DoneDatabaseInit(Result<Database, Error>),
     SendMongoRequests(Vec<MongoRequest>, fn(Vec<MongoResponse>) -> Box<dyn Action>),
     SendSmtpMail(lettre::Message),
     Event(Event)

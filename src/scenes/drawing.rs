@@ -13,6 +13,7 @@ use crate::canvas::tools::{line::LinePending, rect::RectPending, triangle::Trian
 use crate::canvas::tools::{brush::BrushPending, brushes::{pencil::Pencil, pen::Pen, airbrush::Airbrush, eraser::Eraser}};
 use crate::scenes::scenes::Scenes;
 use crate::canvas::layer::CanvasAction;
+use crate::errors::error::Error;
 
 use crate::theme::Theme;
 
@@ -22,12 +23,14 @@ use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 /// - [None](DrawingAction::None), for when no action is required;
 /// - [CanvasAction](DrawingAction::CanvasAction), for when the user interacts with the canvas;
 /// to be sent to the [Canvas] instance for handling;
-/// - [TabSelection](DrawingAction::TabSelection), which handles the options tab for drawing.
+/// - [TabSelection](DrawingAction::TabSelection), which handles the options tab for drawing;
+/// - [ErrorHandler(Error)](DrawingAction::ErrorHandler), which handles errors.
 #[derive(Clone)]
 pub(crate) enum DrawingAction {
     None,
     CanvasAction(CanvasAction),
     TabSelection(TabIds),
+    ErrorHandler(Error),
 }
 
 impl Action for DrawingAction {
@@ -40,6 +43,7 @@ impl Action for DrawingAction {
             DrawingAction::None => String::from("None"),
             DrawingAction::CanvasAction(_) => String::from("Canvas action"),
             DrawingAction::TabSelection(_) => String::from("Tab selected"),
+            DrawingAction::ErrorHandler(_) => String::from("Handle error"),
         }
     }
 
@@ -198,7 +202,8 @@ impl Scene for Box<Drawing> {
                 self.active_tab = *tab_id;
                 Command::none()
             },
-            _ => {Command::none()}
+            DrawingAction::ErrorHandler(_) => { Command::none() }
+            DrawingAction::None => { Command::none() }
         }
     }
 
@@ -288,6 +293,8 @@ impl Scene for Box<Drawing> {
             .align_items(Alignment::Center)
             .into()
     }
+
+    fn get_error_handler(&self, error: Error) -> Box<dyn Action> { Box::new(DrawingAction::ErrorHandler(error)) }
 
     fn update_globals(&mut self, globals: Globals) {
         self.globals = globals;

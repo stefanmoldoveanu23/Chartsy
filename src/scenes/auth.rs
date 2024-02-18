@@ -1,5 +1,4 @@
 use std::any::Any;
-use std::ops::Deref;
 use iced::{Element, Length, Renderer};
 use iced::widget::{column, text, text_input, button, container, vertical_space, row, horizontal_space};
 use iced_aw::{TabLabel, Tabs};
@@ -7,7 +6,11 @@ use iced_runtime::Command;
 use lettre::message::MultiPart;
 use mongodb::bson::{doc, Document};
 use rand::Rng;
+use regex::Regex;
 use crate::config::EMAIL_ADDRESS;
+use crate::errors::auth::AuthError;
+use crate::errors::debug::DebugError;
+use crate::errors::error::Error;
 use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::scenes::scenes::Scenes;
@@ -47,7 +50,8 @@ enum LogInField {
 /// - [DoneRegistration](AuthAction::DoneRegistration), that signals when a new user has been successfully registered;
 /// - [SendLogIn](AuthAction::SendLogIn), that attempts to authenticate a user;
 /// - [LoggedIn(User)](AuthAction::LoggedIn), that signals when a user has been successfully authenticated;
-/// - [TabSelection(TabIds)](AuthAction::TabSelection), that changes the currently selected tab.
+/// - [TabSelection(TabIds)](AuthAction::TabSelection), that changes the currently selected tab;
+/// - [HandleError(Error)](AuthAction::HandleError), which handles errors.
 #[derive(Clone)]
 enum AuthAction {
     None,
@@ -59,6 +63,7 @@ enum AuthAction {
     SendLogIn,
     LoggedIn(User),
     TabSelection(TabIds),
+    HandleError(Error)
 }
 
 impl Action for AuthAction {
@@ -75,6 +80,7 @@ impl Action for AuthAction {
             AuthAction::SendLogIn => String::from("Log In attempt"),
             AuthAction::LoggedIn(_) => String::from("Logged in successfully"),
             AuthAction::TabSelection(_) => String::from("Select tab"),
+            AuthAction::HandleError(_) => String::from("Handle an error"),
         }
     }
 
@@ -123,13 +129,14 @@ impl Deserialize for User {
     }
 }
 
-/// The fields of a registration form: email, username, password and email verification code.
+/// The fields of a registration form: email, username, password, email verification code, and optional errors.
 #[derive(Default, Clone)]
 pub struct RegisterForm {
     email: String,
     username: String,
     password: String,
     code: String,
+    error: Option<AuthError>,
 }
 
 impl Serialize for RegisterForm {
@@ -144,11 +151,12 @@ impl Serialize for RegisterForm {
     }
 }
 
-/// The fields of an authentication form: email and password.
+/// The fields of an authentication form: email, password and optional errors.
 #[derive(Default, Clone)]
 struct LogInForm {
     email: String,
     password: String,
+    error: Option<AuthError>,
 }
 
 impl Serialize for LogInForm {
@@ -161,13 +169,14 @@ impl Serialize for LogInForm {
 }
 
 /// Model for authentication scene. Holds the [id](TabIds) of the currently active tab, the data for the [registration form](RegisterForm),
-/// the data for the [authentication form](LogInForm), the user input value of the email verification code, and the global data.
+/// the data for the [authentication form](LogInForm), the user input value of the email verification code with optional errors, and the global data.
 #[derive(Clone)]
 pub struct Auth {
     active_tab: TabIds,
     register_form: RegisterForm,
     log_in_form: LogInForm,
     register_code: Option<String>,
+    code_error: Option<AuthError>,
     globals: Globals,
 }
 
@@ -195,14 +204,14 @@ impl SceneOptions<Auth> for AuthOptions {
 
 impl Auth {
     /// [Mongo request chain function](MongoRequestType::Chain) that checks whether a user already exists.
-    pub fn check_user_exists(res: MongoResponse, document: Document) -> Option<MongoRequest>
+    fn check_user_exists(res: MongoResponse, document: Document) -> Result<MongoRequest, Error>
     {
         match res {
             MongoResponse::Get(res) => {
                 if res.len() > 0 {
-                    None
+                    Err(Error::AuthError(AuthError::RegisterUserAlreadyExists))
                 } else {
-                    Some(MongoRequest::new(
+                    Ok(MongoRequest::new(
                         "users".into(),
                         MongoRequestType::Insert(
                             vec![
@@ -212,22 +221,22 @@ impl Auth {
                     ))
                 }
             }
-            _ => None
+            _ => Err(Error::DebugError(DebugError::new("Error in chain request typing when registering user!".into())))
         }
     }
 
     /// [Mongo request chain function](MongoRequestType::Chain) that sets the validated field as true for a given user.
-    pub fn set_email_validated(res: MongoResponse, document: Document) -> Option<MongoRequest>
+    fn set_email_validated(res: MongoResponse, document: Document) -> Result<MongoRequest, Error>
     {
         let email = document.get_str("email");
         if email.is_err() {
-            return None;
+            return Err(Error::DebugError(DebugError::new("Error in chain setting email validated; no email provided!".into())));
         }
 
         match res {
             MongoResponse::Get(res) => {
                 if res.len() > 0 {
-                    Some(MongoRequest::new(
+                    Ok(MongoRequest::new(
                         "users".into(),
                         MongoRequestType::Update(
                             doc! {
@@ -241,17 +250,47 @@ impl Auth {
                         )
                     ))
                 } else {
-                    None
+                    Err(Error::AuthError(AuthError::RegisterBadCode))
                 }
             }
-            _ => None
+            _ => Err(Error::DebugError(DebugError::new("Error in chain request typing when registering user!".into())))
+        }
+    }
+
+    /// Checks the provided credentials in the registration form; if there is an issue, then it will return the error;
+    /// otherwise, it will return [None].
+    fn check_credentials(&self) -> Option<Error>
+    {
+        let email_regex = Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap();
+        let username_regex = Regex::new(r"^[a-zA-Z0-9]+$").unwrap();
+
+        let mut password_good = true;
+        if self.register_form.password.len() < 8 {
+            password_good = false;
+        }
+
+        let lowercase_regex = Regex::new(r"[a-z]").unwrap();
+        let uppercase_regex = Regex::new(r"[A-Z]").unwrap();
+        let digit_regex = Regex::new(r"\d").unwrap();
+        let symbol_regex = Regex::new(r"[^\w\s]").unwrap();
+        if !lowercase_regex.is_match(&*self.register_form.password.clone()) | !uppercase_regex.is_match(&*self.register_form.password.clone()) | !digit_regex.is_match(&*self.register_form.password.clone()) | !symbol_regex.is_match(&*self.register_form.password.clone()) {
+            password_good = false;
+        }
+
+        let email_good = email_regex.is_match(&*self.register_form.email.clone());
+        let username_good = username_regex.is_match(&*self.register_form.username.clone());
+
+        if !email_good | !username_good | !password_good {
+            Some(Error::AuthError(AuthError::RegisterBadCredentials { email: !email_good, username: !username_good, password: !password_good }))
+        } else {
+            None
         }
     }
 }
 
 impl Scene for Auth {
     fn new(options: Option<Box<dyn SceneOptions<Self>>>, globals: Globals) -> (Self, Command<Message>) where Self: Sized {
-        let mut auth = Auth { active_tab: TabIds::LogIn, register_form: RegisterForm::default(), log_in_form: LogInForm::default(), register_code: None, globals };
+        let mut auth = Auth { active_tab: TabIds::LogIn, register_form: RegisterForm::default(), log_in_form: LogInForm::default(), register_code: None, code_error: None, globals };
         if let Some(options) = options {
             options.apply_options(&mut auth);
         }
@@ -292,6 +331,8 @@ impl Scene for Auth {
                 }
             }
             AuthAction::SendRegister(added_to_db) => {
+                self.register_form.error = None;
+
                 return if *added_to_db {
                     let mail = lettre::Message::builder()
                         .from(format!("Chartsy <{}>", EMAIL_ADDRESS).parse().unwrap())
@@ -309,6 +350,12 @@ impl Scene for Auth {
                         |_| Message::SendSmtpMail(mail)
                     )
                 } else {
+                    let error = self.check_credentials();
+
+                    if let Some(error) = error {
+                        return self.update(Box::new(AuthAction::HandleError(error)));
+                    }
+
                     let mut rng = rand::thread_rng();
                     self.register_form.code = (0..6).map(|_| rng.gen_range(0..=9).to_string()).collect();
 
@@ -335,13 +382,10 @@ impl Scene for Auth {
                                     )
                                 ],
                                 |res| {
-                                    if let Some(MongoResponse::Chain(insert)) = res.get(0) {
-                                        match insert.deref() {
-                                            MongoResponse::Insert(_) => Box::new(AuthAction::SendRegister(true)),
-                                            _ => Box::new(AuthAction::None)
-                                        }
+                                    if let Some(MongoResponse::Insert(_)) = res.get(0) {
+                                        Box::new(AuthAction::SendRegister(true))
                                     } else {
-                                        Box::new(AuthAction::None)
+                                        Box::new(AuthAction::HandleError(Error::DebugError(DebugError::new("Wrong chain final typing!".into()))))
                                     }
                                 }
                             )
@@ -353,6 +397,7 @@ impl Scene for Auth {
                 let register_code = self.register_code.clone();
                 let register_form = self.register_form.clone();
                 self.register_code = Some("".into());
+                self.code_error = None;
 
                 return Command::perform(
                     async { },
@@ -375,19 +420,10 @@ impl Scene for Auth {
                                 )
                             ],
                             |res| {
-                                if let Some(MongoResponse::Chain(res)) = res.get(0) {
-                                    match res.deref() {
-                                        MongoResponse::Update(update_result) => {
-                                            if update_result.modified_count > 0 {
-                                                Box::new(AuthAction::DoneRegistration)
-                                            } else {
-                                                Box::new(AuthAction::None)
-                                            }
-                                        }
-                                        _ => Box::new(AuthAction::None)
-                                    }
+                                if let Some(MongoResponse::Update(_)) = res.get(0) {
+                                    Box::new(AuthAction::DoneRegistration)
                                 } else {
-                                    Box::new(AuthAction::None)
+                                    Box::new(AuthAction::HandleError(Error::DebugError(DebugError::new("Wrong chain final typing!".into()))))
                                 }
                             }
                         )
@@ -399,6 +435,7 @@ impl Scene for Auth {
                 self.active_tab = TabIds::LogIn;
             }
             AuthAction::SendLogIn => {
+                self.log_in_form.error = None;
                 let log_in_form = self.log_in_form.clone();
 
                 return Command::perform(
@@ -416,7 +453,7 @@ impl Scene for Auth {
                                     if let Some(document) = cursor.get(0) {
                                         Box::new(AuthAction::LoggedIn(User::deserialize(document.clone())))
                                     } else {
-                                        Box::new(AuthAction::None)
+                                        Box::new(AuthAction::HandleError(Error::AuthError(AuthError::LogInUserDoesntExist)))
                                     }
                                 } else {
                                     Box::new(AuthAction::None)
@@ -428,7 +465,7 @@ impl Scene for Auth {
             }
             AuthAction::LoggedIn(user) => {
                 if !user.test_password(&self.log_in_form.password) {
-                    return Command::none()
+                    return self.update(Box::new(AuthAction::HandleError(Error::AuthError(AuthError::LogInUserDoesntExist))))
                 }
 
                 self.globals.set_user(Some(user.clone()));
@@ -455,13 +492,47 @@ impl Scene for Auth {
             AuthAction::TabSelection(tab_id) => {
                 self.active_tab = *tab_id;
             }
-            _ => {}
+            AuthAction::HandleError(error) => {
+                if let Error::AuthError(error) = error {
+                    match error {
+                        AuthError::RegisterBadCode => { self.code_error = Some(error.clone()); }
+                        AuthError::LogInUserDoesntExist => { self.log_in_form.error = Some(error.clone()); }
+                        AuthError::RegisterBadCredentials {..} => { self.register_form.error = Some(error.clone()); }
+                        AuthError::RegisterUserAlreadyExists => { self.register_form.error = Some(error.clone()); }
+                    }
+                }
+            }
+            AuthAction::None => { }
         }
 
         Command::none()
     }
 
     fn view(&self) -> Element<'_, Message, Renderer<Theme>> {
+        let register_error_text = text(
+            if let Some(error) = self.register_form.error.clone() {
+                error.to_string()
+            } else {
+                String::from("")
+            }
+        );
+
+        let log_in_error_text = text(
+            if let Some(error) = self.log_in_form.error.clone() {
+                error.to_string()
+            } else {
+                String::from("")
+            }
+        );
+
+        let code_error_text = text(
+            if let Some(error) = self.code_error.clone() {
+                error.to_string()
+            } else {
+                String::from("")
+            }
+        );
+
         container(
             column![
                 vertical_space(Length::FillPortion(1)),
@@ -475,6 +546,7 @@ impl Scene for Auth {
                                 if let Some(code) = &self.register_code {
                                     column![
                                         text("A code has been sent to your email address:"),
+                                        code_error_text,
                                         text_input(
                                             "Input register code...",
                                             code
@@ -484,6 +556,7 @@ impl Scene for Auth {
                                         .into()
                                 } else {
                                     column![
+                                        register_error_text,
                                         text("Email:"),
                                         text_input(
                                             "Input email...",
@@ -510,6 +583,7 @@ impl Scene for Auth {
                                 TabIds::LogIn,
                                 TabLabel::Text("Login".into()),
                                 column![
+                                    log_in_error_text,
                                     text("Email:"),
                                     text_input(
                                         "Input email...",
@@ -540,6 +614,8 @@ impl Scene for Auth {
             .center_y()
             .into()
     }
+
+    fn get_error_handler(&self, error: Error) -> Box<dyn Action> { Box::new(AuthAction::HandleError(error)) }
 
     fn update_globals(&mut self, _globals: Globals) { }
 

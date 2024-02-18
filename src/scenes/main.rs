@@ -5,6 +5,7 @@ use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{button, text, column, row, Container, Column, Scrollable, horizontal_space};
 use iced_aw::{Card, modal};
 use mongodb::bson::{Uuid, doc, Document, Bson, UuidRepresentation};
+use crate::errors::error::Error;
 
 use crate::scene::{Scene, Action, Message, SceneOptions, Globals};
 use crate::scenes::auth::{AuthOptions, TabIds};
@@ -19,13 +20,15 @@ use crate::theme::Theme;
 /// - [ShowDrawings](MainAction::ShowDrawings), which opens a [modal](modal::Modal)
 /// with a list of the drawings;
 /// - [LoadedDrawings](MainAction::LoadedDrawings), which receives the list of drawings from
-/// the [Database](mongodb::Database).
+/// the [Database](mongodb::Database);
+/// - [ErrorHandler(Error)](MainAction::ErrorHandler), which handles errors.
 #[derive(Clone)]
 enum MainAction {
     None,
     ShowDrawings,
     LoadedDrawings(Vec<Document>),
     LogOut,
+    ErrorHandler(Error),
 }
 
 impl Action for MainAction {
@@ -39,6 +42,7 @@ impl Action for MainAction {
             MainAction::ShowDrawings => String::from("Show drawings"),
             MainAction::LoadedDrawings(_) => String::from("Loaded drawings"),
             MainAction::LogOut => String::from("Logged out"),
+            MainAction::ErrorHandler(_) => String::from("Handle error"),
         }
     }
 
@@ -144,7 +148,8 @@ impl Scene for Main {
                     }
                 );
             }
-            _ => {}
+            MainAction::ErrorHandler(_) => { }
+            MainAction::None => { }
         }
 
         Command::none()
@@ -236,6 +241,8 @@ impl Scene for Main {
             .into()
 
     }
+
+    fn get_error_handler(&self, error: Error) -> Box<dyn Action> { Box::new(MainAction::ErrorHandler(error)) }
 
     fn update_globals(&mut self, globals: Globals) { self.globals = globals; }
 

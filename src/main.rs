@@ -8,6 +8,7 @@ mod serde;
 mod theme;
 mod canvas;
 mod color_picker;
+mod errors;
 
 use scene::{Message, Globals};
 use scenes::scenes::SceneLoader;
@@ -47,8 +48,6 @@ impl Application for Chartsy {
     type Flags = ();
 
     fn new(_flags: Self::Flags) -> (Chartsy, Command<Self::Message>) {
-
-
         (
             Chartsy{
                 scene_loader: SceneLoader::default(),
@@ -129,9 +128,14 @@ impl Application for Chartsy {
                 }
                 Command::none()
             }
-            Message::Error(message) => {
-                eprintln!("{}", message);
-                Command::none()
+            Message::Error(error) => {
+                if error.is_debug() {
+                    eprintln!("{}", error);
+                    Command::none()
+                } else {
+                    let scene = self.scene_loader.get_mut().expect("Error getting scene.");
+                    scene.update(scene.get_error_handler(error))
+                }
             }
         }
     }

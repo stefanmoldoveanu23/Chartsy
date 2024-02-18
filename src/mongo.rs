@@ -1,25 +1,26 @@
-use std::fmt::{Debug};
+use std::fmt::Debug;
 use async_recursion::async_recursion;
 use iced::Command;
 use mongodb::{Client, Collection, Database, options::ClientOptions};
 use mongodb::bson::Document;
-use mongodb::error::{ErrorKind};
 use mongodb::results::{DeleteResult, InsertManyResult, UpdateResult};
 use crate::scene::{Action, Message};
 
 use crate::config::{MONGO_NAME, MONGO_PASS};
+use crate::errors::error::Error;
 
 /// Attempts to connect to the mongo [Database].
 ///
 /// Returns an error upon failure.
-pub async fn connect_to_mongodb() -> Result<Database, mongodb::error::Error>
+pub async fn connect_to_mongodb() -> Result<Database, Error>
     where
         Client: Send + 'static,
 {
     let client_options = ClientOptions::parse(
         format!("mongodb+srv://{}:{}@cluster0.jwkwr.mongodb.net/?retryWrites=true&w=majority", MONGO_NAME, MONGO_PASS)
-    ).await?;
-    let client = Client::with_options(client_options)?;
+    ).await.map_err(|error| Error::from(error))?;
+
+    let client = Client::with_options(client_options).map_err(|error| Error::from(error))?;
 
     Ok(client.database("chartsy"))
 }
@@ -32,7 +33,7 @@ pub async fn connect_to_mongodb() -> Result<Database, mongodb::error::Error>
 /// - [Chain](MongoRequestType::Chain), which can chain multiple [MongoRequests](MongoRequest); the first value is
 /// the initial [MongoRequestType], and the second is a vector of pairs of a [Document], and a function that takes
 /// the [MongoResponse] of the previous request and the document, and returns the next request; if an
-/// error took place, the chain can also be halted by setting the next request as [None].
+/// error took place, the chain can also be halted by setting the next request as [Err].
 #[derive(Debug, Clone)]
 pub enum MongoRequestType
 {
@@ -40,7 +41,7 @@ pub enum MongoRequestType
     Insert(Vec<Document>),
     Update(Document, Document),
     Delete(Document),
-    Chain(Box<Self>, Vec<(Document, fn(MongoResponse, Document) -> Option<MongoRequest>)>),
+    Chain(Box<Self>, Vec<(Document, fn(MongoResponse, Document) -> Result<MongoRequest, Error>)>),
 }
 
 /// A request to be sent to a mongo [Database].
@@ -64,14 +65,14 @@ impl MongoRequest {
     /// Sends a [Get](MongoRequestType::Get) request to the given [Database] and returns
     /// a list of the results.
     async fn handle_get(database: &Database, collection_name: &String, filter: Document)
-        -> Result<Vec<Document>, mongodb::error::Error> {
+        -> Result<Vec<Document>, Error> {
         let collection :Collection<Result<Document, mongodb::error::Error>>= database.collection(&*collection_name);
         let cursor = collection.find(Some(filter), None).await;
 
         match cursor {
             Ok(mut cursor) => {
                 let mut vec :Vec<Document>= vec![];
-                let res :Result<Vec<Document>, mongodb::error::Error>;
+                let res :Result<Vec<Document>, Error>;
 
                 loop {
                     let exists = cursor.advance().await;
@@ -83,7 +84,7 @@ impl MongoRequest {
                                 match value {
                                     Ok(document) => vec.push(document),
                                     Err(err) => {
-                                        res = Err(mongodb::error::Error::from(err));
+                                        res = Err(mongodb::error::Error::from(err).into());
                                         break;
                                     }
                                 }
@@ -93,7 +94,7 @@ impl MongoRequest {
                             }
                         }
                         Err(err) => {
-                            res = Err(err);
+                            res = Err(err.into());
                             break;
                         }
                     }
@@ -102,7 +103,7 @@ impl MongoRequest {
                 res
             }
             Err(err) => {
-                Err(err)
+                Err(err.into())
             }
         }
     }
@@ -110,46 +111,48 @@ impl MongoRequest {
     /// Sends an [Insert](MongoRequestType::Insert) request to the given [Database] and returns
     /// the [inserted ids](InsertManyResult).
     async fn handle_insert(database: &Database, collection_name: &String, documents: Vec<Document>)
-        -> Result<InsertManyResult, mongodb::error::Error>
+        -> Result<InsertManyResult, Error>
     {
         let collection :Collection<Document>= database.collection(&*collection_name);
-        collection.insert_many(documents, None).await
+        collection.insert_many(documents, None).await.map_err(|error| Error::from(error))
     }
 
     /// Sends an [Update](MongoRequestType::Update) request to the given [Database] and returns
     /// the [results](UpdateResult).
     async fn handle_update(database: &Database, collection_name: &String, filter: Document, update: Document)
-        -> Result<UpdateResult, mongodb::error::Error>
+        -> Result<UpdateResult, Error>
     {
         let collection :Collection<Document>= database.collection(&*collection_name);
-        collection.update_many(filter.clone(), update.clone(), None).await
+        collection.update_many(filter.clone(), update.clone(), None).await.map_err(|error| Error::from(error))
     }
 
     /// Sends a [Delete](MongoRequestType::Delete) request to the given [Database] and returns
     /// the [number of deleted records](DeleteResult).
     async fn handle_delete(database: &Database, collection_name: &String, filter: Document)
-        -> Result<DeleteResult, mongodb::error::Error>
+        -> Result<DeleteResult, Error>
     {
         let collection :Collection<Document>= database.collection(&*collection_name);
-        collection.delete_many(filter.clone(), None).await
+        collection.delete_many(filter.clone(), None).await.map_err(|error| Error::from(error))
     }
 
     /// Sends a chain of requests to the given [Database] and returns the final [MongoResponse].
     #[async_recursion]
-    async fn handle_chain(database: &Database, collection_name: &String, initial_request: Box<MongoRequestType>, chain: Vec<(Document, fn(MongoResponse, Document) -> Option<MongoRequest>)>)
-        -> Result<Box<MongoResponse>, mongodb::error::Error>
+    async fn handle_chain(database: &Database, collection_name: &String, initial_request: Box<MongoRequestType>, chain: Vec<(Document, fn(MongoResponse, Document) -> Result<MongoRequest, Error>)>)
+        -> Result<MongoResponse, Error>
     {
-        let mut request = Some(MongoRequest { collection_name: collection_name.clone(), request_type: *initial_request });
-        let mut response :Result<MongoResponse, mongodb::error::Error>= MongoRequest::handle_request(database, request.unwrap()).await;
+        let mut request = Ok(MongoRequest { collection_name: collection_name.clone(), request_type: *initial_request });
+        let mut response :Result<MongoResponse, Error>= MongoRequest::handle_request(database, request.unwrap()).await;
 
         for transition in chain {
             if let Ok(res) = response {
                 request = transition.1(res, transition.0);
 
-                if let Some(req) = request {
-                    response = MongoRequest::handle_request(database, req).await;
-                } else {
-                    response = Err(ErrorKind::Shutdown.into());
+                response = match request {
+                    Ok(req) => MongoRequest::handle_request(database, req).await,
+                    Err(err) => Err(err)
+                };
+
+                if response.is_err() {
                     break;
                 }
             } else {
@@ -158,13 +161,13 @@ impl MongoRequest {
 
         }
 
-        response.map(|res| Box::new(res))
+        response
     }
 
     /// Returns the [MongoResponse] to a [MongoRequest].
     #[async_recursion]
     async fn handle_request(database: &Database, mongo_request: MongoRequest)
-        -> Result<MongoResponse, mongodb::error::Error>
+        -> Result<MongoResponse, Error>
     {
         let collection_name = &mongo_request.collection_name;
 
@@ -173,7 +176,7 @@ impl MongoRequest {
             MongoRequestType::Insert(documents) => MongoRequest::handle_insert(database, collection_name, documents.clone()).await.map(|result| MongoResponse::Insert(result)),
             MongoRequestType::Update(filter, update) => MongoRequest::handle_update(database, collection_name, filter.clone(), update.clone()).await.map(|result| MongoResponse::Update(result)),
             MongoRequestType::Delete(filter) => MongoRequest::handle_delete(database, collection_name, filter.clone()).await.map(|result| MongoResponse::Delete(result)),
-            MongoRequestType::Chain(initial_request, chain) => MongoRequest::handle_chain(database, collection_name, initial_request.clone(), chain).await.map(|response| MongoResponse::Chain(response)),
+            MongoRequestType::Chain(initial_request, chain) => MongoRequest::handle_chain(database, collection_name, initial_request.clone(), chain).await,
         }
     }
 
@@ -208,7 +211,7 @@ impl MongoRequest {
                         Message::DoAction((requests.1)(responses))
                     }
                     Err(err) => {
-                        Message::Error(format!("Error accessing mongo database: {}", err))
+                        Message::Error(err)
                     }
                 }
             }
@@ -221,14 +224,12 @@ impl MongoRequest {
 /// - [Get](MongoResponse::Get), with a list of [Documents](Document);
 /// - [Insert](MongoResponse::Insert), with the list of [inserted ids](InsertManyResult);
 /// - [Update](MongoResponse::Update), with the [update results](UpdateResult);
-/// - [Delete](MongoResponse::Delete), with the [number of deleted records](DeleteResult);
-/// - [Chain](MongoResponse::Chain), with the [MongoResponse] to the final [MongoRequest].
+/// - [Delete](MongoResponse::Delete), with the [number of deleted records](DeleteResult)/
 pub enum MongoResponse {
     Get(Vec<Document>),
     Insert(InsertManyResult),
     Update(UpdateResult),
     Delete(DeleteResult),
-    Chain(Box<MongoResponse>),
 }
 
 unsafe impl Send for MongoResponse {}
