@@ -162,11 +162,11 @@ impl Deserialize for Triangle {
             triangle.point1 = Point::deserialize(point1.clone());
         }
 
-        if let Some(Bson::Document(point2)) = document.get("point1") {
+        if let Some(Bson::Document(point2)) = document.get("point2") {
             triangle.point2 = Point::deserialize(point2.clone());
         }
 
-        if let Some(Bson::Document(point3)) = document.get("point1") {
+        if let Some(Bson::Document(point3)) = document.get("point3") {
             triangle.point3 = Point::deserialize(point3.clone());
         }
 

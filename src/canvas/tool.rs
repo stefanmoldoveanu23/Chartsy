@@ -31,7 +31,7 @@ pub fn get_deserialized(document: Document) -> Option<(Arc<dyn Tool>, usize)> {
     if let Some(Bson::String(name)) = document.get("name") {
         match &name[..] {
             "Line" => Some((Arc::new(Line::deserialize(document)), layer)),
-            "Rect" => Some((Arc::new(Rect::deserialize(document)), layer)),
+            "Rectangle" => Some((Arc::new(Rect::deserialize(document)), layer)),
             "Triangle" => Some((Arc::new(Triangle::deserialize(document)), layer)),
             "Polygon" => Some((Arc::new(Polygon::deserialize(document)), layer)),
             "Circle" => Some((Arc::new(Circle::deserialize(document)), layer)),
@@ -53,7 +53,7 @@ impl Clone for Box<dyn Tool> {
     }
 }
 
-/// A version of a [Tool] to be used for easily marking the its drawing progress.
+/// A version of a [Tool] to be used for easily marking its drawing progress.
 /// It is advised to be implemented as an enum where each variant represents a state in the shaping
 /// of the [Tool], as it is intended to be used as the State type for the canvas'
 /// [Program](iced::widget::canvas::Program).
