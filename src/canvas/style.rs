@@ -4,7 +4,7 @@ use mongodb::bson::{Bson, doc, Document};
 use crate::scene::Message;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
-use crate::color_picker::ColorPicker;
+use crate::widgets::color_picker::ColorPicker;
 
 /// A structure used to define the style of the drawn [tools](crate::canvas::tool::Tool).
 ///
@@ -89,8 +89,8 @@ impl Style {
     }
 
     /// Returns an interactable settings section for the [Style].
-    pub(crate) fn view<'a>(&self) -> Element<'a, StyleUpdate, Renderer<Theme>> {
-        let mut column :Vec<Element<'a, StyleUpdate, Renderer<Theme>>>= vec![];
+    pub(crate) fn view<'a>(&self) -> Element<'a, StyleUpdate, Theme, Renderer> {
+        let mut column :Vec<Element<'a, StyleUpdate, Theme, Renderer>>= vec![];
 
         if let Some((width, color, visibility_width, visibility_color)) = self.stroke {
             column.push(Button::new("Stroke width").on_press(StyleUpdate::ToggleStrokeWidth).into());

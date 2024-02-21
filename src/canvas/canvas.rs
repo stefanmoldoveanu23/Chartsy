@@ -249,7 +249,7 @@ impl Canvas {
     }
 }
 
-impl<'a> From<&'a Canvas> for Element<'a, Message, Renderer<Theme>> {
+impl<'a> From<&'a Canvas> for Element<'a, Message, Theme, Renderer> {
     fn from(value: &'a Canvas) -> Self {
         Element::new(CanvasVessel::new(value)).map(|action| {Message::DoAction(Box::new(DrawingAction::CanvasAction(action)))})
     }
@@ -259,7 +259,7 @@ struct CanvasVessel<'a> {
     width: Length,
     height: Length,
     states: &'a [State],
-    layers: Box<Vec<canvas::Canvas<Layer<'a>, CanvasAction, Renderer<Theme>>>>,
+    layers: Box<Vec<canvas::Canvas<Layer<'a>, CanvasAction, Theme, Renderer>>>,
     current_layer: usize,
 }
 
@@ -292,22 +292,22 @@ impl<'a> CanvasVessel<'a> {
     }
 }
 
-impl<'a> Widget<CanvasAction, Renderer<Theme>> for CanvasVessel<'a> {
-    fn width(&self) -> Length {
-        self.width
-    }
-
-    fn height(&self) -> Length {
-        self.height
+impl<'a> Widget<CanvasAction, Theme, Renderer> for CanvasVessel<'a> {
+    fn size(&self) -> Size<Length> {
+        Size {
+            width: self.width,
+            height: self.height,
+        }
     }
 
     fn layout(
         &self,
-        _renderer: &Renderer<Theme>,
+        _tree: &mut Tree,
+        _renderer: &Renderer,
         limits: &Limits
     ) -> Node {
         let limits = limits.width(self.width).height(self.height);
-        let size = limits.resolve(Size::ZERO);
+        let size = limits.resolve(self.width, self.height, Size::ZERO);
 
         Node::new(size)
     }
@@ -315,7 +315,7 @@ impl<'a> Widget<CanvasAction, Renderer<Theme>> for CanvasVessel<'a> {
     fn draw(
         &self,
         state: &Tree,
-        renderer: &mut Renderer<Theme>,
+        renderer: &mut Renderer,
         theme: &Theme,
         style: &iced::advanced::renderer::Style,
         layout: Layout<'_>,
@@ -337,11 +337,11 @@ impl<'a> Widget<CanvasAction, Renderer<Theme>> for CanvasVessel<'a> {
 
     fn tag(&self) -> tree::Tag {
         struct Tag<T>(T);
-        tree::Tag::of::<Tag<<Layer<'_> as canvas::Program<CanvasAction, Renderer<Theme>>>::State>>()
+        tree::Tag::of::<Tag<<Layer<'_> as canvas::Program<CanvasAction, Theme, Renderer>>::State>>()
     }
 
     fn state(&self) -> tree::State {
-        tree::State::new(<Layer<'_> as canvas::Program<CanvasAction, Renderer<Theme>>>::State::default())
+        tree::State::new(<Layer<'_> as canvas::Program<CanvasAction, Theme, Renderer>>::State::default())
     }
 
     fn on_event(
@@ -350,7 +350,7 @@ impl<'a> Widget<CanvasAction, Renderer<Theme>> for CanvasVessel<'a> {
         event: Event,
         layout: Layout<'_>,
         cursor: Cursor,
-        renderer: &Renderer<Theme>,
+        renderer: &Renderer,
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, CanvasAction>,
         viewport: &Rectangle
@@ -374,7 +374,7 @@ impl<'a> Widget<CanvasAction, Renderer<Theme>> for CanvasVessel<'a> {
         layout: Layout<'_>,
         cursor: Cursor,
         viewport: &Rectangle,
-        renderer: &Renderer<Theme>
+        renderer: &Renderer
     ) -> Interaction {
         self.layers[self.current_layer].mouse_interaction(
             state,

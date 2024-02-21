@@ -5,11 +5,11 @@ use iced::{mouse, Point, Rectangle, Renderer, keyboard, Size, Color};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
+use iced_style::core::SmolStr;
 use mongodb::bson::{Bson, doc, Document};
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
-use crate::theme::Theme;
 
 use crate::canvas::tool::{Pending, Tool};
 
@@ -26,6 +26,8 @@ impl Pending for RectPending {
         cursor: Point,
         style: Style,
     ) -> (Status, Option<CanvasAction>) {
+        let key_s :SmolStr= SmolStr::from("S");
+
         match event {
             Event::Mouse(mouse_event) => {
                 let message = match mouse_event {
@@ -50,10 +52,14 @@ impl Pending for RectPending {
             }
             Event::Keyboard(key_event) => {
                 match key_event {
-                    keyboard::Event::KeyPressed { key_code: keyboard::KeyCode::S, .. } => {
-                        *self = RectPending::None;
+                    keyboard::Event::KeyPressed { key: keyboard::Key::Character(str), .. } => {
+                        if str == key_s {
+                            *self = RectPending::None;
 
-                        (Status::Captured, None)
+                            (Status::Captured, None)
+                        } else {
+                            (Status::Ignored, None)
+                        }
                     }
                     _ => (Status::Ignored, None)
                 }
@@ -64,7 +70,7 @@ impl Pending for RectPending {
 
     fn draw(
         &self,
-        renderer: &Renderer<Theme>,
+        renderer: &Renderer,
         bounds: Rectangle,
         cursor: Cursor,
         style: Style,

@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use std::ops::{Add, Sub};
 use std::sync::Arc;
 use iced::{mouse, Point, Rectangle, Renderer, keyboard, Vector, Color};
+use iced::advanced::graphics::core::SmolStr;
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry};
@@ -10,7 +11,6 @@ use mongodb::bson::{Bson, doc, Document};
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
-use crate::theme::Theme;
 
 use crate::canvas::tool::{Pending, Tool};
 
@@ -30,6 +30,8 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
         cursor: Point,
         style: Style,
     ) -> (Status, Option<CanvasAction>) {
+        let key_s :SmolStr= SmolStr::from("S");
+
         match event {
             Event::Mouse(mouse_event) => {
                 let message = match mouse_event {
@@ -84,10 +86,14 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
             }
             Event::Keyboard(key_event) => {
                 match key_event {
-                    keyboard::Event::KeyPressed { key_code: keyboard::KeyCode::S, .. } => {
-                        *self = BrushPending::None;
+                    keyboard::Event::KeyPressed { key: keyboard::Key::Character(str), .. } => {
+                        if str == key_s {
+                            *self = BrushPending::None;
 
-                        (Status::Captured, None)
+                            (Status::Captured, None)
+                        } else {
+                            (Status::Ignored, None)
+                        }
                     }
                     _ => (Status::Ignored, None)
                 }
@@ -98,7 +104,7 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
 
     fn draw(
         &self,
-        renderer: &Renderer<Theme>,
+        renderer: &Renderer,
         bounds: Rectangle,
         cursor: Cursor,
         style: Style,

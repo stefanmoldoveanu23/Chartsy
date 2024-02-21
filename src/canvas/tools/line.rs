@@ -8,7 +8,6 @@ use mongodb::bson::{Bson, doc, Document};
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
-use crate::theme::Theme;
 
 use crate::canvas::tool::{Pending, Tool};
 
@@ -53,7 +52,7 @@ impl Pending for LinePending {
 
     fn draw(
         &self,
-        renderer: &Renderer<Theme>,
+        renderer: &Renderer,
         bounds: Rectangle,
         cursor: Cursor,
         style: Style,

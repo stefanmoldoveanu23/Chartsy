@@ -7,15 +7,16 @@ mod config;
 mod serde;
 mod theme;
 mod canvas;
-mod color_picker;
 mod errors;
+mod widgets;
 
 use scene::{Message, Globals};
 use scenes::scenes::SceneLoader;
 use theme::Theme;
 
 use iced::{Application, Command, Element, executor, Renderer, Settings, Size, Subscription, window};
-use iced::subscription::events;
+use iced::event::listen;
+use iced::widget::{container, text};
 use iced_runtime::command::Action;
 use lettre::{AsyncSmtpTransport, AsyncStd1Executor, AsyncTransport};
 use mongodb::Database;
@@ -56,8 +57,8 @@ impl Application for Chartsy {
             },
             Command::batch(
                 vec![
-                    Command::single(Action::Window(window::Action::Maximize(true))),
-                    Command::perform(mongo::connect_to_mongodb(), Message::DoneDatabaseInit),
+                    //Command::single(Action::Window(window::Action::Maximize(window::Id::MAIN, true))),
+                    //Command::perform(mongo::connect_to_mongodb(), Message::DoneDatabaseInit),
                 ]
             )
         )
@@ -68,6 +69,7 @@ impl Application for Chartsy {
     }
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
+        return Command::none();
 
         match message {
             Message::None => {
@@ -121,7 +123,7 @@ impl Application for Chartsy {
             }
             Message::Event(event) => {
                 match event {
-                    iced::Event::Window(window::Event::Resized {width, height}) => {
+                    iced::Event::Window(window::Id::MAIN, window::Event::Resized {width, height}) => {
                         self.globals.set_window_size(Size::new(width as f32, height as f32));
                     }
                     _ => {}
@@ -140,12 +142,14 @@ impl Application for Chartsy {
         }
     }
 
-    fn view(&self) -> Element<'_, Self::Message, Renderer<Self::Theme>> {
-        let scene = self.scene_loader.get().expect("Error getting scene.");
-        scene.view()
+    fn view(&self) -> Element<'_, Self::Message, Self::Theme, Renderer> {
+        //let scene = self.scene_loader.get().expect("Error getting scene.");
+        //scene.view()
+
+        container(text("")).into()
     }
 
-    fn subscription(&self) -> Subscription<Self::Message> {
-        events().map(Message::Event)
-    }
+    //fn subscription(&self) -> Subscription<Self::Message> {
+        //listen().map(Message::Event)
+    //}
 }

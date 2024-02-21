@@ -6,7 +6,6 @@ use mongodb::bson::{Bson, Document};
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
-use crate::theme::Theme;
 use crate::canvas::tools::{line::Line, rect::Rect, triangle::Triangle, polygon::Polygon, circle::Circle, ellipse::Ellipse};
 use crate::canvas::tools::brushes::{eraser::Eraser, pencil::Pencil, pen::Pen, airbrush::Airbrush};
 
@@ -85,7 +84,7 @@ pub trait Pending: Send+Sync {
     /// used in the Programs' [draw function](iced::widget::canvas::Program::draw).
     fn draw(
         &self,
-        renderer: &Renderer<Theme>,
+        renderer: &Renderer,
         bounds: Rectangle,
         cursor: mouse::Cursor,
         style: Style,

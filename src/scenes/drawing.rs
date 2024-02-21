@@ -3,8 +3,6 @@ use std::any::Any;
 use iced::{Alignment, Command, Element, Length, Renderer};
 use iced::alignment::Horizontal;
 use iced::widget::{button, text, column, row, Container, Row};
-use iced_aw::tabs::Tabs;
-use iced_aw::tab_bar::TabLabel;
 use mongodb::bson::{Bson, doc, Uuid};
 use crate::canvas::canvas::Canvas;
 
@@ -207,12 +205,14 @@ impl Scene for Box<Drawing> {
         }
     }
 
-    fn view(&self) -> Element<'_, Message, Renderer<Theme>> {
+    fn view(&self) -> Element<'_, Message, Theme, Renderer> {
         if self.globals.get_window_height() == 0.0 {
+            return Element::new(text(""));
+        } else {
             return Element::new(text(""));
         }
 
-        row![
+        /*row![
             Tabs::with_tabs(
                 vec![
                     (
@@ -291,7 +291,7 @@ impl Scene for Box<Drawing> {
             .width(Length::Fill)
             .height(Length::Fill)
             .align_items(Alignment::Center)
-            .into()
+            .into()*/
     }
 
     fn get_error_handler(&self, error: Error) -> Box<dyn Action> { Box::new(DrawingAction::ErrorHandler(error)) }

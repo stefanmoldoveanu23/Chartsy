@@ -1,7 +1,7 @@
 use std::fmt::{Debug};
 use std::ops::{Add, Sub};
 use std::sync::Arc;
-use iced::{Color, mouse, Point, Rectangle, Renderer, Vector};
+use iced::{Color, mouse, Point, Radians, Rectangle, Renderer, Vector};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
@@ -10,7 +10,6 @@ use mongodb::bson::{Bson, doc, Document};
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
-use crate::theme::Theme;
 
 use crate::canvas::tool::{Pending, Tool};
 
@@ -85,7 +84,7 @@ impl Pending for EllipsePending {
 
     fn draw(
         &self,
-        renderer: &Renderer<Theme>,
+        renderer: &Renderer,
         bounds: Rectangle,
         cursor: Cursor,
         style: Style,
@@ -116,9 +115,9 @@ impl Pending for EllipsePending {
                             p.ellipse(Elliptical {
                                 center,
                                 radii,
-                                rotation,
-                                start_angle: 0.0,
-                                end_angle: 360.0,
+                                rotation: Radians(rotation),
+                                start_angle: Radians(0.0),
+                                end_angle: Radians(360.0),
                             });
                         }
                     });
@@ -212,9 +211,9 @@ impl Tool for Ellipse {
                 builder.ellipse(Elliptical{
                     center: self.center,
                     radii: self.radii.clone(),
-                    rotation: self.rotation.clone(),
-                    start_angle: 0.0,
-                    end_angle: 360.0,
+                    rotation: Radians(self.rotation.clone()),
+                    start_angle: Radians(0.0),
+                    end_angle: Radians(360.0),
                 });
             }
         });

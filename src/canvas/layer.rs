@@ -17,7 +17,7 @@ pub struct Layer<'a> {
     pub active: bool,
 }
 
-impl<'a> canvas::Program<CanvasAction, Renderer<Theme>> for Layer<'a>
+impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for Layer<'a>
 {
     type State = Option<Box<dyn Pending>>;
 
@@ -32,14 +32,14 @@ impl<'a> canvas::Program<CanvasAction, Renderer<Theme>> for Layer<'a>
             return (event::Status::Ignored, None);
         }
 
-        if let canvas::Event::Keyboard(event) = event {
+        if let canvas::Event::Keyboard(ref event) = event {
             match event {
-                keyboard::Event::KeyPressed {key_code, modifiers} => {
-                    if key_code == keyboard::KeyCode::Z && modifiers == keyboard::Modifiers::CTRL {
+                keyboard::Event::KeyPressed {key, modifiers, ..} => {
+                    if *key == keyboard::Key::Character("Z".into()) && *modifiers == keyboard::Modifiers::CTRL {
                         return (event::Status::Captured, Some(CanvasAction::Undo))
-                    } else if key_code == keyboard::KeyCode::S && modifiers == keyboard::Modifiers::CTRL {
+                    } else if *key == keyboard::Key::Character("S".into()) && *modifiers == keyboard::Modifiers::CTRL {
                         return (event::Status::Captured, Some(CanvasAction::Save))
-                    } else if key_code == keyboard::KeyCode::Y && modifiers == keyboard::Modifiers::CTRL {
+                    } else if *key == keyboard::Key::Character("Y".into()) && *modifiers == keyboard::Modifiers::CTRL {
                         return (event::Status::Captured, Some(CanvasAction::Redo))
                     }
                 }
@@ -74,7 +74,7 @@ impl<'a> canvas::Program<CanvasAction, Renderer<Theme>> for Layer<'a>
     fn draw(
         &self,
         state: &Self::State,
-        renderer: &Renderer<Theme>,
+        renderer: &Renderer,
         _theme: &Theme,
         bounds: Rectangle,
         cursor: Cursor

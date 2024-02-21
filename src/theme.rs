@@ -116,18 +116,18 @@ pub(crate) mod container {
 /// Module that implements the [scrollable](iced::widget::scrollable::Scrollable) [StyleSheet]
 /// for the custom [Theme].
 pub(crate) mod scrollable {
-    use iced::widget::scrollable::{Scrollbar, StyleSheet};
+    use iced::widget::scrollable::{StyleSheet, Appearance};
     use iced_style::theme::Scrollable;
     use crate::theme::Theme;
 
     impl StyleSheet for Theme {
         type Style = Scrollable;
 
-        fn active(&self, style: &Self::Style) -> Scrollbar {
+        fn active(&self, style: &Self::Style) -> Appearance {
             iced::Theme::Light.active(style)
         }
 
-        fn hovered(&self, style: &Self::Style, is_mouse_over_scrollbar: bool) -> Scrollbar {
+        fn hovered(&self, style: &Self::Style, is_mouse_over_scrollbar: bool) -> Appearance {
             iced::Theme::Light.hovered(style, is_mouse_over_scrollbar)
         }
     }
@@ -153,54 +153,6 @@ pub(crate) mod slider {
 
         fn dragging(&self, style: &Self::Style) -> Appearance {
             iced::Theme::Light.dragging(style)
-        }
-    }
-}
-
-/// Module that implements the [modal](iced_aw::modal::Modal) [StyleSheet] for the custom [Theme].
-pub(crate) mod modal {
-    use iced_aw::modal::StyleSheet;
-    use iced_aw::style::modal::Appearance;
-    use crate::theme::Theme;
-
-    impl StyleSheet for Theme {
-        type Style = ();
-
-        fn active(&self, _style: &Self::Style) -> Appearance {
-            Appearance::default()
-        }
-    }
-}
-
-/// Module that implements the [card](iced_aw::card::Card) [StyleSheet] for the custom [Theme].
-pub(crate) mod card {
-    use iced_aw::card::{Appearance, StyleSheet};
-    use crate::theme::Theme;
-
-    impl StyleSheet for Theme {
-        type Style = ();
-
-        fn active(&self, _style: &Self::Style) -> Appearance {
-            Appearance::default()
-        }
-    }
-}
-
-/// Module that implements the [tab_bar](iced_aw::tab_bar::TabBar) [StyleSheet] for the
-/// custom [Theme].
-pub(crate) mod tab_bar {
-    use iced_aw::tab_bar::{Appearance, StyleSheet};
-    use crate::theme::Theme;
-
-    impl StyleSheet for Theme {
-        type Style = iced_aw::style::tab_bar::TabBarStyles;
-
-        fn active(&self, style: &Self::Style, is_active: bool) -> Appearance {
-            iced::Theme::Light.active(style, is_active)
-        }
-
-        fn hovered(&self, style: &Self::Style, is_active: bool) -> Appearance {
-            iced::Theme::Light.hovered(style, is_active)
         }
     }
 }

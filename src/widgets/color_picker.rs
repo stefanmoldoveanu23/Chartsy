@@ -1,7 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 use std::ops::Sub;
-use iced::advanced::{Layout, Widget, Renderer, Clipboard, Shell};
-use iced::{Background, BorderRadius, Element, event, Event, Length, mouse, Rectangle, Size, Vector};
+use iced::advanced::{Layout, Widget, Clipboard, Shell};
+use iced::{Background, Border, Element, event, Event, Length, mouse, Rectangle, Size, Vector};
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::{Quad, Style};
 use iced::advanced::widget::{Tree, tree};
@@ -15,7 +15,7 @@ use crate::theme::Theme;
 pub struct ColorPicker<'a, Message> {
     hovering: Option<iced::Color>,
     on_submit: fn(iced::Color) -> Message,
-    slider: Slider<'a, f32, Message, iced::Renderer<Theme>>,
+    slider: Slider<'a, f32, Message, Theme>,
     alpha: f32,
     width: f32,
     height: f32,
@@ -36,7 +36,7 @@ where Message: Clone + 'a {
             slider: Slider::new(
                 0.0..=255.0,
                 255.0,
-                move |val| {(on_submit)(iced::Color::new(0.0, 0.0, 0.0, val / 255.0))}),
+                move |val| {on_submit(iced::Color::new(0.0, 0.0, 0.0, val / 255.0))}),
             alpha: 1.0,
             height,
             width: 250.0
@@ -67,24 +67,26 @@ where Message: Clone + 'a {
     }
 }
 
-impl<'a, Message> Widget<Message, iced::Renderer<Theme>> for ColorPicker<'a, Message>
-where Message: Clone+'a {
-    fn width(&self) -> Length {
-        Length::Fixed(self.width)
+impl<'a, Message, Renderer> Widget<Message, Theme, Renderer> for ColorPicker<'a, Message>
+where
+    Message: Clone+'a,
+    Renderer: iced::advanced::Renderer
+{
+    fn size(&self) -> Size<Length> {
+        Size {
+            width: Length::Fixed(self.width),
+            height: Length::Fixed(self.height + 20.0)
+        }
     }
 
-    fn height(&self) -> Length {
-        Length::Fixed(self.height + 20.0)
-    }
-
-    fn layout(&self, _renderer: &iced::Renderer<Theme>, _limits: &Limits) -> Node {
+    fn layout(&self, _tree: &mut Tree, _renderer: &Renderer, _limits: &Limits) -> Node {
         Node::new(Size::new(self.width, self.height + 20.0))
     }
 
     fn draw(
         &self,
         state: &Tree,
-        renderer: &mut iced::Renderer<Theme>,
+        renderer: &mut Renderer,
         theme: &Theme,
         style: &Style,
         layout: Layout<'_>,
@@ -107,9 +109,12 @@ where Message: Clone+'a {
                         width: 30.0,
                         height: 30.0,
                     },
-                    border_radius: BorderRadius::from(0.0),
-                    border_width: 2.0,
-                    border_color: iced::Color::from_rgb8(192, 192, 192),
+                    border: Border {
+                        color: iced::Color::from_rgb8(192, 192, 192),
+                        width: 2.0,
+                        radius: 0.0.into(),
+                    },
+                    shadow: Default::default(),
                 },
                 Background::Color(color.to_color())
             );
@@ -150,7 +155,7 @@ where Message: Clone+'a {
         event: Event,
         layout: Layout<'_>,
         cursor: Cursor,
-        renderer: &iced::Renderer<Theme>,
+        renderer: &Renderer,
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
@@ -217,7 +222,7 @@ where Message: Clone+'a {
                     _ => event::Status::Ignored,
                 }
             }
-            Event::Window(_) => event::Status::Ignored,
+            Event::Window(..) => event::Status::Ignored,
             Event::Touch(_) => event::Status::Ignored,
         }
     }
@@ -228,7 +233,7 @@ where Message: Clone+'a {
         layout: Layout<'_>,
         cursor: Cursor,
         viewport: &Rectangle,
-        renderer: &iced::Renderer<Theme>
+        renderer: &Renderer
     ) -> Interaction {
         if self.hovering.is_some() {
             Interaction::Pointer
@@ -247,7 +252,7 @@ where Message: Clone+'a {
     }
 }
 
-impl<'a, Message: 'a> From<ColorPicker<'a, Message>> for Element<'a, Message, iced::Renderer<Theme>>
+impl<'a, Message: 'a> From<ColorPicker<'a, Message>> for Element<'a, Message, Theme, iced::Renderer>
 where Message: Clone {
     fn from(value: ColorPicker<'a, Message>) -> Self {
         Self::new(value)
@@ -296,7 +301,7 @@ impl Color {
         }
     }
 
-    /// Returns a list of all of the [Color] options.
+    /// Returns a list of all the [Color] options.
     fn values() -> Vec<Self> {
         vec![
             Color::BLACK,

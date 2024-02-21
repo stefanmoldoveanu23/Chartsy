@@ -1,7 +1,6 @@
 use std::any::Any;
 use iced::{Element, Length, Renderer};
 use iced::widget::{column, text, text_input, button, container, vertical_space, row, horizontal_space};
-use iced_aw::{TabLabel, Tabs};
 use iced_runtime::Command;
 use lettre::message::MultiPart;
 use mongodb::bson::{doc, Document};
@@ -508,8 +507,8 @@ impl Scene for Auth {
         Command::none()
     }
 
-    fn view(&self) -> Element<'_, Message, Renderer<Theme>> {
-        let register_error_text = text(
+    fn view(&self) -> Element<'_, Message, Theme, Renderer> {
+        /*let register_error_text = text(
             if let Some(error) = self.register_form.error.clone() {
                 error.to_string()
             } else {
@@ -531,9 +530,11 @@ impl Scene for Auth {
             } else {
                 String::from("")
             }
-        );
+        );*/
 
-        container(
+        container(text("")).into()
+
+        /*container(
             column![
                 vertical_space(Length::FillPortion(1)),
                 row![
@@ -612,7 +613,7 @@ impl Scene for Auth {
         )
             .center_x()
             .center_y()
-            .into()
+            .into()*/
     }
 
     fn get_error_handler(&self, error: Error) -> Box<dyn Action> { Box::new(AuthAction::HandleError(error)) }
