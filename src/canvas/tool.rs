@@ -15,6 +15,9 @@ pub trait Tool: Debug+Send+Sync+Serialize+Deserialize {
     /// Adds the [Tool] to the given [Frame].
     fn add_to_frame(&self, frame: &mut Frame);
 
+    /// Adds the [Tool] to the given [Document](svg::Document).
+    fn add_to_svg(&self, svg: svg::Document) -> svg::Document;
+
     /// Creates a clone of the [Tool] and encloses it into a [Box].
     fn boxed_clone(&self) -> Box<dyn Tool>;
 

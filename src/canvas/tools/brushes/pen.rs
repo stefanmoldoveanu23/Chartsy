@@ -3,6 +3,8 @@ use std::ops::{Add, Sub};
 use iced::{Point, Vector};
 use iced::widget::canvas::{Fill, Frame, Path};
 use iced_runtime::core::Color;
+use svg::Document;
+use svg::node::element::path::Data;
 use crate::canvas::style::Style;
 use crate::canvas::tool::Tool;
 
@@ -58,6 +60,28 @@ impl Brush for Pen {
     }
 
     fn add_end(_point: Point, _frame: &mut Frame, _style: Style) where Self: Sized { }
+
+    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Document, style: Style) -> Document where Self: Sized {
+        let radius = style.get_stroke_width();
+
+        let offset = Vector::new((45_f32).cos() * radius, (45_f32).sin() * radius);
+
+        let data = Data::new()
+            .move_to((point1.add(offset).x, point1.add(offset).y))
+            .line_to((point2.add(offset).x, point2.add(offset).y))
+            .line_to((point2.sub(offset).x, point2.sub(offset).y))
+            .line_to((point1.sub(offset).x, point1.sub(offset).y))
+            .close();
+
+        let path = svg::node::element::Path::new()
+            .set("fill", style.get_stroke_color())
+            .set("fill-opacity", style.get_stroke_alpha())
+            .set("d", data);
+
+        svg.add(path)
+    }
+
+    fn add_svg_end(_point: Point, svg: Document, _style: Style) -> Document where Self: Sized { svg }
 }
 
 impl Into<Box<dyn Tool>> for Box<Pen> {

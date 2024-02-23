@@ -168,6 +168,20 @@ impl Tool for Circle {
         }
     }
 
+    fn add_to_svg(&self, svg: svg::Document) -> svg::Document {
+        let circle = svg::node::element::Circle::new()
+            .set("cx", self.center.x)
+            .set("cy", self.center.y)
+            .set("r", self.radius)
+            .set("stroke-width", self.style.get_stroke_width())
+            .set("stroke", self.style.get_stroke_color())
+            .set("stroke-opacity", self.style.get_stroke_alpha())
+            .set("fill", self.style.get_fill())
+            .set("fill-opacity", self.style.get_fill_alpha());
+
+        svg.add(circle)
+    }
+
     fn boxed_clone(&self) -> Box<dyn Tool> {
         Box::new((*self).clone())
     }

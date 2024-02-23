@@ -17,6 +17,46 @@ pub struct Style {
 }
 
 impl Style {
+    /// Returns the width of the stroke.
+    pub fn get_stroke_width(&self) -> f32
+    {
+        self.stroke.map_or_else(|| 0.0, |(width, _, _, _)| width)
+    }
+
+    /// Returns the color of the stroke in #rrggbb format.
+    pub fn get_stroke_color(&self) -> String
+    {
+        self.stroke.map_or_else(|| "transparent".into(), |(_, color, _, _)| {
+            let data = color.into_rgba8();
+            format!("#{:x?}{:x?}{:x?}", data[0], data[1], data[2])
+        })
+    }
+
+    /// Returns the transparency of the stroke.
+    pub fn get_stroke_alpha(&self) -> f32
+    {
+        self.stroke.map_or_else(|| 0.0, |(_, color, _, _)| {
+            (10.0f32.powf(color.a) - 1.0) / 9.0
+        })
+    }
+
+    /// Returns the fill in #rrggbb format.
+    pub fn get_fill(&self) -> String
+    {
+        self.fill.map_or_else(|| "transparent".into(), |(color, _)| {
+            let data = color.into_rgba8();
+            format!("#{:02x?}{:02x?}{:02x?}", data[0], data[1], data[2])
+        })
+    }
+
+    /// Returns the transparency of the fill.
+    pub fn get_fill_alpha(&self) -> f32
+    {
+        self.fill.map_or_else(|| 0.0, |(color, _)| {
+            (10.0f32.powf(color.a) - 1.0) / 9.0
+        })
+    }
+
     /// Modifies the stroke width of the [pending tool](crate::canvas::tool::Pending).
     pub(crate) fn stroke_width(mut self, stroke_width: impl Into<f32>) -> Self {
         if let Some((_, color, v1, v2)) = self.stroke {

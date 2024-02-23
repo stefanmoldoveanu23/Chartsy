@@ -153,6 +153,9 @@ pub trait Brush: Send+Sync+Debug {
 
     fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame, style: Style) where Self:Sized;
     fn add_end(point: Point, frame: &mut Frame, style: Style) where Self:Sized;
+
+    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: svg::Document, style: Style) -> svg::Document where Self:Sized;
+    fn add_svg_end(point: Point, svg: svg::Document, style: Style) -> svg::Document where Self:Sized;
 }
 
 impl<BrushType> Serialize for BrushType
@@ -204,6 +207,19 @@ where BrushType: Brush+Clone+'static {
         }
 
         BrushType::add_end(pos, frame, self.get_style());
+    }
+
+    fn add_to_svg(&self, svg: svg::Document) -> svg::Document {
+        let mut pos = self.get_start();
+
+        let mut ret = svg;
+
+        for offset in self.get_offsets() {
+            ret = BrushType::add_svg_stroke_piece(pos, pos.add(offset), ret, self.get_style());
+            pos = pos.add(offset.clone());
+        }
+
+        BrushType::add_svg_end(pos, ret, self.get_style())
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

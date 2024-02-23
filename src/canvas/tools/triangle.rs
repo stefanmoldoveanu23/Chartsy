@@ -5,6 +5,7 @@ use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
 use mongodb::bson::{Bson, doc, Document};
+use svg::node::element::path::Data;
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
@@ -193,6 +194,24 @@ impl Tool for Triangle {
         if let Some((color, _)) = self.style.fill {
             frame.fill(&triangle, Fill::from(color));
         }
+    }
+
+    fn add_to_svg(&self, svg: svg::Document) -> svg::Document {
+        let data = Data::new()
+            .move_to((self.point1.x, self.point1.y))
+            .line_to((self.point2.x, self.point2.y))
+            .line_to((self.point3.x, self.point3.y))
+            .close();
+
+        let path = svg::node::element::Path::new()
+            .set("stroke-width", self.style.get_stroke_width())
+            .set("stroke", self.style.get_stroke_color())
+            .set("stroke-opacity", self.style.get_stroke_alpha())
+            .set("fill", self.style.get_fill())
+            .set("fill-opacity", self.style.get_fill_alpha())
+            .set("d", data);
+
+        svg.add(path)
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

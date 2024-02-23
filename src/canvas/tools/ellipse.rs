@@ -7,6 +7,7 @@ use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
 use iced::widget::canvas::path::arc::Elliptical;
 use mongodb::bson::{Bson, doc, Document};
+use svg::node::element::path::Data;
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
@@ -225,6 +226,28 @@ impl Tool for Ellipse {
         if let Some((color, _)) = self.style.fill {
             frame.fill(&ellipse, Fill::from(color));
         }
+    }
+
+    fn add_to_svg(&self, svg: svg::Document) -> svg::Document {
+        let start = Point::new(
+            self.center.x + self.radii.x * self.rotation.cos(),
+            self.center.y + self.radii.x * self.rotation.sin()
+        );
+
+        let data = Data::new()
+            .move_to((start.x, start.y))
+            .elliptical_arc_by((self.radii.x, self.radii.y, -self.rotation.to_degrees(), 0, 0, -self.radii.x, -self.radii.x))
+            .elliptical_arc_by((self.radii.x, self.radii.y, -self.rotation.to_degrees(), 0, 0, self.radii.x, self.radii.x));
+
+        let path = svg::node::element::Path::new()
+            .set("stroke-width", self.style.get_stroke_width())
+            .set("stroke", self.style.get_stroke_color())
+            .set("stroke-opacity", self.style.get_stroke_alpha())
+            .set("fill", self.style.get_fill())
+            .set("fill-opacity", self.style.get_fill_alpha())
+            .set("d", data);
+
+        svg.add(path)
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

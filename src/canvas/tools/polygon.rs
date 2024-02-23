@@ -208,6 +208,21 @@ impl Tool for Polygon {
         }
     }
 
+    fn add_to_svg(&self, svg: svg::Document) -> svg::Document {
+        let polygon = svg::node::element::Polygon::new()
+            .set("stroke-width", self.style.get_stroke_width())
+            .set("stroke", self.style.get_stroke_color())
+            .set("stroke-opacity", self.style.get_stroke_alpha())
+            .set("fill", self.style.get_fill())
+            .set("fill-opacity", self.style.get_fill_alpha())
+            .set("points", self.offsets.iter().fold(
+                (format!("{},{}", self.first.x, self.first.y), self.first), |(res, point), offset| {
+                    (res + &*format!(" {},{}", point.x + offset.x, point.y + offset.y), point.add(*offset))
+                }).0);
+
+        svg.add(polygon)
+    }
+
     fn boxed_clone(&self) -> Box<dyn Tool> {
         Box::new((*self).clone())
     }

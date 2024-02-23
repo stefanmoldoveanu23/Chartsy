@@ -5,6 +5,7 @@ use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
 use mongodb::bson::{Bson, doc, Document};
+use svg::node::element::{self, path::Data};
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
@@ -151,6 +152,23 @@ impl Tool for Line {
             println!("Drew a line!");
             frame.stroke(&line, Stroke::default().with_width(width).with_color(color));
         }
+    }
+
+    fn add_to_svg(&self, svg: svg::Document) -> svg::Document {
+        let data = Data::new()
+            .move_to((self.start.x, self.start.y))
+            .line_to((self.end.x, self.end.y))
+            .close();
+
+        let path = element::Path::new()
+            .set("fill", "none")
+            .set("fill-opacity", self.style.get_fill_alpha())
+            .set("stroke-width", self.style.get_stroke_width())
+            .set("stroke", self.style.get_stroke_color())
+            .set("stroke-opacity", self.style.get_stroke_alpha())
+            .set("d", data);
+
+        svg.add(path)
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

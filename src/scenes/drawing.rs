@@ -1,4 +1,7 @@
 use std::any::Any;
+use dropbox_sdk::default_client::{NoauthDefaultClient, UserAuthDefaultClient};
+use dropbox_sdk::files;
+use dropbox_sdk::files::WriteMode;
 
 use iced::{Alignment, Command, Element, Length, Renderer};
 use iced::alignment::Horizontal;
@@ -13,6 +16,7 @@ use crate::canvas::tools::{line::LinePending, rect::RectPending, triangle::Trian
 use crate::canvas::tools::{brush::BrushPending, brushes::{pencil::Pencil, pen::Pen, airbrush::Airbrush, eraser::Eraser}};
 use crate::scenes::scenes::Scenes;
 use crate::canvas::layer::CanvasAction;
+use crate::config::{DROPBOX_ID, DROPBOX_REFRESH_TOKEN};
 use crate::errors::error::Error;
 
 use crate::theme::Theme;
@@ -29,6 +33,7 @@ use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 pub(crate) enum DrawingAction {
     None,
     CanvasAction(CanvasAction),
+    PostDrawing,
     TabSelection(TabIds),
     ErrorHandler(Error),
 }
@@ -42,6 +47,7 @@ impl Action for DrawingAction {
         match self {
             DrawingAction::None => String::from("None"),
             DrawingAction::CanvasAction(_) => String::from("Canvas action"),
+            DrawingAction::PostDrawing => String::from("Post drawing"),
             DrawingAction::TabSelection(_) => String::from("Tab selected"),
             DrawingAction::ErrorHandler(_) => String::from("Handle error"),
         }
@@ -198,6 +204,53 @@ impl Scene for Box<Drawing> {
             DrawingAction::CanvasAction(action) => {
                 self.canvas.update(action.clone())
             }
+            DrawingAction::PostDrawing => {
+                let tool_layers = self.canvas.tool_layers.clone();
+
+                Command::perform(
+                    async move {
+                        let background = svg::node::element::Rectangle::new()
+                            .set("x", 0)
+                            .set("y", 0)
+                            .set("width", 1000)
+                            .set("height", 1000)
+                            .set("fill", "#ffffff");
+                        let mut document = svg::Document::new().set("viewBox", (0, 0, 1000, 1000)).add(background);
+
+                        for layer in tool_layers.iter() {
+                            for tool in layer {
+                                document = tool.add_to_svg(document);
+                            }
+                        }
+
+                        let buffer = document.to_string();
+                        let img = buffer.as_bytes();
+                        let mut auth = dropbox_sdk::oauth2::Authorization::from_refresh_token(
+                            DROPBOX_ID.into(),
+                            DROPBOX_REFRESH_TOKEN.into()
+                        );
+
+                        let token = auth.obtain_access_token(NoauthDefaultClient::default()).unwrap();
+                        println!("{}", token);
+
+                        let client = UserAuthDefaultClient::new(auth);
+
+                        match files::upload(&client, &files::UploadArg::new("/image.svg".into()).with_mute(false).with_mode(WriteMode::Overwrite), img) {
+                            Ok(Ok(_metadata)) => {
+                                println!("File successfully sent!");
+                            }
+                            Ok(Err(err)) => {
+                                println!("Error sending file: {}", err);
+                            }
+                            Err(err) => {
+                                println!("Error with upload request: {}", err);
+                            }
+                        }
+
+                    },
+                    |_| Message::DoAction(Box::new(DrawingAction::None))
+                )
+            }
             DrawingAction::TabSelection(tab_id) => {
                 self.active_tab = *tab_id;
                 Command::none()
@@ -268,6 +321,7 @@ impl Scene for Box<Drawing> {
                     //.style(container::Container::Canvas),
                 row![
                     button("Back").padding(8).on_press(Message::ChangeScene(Scenes::Main(None))),
+                    button("Post").padding(8).on_press(Message::DoAction(Box::new(DrawingAction::PostDrawing))),
                     button("Save").padding(8).on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Save)))),
                     button("Add layer").padding(8).on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::AddLayer)))),
                     Row::with_children(

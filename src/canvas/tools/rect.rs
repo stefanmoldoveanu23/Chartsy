@@ -165,6 +165,21 @@ impl Tool for Rect {
         }
     }
 
+    fn add_to_svg(&self, svg: svg::Document) -> svg::Document {
+        let rect = svg::node::element::Rectangle::new()
+            .set("x", self.start.x.min(self.end.x))
+            .set("y", self.start.y.min(self.end.y))
+            .set("width", (self.start.x - self.end.x).abs())
+            .set("height", (self.start.y - self.end.y).abs())
+            .set("stroke-width", self.style.get_stroke_width())
+            .set("stroke", self.style.get_stroke_color())
+            .set("stroke-opacity", self.style.get_stroke_alpha())
+            .set("fill", self.style.get_fill())
+            .set("fill-opacity", self.style.get_fill_alpha());
+
+        svg.add(rect)
+    }
+
     fn boxed_clone(&self) -> Box<dyn Tool> {
         Box::new((*self).clone())
     }

@@ -3,6 +3,8 @@ use std::fmt::{Debug};
 use std::ops::{Add, Sub};
 use iced::{Color, Point, Vector};
 use iced::widget::canvas::{Fill, Frame, Path};
+use svg::Document;
+use svg::node::element::path::Data;
 use crate::canvas::style::Style;
 
 use crate::canvas::tool::Tool;
@@ -65,6 +67,44 @@ impl Brush for Eraser {
         });
 
         frame.fill(&circle, Fill::from(Color::WHITE));
+    }
+
+    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Document, _style: Style) -> Document where Self: Sized {
+        let offset = point2.sub(point1);
+
+        let angle = offset.y.atan2(offset.x) + PI / 2.0;
+        let offset = Vector::new(10.0 * angle.cos(), 10.0 * angle.sin());
+
+        let circle = svg::node::element::Circle::new()
+            .set("cx", point1.x)
+            .set("cy", point1.y)
+            .set("r", 10.0)
+            .set("fill", "#ffffffff");
+
+        let data = Data::new()
+            .move_to((point1.add(offset).x, point1.add(offset).y))
+            .line_to((point2.add(offset).x, point2.add(offset).y))
+            .line_to((point2.sub(offset).x, point2.sub(offset).y))
+            .line_to((point1.sub(offset).x, point1.sub(offset).y))
+            .close();
+
+        let path = svg::node::element::Path::new()
+            .set("fill", "#ffffffff")
+            .set("d", data);
+
+        svg
+            .add(circle)
+            .add(path)
+    }
+
+    fn add_svg_end(point: Point, svg: Document, _style: Style) -> Document where Self: Sized {
+        let circle = svg::node::element::Circle::new()
+            .set("cx", point.x)
+            .set("cy", point.y)
+            .set("radius", 10.0)
+            .set("fill", "#ffffffff");
+
+        svg.add(circle)
     }
 }
 
