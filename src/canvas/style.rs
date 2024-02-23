@@ -28,7 +28,7 @@ impl Style {
     {
         self.stroke.map_or_else(|| "transparent".into(), |(_, color, _, _)| {
             let data = color.into_rgba8();
-            format!("#{:x?}{:x?}{:x?}", data[0], data[1], data[2])
+            format!("#{:02x?}{:02x?}{:02x?}", data[0], data[1], data[2])
         })
     }
 

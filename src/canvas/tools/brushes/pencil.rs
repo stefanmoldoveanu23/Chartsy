@@ -1,7 +1,7 @@
 use std::fmt::{Debug};
 use iced::{Point, Vector};
 use iced::widget::canvas::{Frame, Path, Stroke};
-use svg::Document;
+use svg::node::element::Group;
 use svg::node::element::path::Data;
 use crate::canvas::style::Style;
 use crate::canvas::tool::Tool;
@@ -50,7 +50,7 @@ impl Brush for Pencil {
 
     fn add_end(_point: Point, _frame: &mut Frame, _style: Style) where Self: Sized { }
 
-    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Document, style: Style) -> Document where Self: Sized {
+    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Group, style: Style) -> Group where Self: Sized {
         let data = Data::new()
             .move_to((point1.x, point1.y))
             .line_to((point2.x, point2.y));
@@ -59,12 +59,13 @@ impl Brush for Pencil {
             .set("stroke-width", style.get_stroke_width())
             .set("stroke", style.get_stroke_color())
             .set("stroke-opacity", style.get_stroke_alpha())
+            .set("style", "mix-blend-mode:hard-light")
             .set("d", data);
 
         svg.add(path)
     }
 
-    fn add_svg_end(_point: Point, svg: Document, _style: Style) -> Document where Self: Sized { svg }
+    fn add_svg_end(_point: Point, svg: Group, _style: Style) -> Group where Self: Sized { svg }
 }
 
 impl Into<Box<dyn Tool>> for Box<Pencil> {

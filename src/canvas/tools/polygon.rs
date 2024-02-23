@@ -6,6 +6,7 @@ use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
 use mongodb::bson::{Bson, doc, Document};
+use svg::node::element::Group;
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
@@ -208,13 +209,14 @@ impl Tool for Polygon {
         }
     }
 
-    fn add_to_svg(&self, svg: svg::Document) -> svg::Document {
+    fn add_to_svg(&self, svg: Group) -> Group {
         let polygon = svg::node::element::Polygon::new()
             .set("stroke-width", self.style.get_stroke_width())
             .set("stroke", self.style.get_stroke_color())
             .set("stroke-opacity", self.style.get_stroke_alpha())
             .set("fill", self.style.get_fill())
             .set("fill-opacity", self.style.get_fill_alpha())
+            .set("style", "mix-blend-mode:hard-light")
             .set("points", self.offsets.iter().fold(
                 (format!("{},{}", self.first.x, self.first.y), self.first), |(res, point), offset| {
                     (res + &*format!(" {},{}", point.x + offset.x, point.y + offset.y), point.add(*offset))

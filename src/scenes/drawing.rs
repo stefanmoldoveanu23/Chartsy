@@ -210,18 +210,25 @@ impl Scene for Box<Drawing> {
                 Command::perform(
                     async move {
                         let background = svg::node::element::Rectangle::new()
-                            .set("x", 0)
-                            .set("y", 0)
-                            .set("width", 1000)
-                            .set("height", 1000)
+                            .set("x", 0.0)
+                            .set("y", 0.0)
+                            .set("width", 1000.0)
+                            .set("height", 1000.0)
                             .set("fill", "#ffffff");
-                        let mut document = svg::Document::new().set("viewBox", (0, 0, 1000, 1000)).add(background);
+
+                        let mut group = svg::node::element::Group::new()
+                            .set("style", "isolation:isolate");
 
                         for layer in tool_layers.iter() {
                             for tool in layer {
-                                document = tool.add_to_svg(document);
+                                group = tool.add_to_svg(group);
                             }
                         }
+
+                        let document = svg::Document::new()
+                            .set("viewBox", (0, 0, 1000, 1000))
+                            .add(background)
+                            .add(group);
 
                         let buffer = document.to_string();
                         let img = buffer.as_bytes();
@@ -230,9 +237,7 @@ impl Scene for Box<Drawing> {
                             DROPBOX_REFRESH_TOKEN.into()
                         );
 
-                        let token = auth.obtain_access_token(NoauthDefaultClient::default()).unwrap();
-                        println!("{}", token);
-
+                        let _token = auth.obtain_access_token(NoauthDefaultClient::default()).unwrap();
                         let client = UserAuthDefaultClient::new(auth);
 
                         match files::upload(&client, &files::UploadArg::new("/image.svg".into()).with_mute(false).with_mode(WriteMode::Overwrite), img) {

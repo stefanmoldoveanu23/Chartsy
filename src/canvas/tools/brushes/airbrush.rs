@@ -5,7 +5,7 @@ use iced::{Color, Point, Vector};
 use iced::widget::canvas::{Fill, Frame, Path};
 use crate::canvas::tool::Tool;
 use rand::{rngs::StdRng, SeedableRng, Rng};
-use svg::Document;
+use svg::node::element::Group;
 use crate::canvas::style::Style;
 
 use crate::canvas::tools::brush::Brush;
@@ -72,7 +72,7 @@ impl Airbrush {
         frame.fill(&spray, Fill::from(fill));
     }
 
-    fn spray_svg(point: Point, rng: &mut StdRng, svg: Document, style: Style) -> Document {
+    fn spray_svg(point: Point, rng: &mut StdRng, svg: Group, style: Style) -> Group {
         let radius = style.get_stroke_width();
 
         let mut res = svg;
@@ -85,7 +85,8 @@ impl Airbrush {
                 .set("cy", point.y + offset.y)
                 .set("r", radius)
                 .set("fill", style.get_stroke_color())
-                .set("fill-opacity", style.get_stroke_alpha());
+                .set("fill-opacity", style.get_stroke_alpha())
+                .set("style", "mix-blend-mode:hard-light");
 
             res = res.add(circle);
         }
@@ -129,14 +130,14 @@ impl Brush for Airbrush {
         Airbrush::spray(point, &mut rng, frame, style);
     }
 
-    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Document, style: Style) -> Document where Self: Sized {
+    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Group, style: Style) -> Group where Self: Sized {
         let rng = RNG(Seed::new(point1, point2));
         let mut rng = StdRng::from_seed(rng.0.0);
 
         Airbrush::spray_svg(point1, &mut rng, svg, style)
     }
 
-    fn add_svg_end(point: Point, svg: Document, style: Style) -> Document where Self: Sized {
+    fn add_svg_end(point: Point, svg: Group, style: Style) -> Group where Self: Sized {
         let rng = RNG(Seed::new(point, Point::new(0.0, 0.0)));
         let mut rng = StdRng::from_seed(rng.0.0);
 

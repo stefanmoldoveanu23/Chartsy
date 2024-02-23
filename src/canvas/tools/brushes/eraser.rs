@@ -3,7 +3,7 @@ use std::fmt::{Debug};
 use std::ops::{Add, Sub};
 use iced::{Color, Point, Vector};
 use iced::widget::canvas::{Fill, Frame, Path};
-use svg::Document;
+use svg::node::element::Group;
 use svg::node::element::path::Data;
 use crate::canvas::style::Style;
 
@@ -69,7 +69,7 @@ impl Brush for Eraser {
         frame.fill(&circle, Fill::from(Color::WHITE));
     }
 
-    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Document, _style: Style) -> Document where Self: Sized {
+    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Group, _style: Style) -> Group where Self: Sized {
         let offset = point2.sub(point1);
 
         let angle = offset.y.atan2(offset.x) + PI / 2.0;
@@ -97,7 +97,7 @@ impl Brush for Eraser {
             .add(path)
     }
 
-    fn add_svg_end(point: Point, svg: Document, _style: Style) -> Document where Self: Sized {
+    fn add_svg_end(point: Point, svg: Group, _style: Style) -> Group where Self: Sized {
         let circle = svg::node::element::Circle::new()
             .set("cx", point.x)
             .set("cy", point.y)

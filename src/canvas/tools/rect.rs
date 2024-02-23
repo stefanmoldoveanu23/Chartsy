@@ -6,6 +6,7 @@ use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
 use mongodb::bson::{Bson, doc, Document};
+use svg::node::element::Group;
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
@@ -165,7 +166,7 @@ impl Tool for Rect {
         }
     }
 
-    fn add_to_svg(&self, svg: svg::Document) -> svg::Document {
+    fn add_to_svg(&self, svg: Group) -> Group {
         let rect = svg::node::element::Rectangle::new()
             .set("x", self.start.x.min(self.end.x))
             .set("y", self.start.y.min(self.end.y))
@@ -175,7 +176,8 @@ impl Tool for Rect {
             .set("stroke", self.style.get_stroke_color())
             .set("stroke-opacity", self.style.get_stroke_alpha())
             .set("fill", self.style.get_fill())
-            .set("fill-opacity", self.style.get_fill_alpha());
+            .set("fill-opacity", self.style.get_fill_alpha())
+            .set("style", "mix-blend-mode:hard-light");
 
         svg.add(rect)
     }

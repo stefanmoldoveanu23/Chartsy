@@ -214,10 +214,6 @@ impl Canvas {
             }
             CanvasAction::Saved(insert_result) => {
                 self.count_saved += insert_result.inserted_ids.len();
-
-                for (key, value) in insert_result.inserted_ids.iter() {
-                    println!("Inserted key {} with value {}.", key, value);
-                }
             }
             CanvasAction::Loaded(layers, tools) => {
                 self.tools = Box::new(vec![]);

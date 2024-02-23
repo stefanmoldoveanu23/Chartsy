@@ -3,6 +3,7 @@ use std::sync::Arc;
 use iced::{mouse, Point, Rectangle, Renderer};
 use iced::widget::canvas::{event, Event, Frame, Geometry};
 use mongodb::bson::{Bson, Document};
+use svg::node::element::Group;
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
@@ -15,8 +16,8 @@ pub trait Tool: Debug+Send+Sync+Serialize+Deserialize {
     /// Adds the [Tool] to the given [Frame].
     fn add_to_frame(&self, frame: &mut Frame);
 
-    /// Adds the [Tool] to the given [Document](svg::Document).
-    fn add_to_svg(&self, svg: svg::Document) -> svg::Document;
+    /// Adds the [Tool] to the given [Group].
+    fn add_to_svg(&self, svg: Group) -> Group;
 
     /// Creates a clone of the [Tool] and encloses it into a [Box].
     fn boxed_clone(&self) -> Box<dyn Tool>;

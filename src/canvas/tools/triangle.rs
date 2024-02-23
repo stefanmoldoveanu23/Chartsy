@@ -5,6 +5,7 @@ use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
 use mongodb::bson::{Bson, doc, Document};
+use svg::node::element::Group;
 use svg::node::element::path::Data;
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
@@ -196,7 +197,7 @@ impl Tool for Triangle {
         }
     }
 
-    fn add_to_svg(&self, svg: svg::Document) -> svg::Document {
+    fn add_to_svg(&self, svg: Group) -> Group {
         let data = Data::new()
             .move_to((self.point1.x, self.point1.y))
             .line_to((self.point2.x, self.point2.y))
@@ -209,6 +210,7 @@ impl Tool for Triangle {
             .set("stroke-opacity", self.style.get_stroke_alpha())
             .set("fill", self.style.get_fill())
             .set("fill-opacity", self.style.get_fill_alpha())
+            .set("style", "mix-blend-mode:hard-light")
             .set("d", data);
 
         svg.add(path)

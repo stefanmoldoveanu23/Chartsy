@@ -7,6 +7,7 @@ use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry};
 use mongodb::bson::{Bson, doc, Document};
+use svg::node::element::Group;
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
@@ -154,8 +155,8 @@ pub trait Brush: Send+Sync+Debug {
     fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame, style: Style) where Self:Sized;
     fn add_end(point: Point, frame: &mut Frame, style: Style) where Self:Sized;
 
-    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: svg::Document, style: Style) -> svg::Document where Self:Sized;
-    fn add_svg_end(point: Point, svg: svg::Document, style: Style) -> svg::Document where Self:Sized;
+    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Group, style: Style) -> Group where Self:Sized;
+    fn add_svg_end(point: Point, svg: Group, style: Style) -> Group where Self:Sized;
 }
 
 impl<BrushType> Serialize for BrushType
@@ -209,7 +210,7 @@ where BrushType: Brush+Clone+'static {
         BrushType::add_end(pos, frame, self.get_style());
     }
 
-    fn add_to_svg(&self, svg: svg::Document) -> svg::Document {
+    fn add_to_svg(&self, svg: Group) -> Group {
         let mut pos = self.get_start();
 
         let mut ret = svg;

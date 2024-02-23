@@ -3,7 +3,7 @@ use std::ops::{Add, Sub};
 use iced::{Point, Vector};
 use iced::widget::canvas::{Fill, Frame, Path};
 use iced_runtime::core::Color;
-use svg::Document;
+use svg::node::element::Group;
 use svg::node::element::path::Data;
 use crate::canvas::style::Style;
 use crate::canvas::tool::Tool;
@@ -47,7 +47,7 @@ impl Brush for Pen {
         }
 
         let quad = Path::new(|builder| {
-            let offset = Vector::new((45_f32).cos() * radius, (45_f32).sin() * radius);
+            let offset = Vector::new(45_f32.cos() * radius, 45_f32.sin() * radius);
 
             builder.move_to(point1.add(offset));
             builder.line_to(point2.add(offset.clone()));
@@ -61,7 +61,7 @@ impl Brush for Pen {
 
     fn add_end(_point: Point, _frame: &mut Frame, _style: Style) where Self: Sized { }
 
-    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Document, style: Style) -> Document where Self: Sized {
+    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Group, style: Style) -> Group where Self: Sized {
         let radius = style.get_stroke_width();
 
         let offset = Vector::new((45_f32).cos() * radius, (45_f32).sin() * radius);
@@ -76,12 +76,13 @@ impl Brush for Pen {
         let path = svg::node::element::Path::new()
             .set("fill", style.get_stroke_color())
             .set("fill-opacity", style.get_stroke_alpha())
+            .set("style", "mix-blend-mode:hard-light")
             .set("d", data);
 
         svg.add(path)
     }
 
-    fn add_svg_end(_point: Point, svg: Document, _style: Style) -> Document where Self: Sized { svg }
+    fn add_svg_end(_point: Point, svg: Group, _style: Style) -> Group where Self: Sized { svg }
 }
 
 impl Into<Box<dyn Tool>> for Box<Pen> {
