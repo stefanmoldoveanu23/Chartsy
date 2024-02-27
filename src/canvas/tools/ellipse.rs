@@ -6,6 +6,8 @@ use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
 use iced::widget::canvas::path::arc::Elliptical;
+use json::JsonValue;
+use json::object::Object;
 use mongodb::bson::{Bson, doc, Document};
 use svg::node::element::Group;
 use svg::node::element::path::Data;
@@ -168,18 +170,18 @@ pub struct Ellipse {
     style: Style,
 }
 
-impl Serialize for Ellipse {
+impl Serialize<Document> for Ellipse {
     fn serialize(&self) -> Document {
         doc! {
-            "center": self.center.serialize(),
-            "radii": self.radii.serialize(),
+            "center": Document::from(self.center.serialize()),
+            "radii": Document::from(self.radii.serialize()),
             "rotation": self.rotation,
-            "style": self.style.serialize(),
+            "style": Document::from(self.style.serialize()),
         }
     }
 }
 
-impl Deserialize for Ellipse {
+impl Deserialize<Document> for Ellipse {
     fn deserialize(document: Document) -> Self where Self: Sized {
         let mut ellipse = Ellipse {center: Point::default(), radii: Vector::default(), rotation: 0.0, style: Style::default()};
 
@@ -196,6 +198,75 @@ impl Deserialize for Ellipse {
         }
 
         if let Some(Bson::Document(style)) = document.get("style") {
+            ellipse.style = Style::deserialize(style.clone());
+        }
+
+        ellipse
+    }
+}
+
+impl Serialize<Group> for Ellipse
+{
+    fn serialize(&self) -> Group {
+        let start = Point::new(
+            self.center.x + self.radii.x * self.rotation.cos(),
+            self.center.y + self.radii.x * self.rotation.sin()
+        );
+
+        let end = Point::new(
+            self.center.x - self.radii.x * self.rotation.cos(),
+            self.center.y - self.radii.x * self.rotation.sin()
+        );
+
+        let data = Data::new()
+            .move_to((start.x, start.y))
+            .elliptical_arc_to((self.radii.x, self.radii.y, self.rotation.to_degrees(), 0, 0, end.x, end.y))
+            .elliptical_arc_to((self.radii.x, self.radii.y, self.rotation.to_degrees(), 0, 0, start.x, start.y));
+
+        let path = svg::node::element::Path::new()
+            .set("stroke-width", self.style.get_stroke_width())
+            .set("stroke", self.style.get_stroke_color())
+            .set("stroke-opacity", self.style.get_stroke_alpha())
+            .set("fill", self.style.get_fill())
+            .set("fill-opacity", self.style.get_fill_alpha())
+            .set("style", "mix-blend-mode:hard-light")
+            .set("d", data);
+
+        Group::new()
+            .set("class", self.id())
+            .add(path)
+    }
+}
+
+impl Serialize<Object> for Ellipse
+{
+    fn serialize(&self) -> Object {
+        let mut data = Object::new();
+
+        data.insert("center", JsonValue::Object(self.center.serialize()));
+        data.insert("radii", JsonValue::Object(self.radii.serialize()));
+        data.insert("rotation", JsonValue::Number(self.rotation.into()));
+        data.insert("style", JsonValue::Object(self.style.serialize()));
+
+        data
+    }
+}
+
+impl Deserialize<Object> for Ellipse
+{
+    fn deserialize(document: Object) -> Self where Self: Sized {
+        let mut ellipse = Ellipse { center: Point::default(), radii: Vector::default(), rotation: 0.0, style: Style::default() };
+
+        if let Some(JsonValue::Object(center)) = document.get("center") {
+            ellipse.center = Point::deserialize(center.clone());
+        }
+        if let Some(JsonValue::Object(radii)) = document.get("radii") {
+            ellipse.radii = Vector::deserialize(radii.clone());
+        }
+        if let Some(JsonValue::Number(rotation)) = document.get("rotation") {
+            ellipse.rotation = f32::from(*rotation);
+        }
+        if let Some(JsonValue::Object(style)) = document.get("style") {
             ellipse.style = Style::deserialize(style.clone());
         }
 
@@ -227,34 +298,6 @@ impl Tool for Ellipse {
         if let Some((color, _)) = self.style.fill {
             frame.fill(&ellipse, Fill::from(color));
         }
-    }
-
-    fn add_to_svg(&self, svg: Group) -> Group {
-        let start = Point::new(
-            self.center.x + self.radii.x * self.rotation.cos(),
-            self.center.y + self.radii.x * self.rotation.sin()
-        );
-
-        let end = Point::new(
-            self.center.x - self.radii.x * self.rotation.cos(),
-            self.center.y - self.radii.x * self.rotation.sin()
-        );
-
-        let data = Data::new()
-            .move_to((start.x, start.y))
-            .elliptical_arc_to((self.radii.x, self.radii.y, self.rotation.to_degrees(), 0, 0, end.x, end.y))
-            .elliptical_arc_to((self.radii.x, self.radii.y, self.rotation.to_degrees(), 0, 0, start.x, start.y));
-
-        let path = svg::node::element::Path::new()
-            .set("stroke-width", self.style.get_stroke_width())
-            .set("stroke", self.style.get_stroke_color())
-            .set("stroke-opacity", self.style.get_stroke_alpha())
-            .set("fill", self.style.get_fill())
-            .set("fill-opacity", self.style.get_fill_alpha())
-            .set("style", "mix-blend-mode:hard-light")
-            .set("d", data);
-
-        svg.add(path)
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

@@ -1,4 +1,8 @@
+use std::fs::File;
+use std::io::Write;
+use std::ops::Deref;
 use std::sync::Arc;
+use directories::ProjectDirs;
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::advanced::widget::{Tree, tree};
@@ -6,14 +10,19 @@ use iced::{Element, Event, Length, Rectangle, Size, Renderer, Command};
 use iced::event::Status;
 use iced::mouse::{Cursor, Interaction};
 use iced::widget::canvas;
+use json::JsonValue;
+use json::object::Object;
 use mongodb::bson::{doc, Document, Uuid};
+use svg::node::element::Group;
 use crate::canvas::layer::{CanvasAction, Layer};
 use crate::canvas::style::Style;
+use crate::canvas::svg::SVG;
 use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 use crate::scene::Message;
 use crate::scenes::drawing::DrawingAction;
+use crate::serde::Serialize;
 use crate::theme::Theme;
-use super::tool::{self, Pending, Tool};
+use super::tool::{Pending, Tool};
 use super::tools::line::LinePending;
 
 pub struct State {
@@ -30,6 +39,8 @@ pub struct Canvas {
     pub(crate) undo_stack: Box<Vec<(Arc<dyn Tool>, usize)>>,
     pub(crate) tool_layers: Box<Vec<Vec<Arc<dyn Tool>>>>,
     pub(crate) count_saved: usize,
+    pub(crate) svg: SVG,
+    pub(crate) json_tools: Option<Vec<JsonValue>>,
     pub(crate) default_tool: Box<dyn Pending>,
     pub(crate) current_tool: Box<dyn Pending>,
     pub(crate) style: Style,
@@ -41,7 +52,7 @@ unsafe impl Sync for State {}
 impl Canvas {
     pub(crate) fn new() -> Self {
         Canvas {
-            id: Uuid::new(),
+            id: Uuid::from_bytes([0; 16]),
             width: Length::Fill,
             height: Length::Fill,
             layers: Box::new(vec![State {cache: canvas::Cache::default()}]),
@@ -50,6 +61,8 @@ impl Canvas {
             undo_stack: Box::new(vec![]),
             tool_layers: Box::new(vec![vec![]]),
             count_saved: 0,
+            svg: SVG::new(0),
+            json_tools: None,
             default_tool: Box::new(LinePending::None),
             current_tool: Box::new(LinePending::None),
             style: Style::default(),
@@ -67,13 +80,45 @@ impl Canvas {
             let val = self.tools.get(pos);
 
             if let Some((tool, layer)) = val {
-                let mut document = tool.serialize();
+                let mut document :Document= tool.serialize();
                 document.insert("order", pos.clone() as u32);
                 document.insert("canvas_id", self.id);
                 document.insert("name", tool.id());
                 document.insert("layer", *layer as u32);
 
                 vec.push(document);
+            }
+        }
+
+        vec
+    }
+
+    fn get_tools_svg(&self) -> Vec<(Group, usize)> {
+        let mut vec = vec![];
+
+        for pos in self.count_saved..self.tools.len() {
+            let val = self.tools.get(pos);
+
+            if let Some((tool, layer)) = val {
+                vec.push((Serialize::<Group>::serialize(tool.boxed_clone().deref()), *layer));
+            }
+        }
+
+        vec
+    }
+
+    fn get_tools_json(&self) -> Vec<JsonValue> {
+        let mut vec = vec![];
+
+        for pos in self.count_saved..self.tools.len() {
+            let val = self.tools.get(pos);
+
+            if let Some((tool, layer)) = val {
+                let mut data :Object= Serialize::<Object>::serialize(tool.boxed_clone().deref());
+                data.insert("name", JsonValue::String(tool.id()));
+                data.insert("layer", JsonValue::Number((*layer as f32).into()));
+
+                vec.push(JsonValue::Object(data));
             }
         }
 
@@ -114,42 +159,84 @@ impl Canvas {
                 self.layers.push(State {cache: canvas::Cache::default()});
                 self.current_tool = self.default_tool.clone();
                 self.current_layer = self.layers.len() - 1;
+                self.svg.add_layer();
 
-                let id = self.id.clone();
-                let layers = self.layers.len();
-                return Command::perform(
-                    async {},
-                    move |_| {
-                        Message::SendMongoRequests(
-                            vec![
-                                MongoRequest::new(
-                                    "canvases".into(),
-                                    MongoRequestType::Update(
-                                        doc! { "id": id },
-                                        doc! { "$set": { "layers": layers as u32 } }
+                if self.json_tools.is_none() {
+                    let id = self.id.clone();
+                    let layers = self.layers.len();
+                    return Command::perform(
+                        async {},
+                        move |_| {
+                            Message::SendMongoRequests(
+                                vec![
+                                    MongoRequest::new(
+                                        "canvases".into(),
+                                        MongoRequestType::Update(
+                                            doc! { "id": id },
+                                            doc! { "$set": { "layers": layers as u32 } }
+                                        )
                                     )
-                                )
-                            ],
-                            |_| {
-                                Box::new(DrawingAction::None)
-                            }
-                        )
-                    }
-                );
+                                ],
+                                |_| {
+                                    Box::new(DrawingAction::None)
+                                }
+                            )
+                        }
+                    );
+                }
             }
             CanvasAction::ActivateLayer(layer) => {
                 self.current_tool = self.default_tool.clone();
                 self.current_layer = layer;
             }
             CanvasAction::Save => {
-                let tools = self.get_tools_serialized();
-                if tools.is_empty() {
+                let tools_mongo = self.get_tools_serialized();
+                if tools_mongo.is_empty() {
                     return Command::none();
                 }
+
+                let tools_json = self.get_tools_json();
+
                 let delete_lower_bound = self.count_saved;
                 let delete_upper_bound = self.tools.len();
 
-                return
+                for _ in delete_lower_bound..delete_upper_bound {
+                    self.svg.remove();
+                }
+
+                let tools_svg = self.get_tools_svg();
+                for (tool, layer) in tools_svg {
+                    self.svg.add_tool(layer, tool);
+                }
+
+                let canvas_id = self.id;
+                let layers = self.layers.len();
+
+                return if let Some(mut tools) = self.json_tools.clone() {
+                    Command::perform(
+                        async move {
+                            let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
+                            let file_path = proj_dirs.data_local_dir().join(String::from("./") + &*canvas_id.to_string() + "/data.json");
+                            let mut file = File::open(file_path).unwrap();
+
+                            for _ in delete_lower_bound..delete_upper_bound {
+                                tools.pop();
+                            }
+                            let added = tools_json.len();
+
+                            tools.extend(tools_json);
+
+                            let mut data = Object::new();
+                            data.insert("layers", JsonValue::Number(layers.into()));
+                            data.insert("tools", JsonValue::Array(tools));
+
+                            file.write(json::stringify(JsonValue::Object(data)).as_ref()).unwrap();
+
+                            added
+                        },
+                        |saved| Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Saved(saved))))
+                    )
+                } else {
                     Command::perform(
                         async {},
                         move |_| {
@@ -158,21 +245,24 @@ impl Canvas {
                                     MongoRequest::new(
                                         "tools".into(),
                                         MongoRequestType::Delete(
-                                            doc!{"order": {
-                                                "$gte": delete_lower_bound as u32,
-                                                "$lte": delete_upper_bound as u32,
-                                            }}
+                                            doc! {
+                                                "canvas_id": canvas_id,
+                                                "order": {
+                                                    "$gte": delete_lower_bound as u32,
+                                                    "$lte": delete_upper_bound as u32,
+                                                }
+                                            }
                                         )
                                     ),
                                     MongoRequest::new(
                                         "tools".into(),
-                                        MongoRequestType::Insert(tools),
+                                        MongoRequestType::Insert(tools_mongo),
                                     )
                                 ],
                                 move |responses| {
                                     for response in responses {
                                         if let MongoResponse::Insert(result) = response {
-                                            return Box::new(DrawingAction::CanvasAction(CanvasAction::Saved(Arc::new(result))));
+                                            return Box::new(DrawingAction::CanvasAction(CanvasAction::Saved(result.inserted_ids.len())));
                                         }
                                         break
                                     }
@@ -181,21 +271,20 @@ impl Canvas {
                                 }
                             )
                         }
-                    );
+                    )
+                }
             }
             CanvasAction::Undo => {
-                if self.tools.len() > 0 {
-                    let opt = self.tools.pop();
-                    if let Some((tool, layer)) = opt {
-                        self.tool_layers[layer].pop();
-                        self.undo_stack.push((tool.clone(), layer));
+                let opt = self.tools.pop();
+                if let Some((tool, layer)) = opt {
+                    self.tool_layers[layer].pop();
+                    self.undo_stack.push((tool.clone(), layer));
 
-                        self.clear_cache(layer);
-                    }
+                    self.clear_cache(layer);
+                }
 
-                    if self.count_saved > self.tools.len() {
-                        self.count_saved -= 1;
-                    }
+                if self.count_saved > self.tools.len() {
+                    self.count_saved -= 1;
                 }
             }
             CanvasAction::Redo => {
@@ -213,25 +302,18 @@ impl Canvas {
                 self.current_tool.shape_style(&mut self.style);
             }
             CanvasAction::Saved(insert_result) => {
-                self.count_saved += insert_result.inserted_ids.len();
+                self.count_saved += insert_result;
             }
-            CanvasAction::Loaded(layers, tools) => {
+            CanvasAction::Loaded{ layers, tools, json_tools } => {
                 self.tools = Box::new(vec![]);
                 self.tool_layers = Box::new(vec![vec![]; layers]);
                 self.layers = Box::new(vec![]);
+                self.svg = SVG::new(layers);
 
-                for tool in tools {
-                    let tool = tool::get_deserialized(tool.clone());
-
-                    match tool {
-                        Some((tool, layer)) => {
-                            self.tools.push((tool.clone(), layer));
-                            self.tool_layers[layer].push(tool.clone());
-                        }
-                        None => {
-                            eprintln!("Failed to get correct type of tool.");
-                        }
-                    }
+                for (tool, layer) in tools {
+                    self.tools.push((tool.clone(), layer));
+                    self.tool_layers[layer].push(tool.clone());
+                    self.svg.add_tool(layer, Serialize::<Group>::serialize(tool.boxed_clone().deref()))
                 }
 
                 self.count_saved = self.tools.len();
@@ -239,6 +321,8 @@ impl Canvas {
                     self.layers.push(State {cache: canvas::Cache::default()});
                     self.clear_cache(layer);
                 }
+
+                self.json_tools = json_tools;
             }
         }
         Command::none()

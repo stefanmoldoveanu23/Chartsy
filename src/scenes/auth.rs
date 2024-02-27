@@ -111,7 +111,7 @@ impl User {
     }
 }
 
-impl Deserialize for User {
+impl Deserialize<Document> for User {
     fn deserialize(document: Document) -> Self where Self: Sized {
         let mut user :User= User::default();
 
@@ -139,7 +139,7 @@ pub struct RegisterForm {
     error: Option<AuthError>,
 }
 
-impl Serialize for RegisterForm {
+impl Serialize<Document> for RegisterForm {
     fn serialize(&self) -> Document {
         doc! {
             "email": self.email.clone(),
@@ -159,7 +159,7 @@ struct LogInForm {
     error: Option<AuthError>,
 }
 
-impl Serialize for LogInForm {
+impl Serialize<Document> for LogInForm {
     fn serialize(&self) -> Document {
         doc! {
             "email": self.email.clone(),

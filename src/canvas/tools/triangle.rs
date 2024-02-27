@@ -4,6 +4,8 @@ use iced::{mouse, Point, Rectangle, Renderer, keyboard, Color};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
+use json::JsonValue;
+use json::object::Object;
 use mongodb::bson::{Bson, doc, Document};
 use svg::node::element::Group;
 use svg::node::element::path::Data;
@@ -145,18 +147,18 @@ pub struct Triangle {
     style: Style,
 }
 
-impl Serialize for Triangle {
+impl Serialize<Document> for Triangle {
     fn serialize(&self) -> Document {
         doc! {
-            "point1": self.point1.serialize(),
-            "point2": self.point2.serialize(),
-            "point3": self.point3.serialize(),
-            "style": self.style.serialize(),
+            "point1": Document::from(self.point1.serialize()),
+            "point2": Document::from(self.point2.serialize()),
+            "point3": Document::from(self.point3.serialize()),
+            "style": Document::from(self.style.serialize()),
         }
     }
 }
 
-impl Deserialize for Triangle {
+impl Deserialize<Document> for Triangle {
     fn deserialize(document: Document) -> Self where Self: Sized {
         let mut triangle = Triangle {point1: Point::default(), point2: Point::default(), point3: Point::default(), style: Style::default()};
 
@@ -180,24 +182,9 @@ impl Deserialize for Triangle {
     }
 }
 
-impl Tool for Triangle {
-    fn add_to_frame(&self, frame: &mut Frame) {
-        let triangle = Path::new(|builder| {
-            builder.move_to(self.point1);
-            builder.line_to(self.point2);
-            builder.line_to(self.point3);
-            builder.close();
-        });
-
-        if let Some((width, color, _, _)) = self.style.stroke {
-            frame.stroke(&triangle, Stroke::default().with_width(width).with_color(color));
-        }
-        if let Some((color, _)) = self.style.fill {
-            frame.fill(&triangle, Fill::from(color));
-        }
-    }
-
-    fn add_to_svg(&self, svg: Group) -> Group {
+impl Serialize<Group> for Triangle
+{
+    fn serialize(&self) -> Group {
         let data = Data::new()
             .move_to((self.point1.x, self.point1.y))
             .line_to((self.point2.x, self.point2.y))
@@ -213,7 +200,63 @@ impl Tool for Triangle {
             .set("style", "mix-blend-mode:hard-light")
             .set("d", data);
 
-        svg.add(path)
+        Group::new()
+            .set("class", self.id())
+            .add(path)
+    }
+}
+
+impl Serialize<Object> for Triangle
+{
+    fn serialize(&self) -> Object {
+        let mut data = Object::new();
+
+        data.insert("point1", JsonValue::Object(self.point1.serialize()));
+        data.insert("point2", JsonValue::Object(self.point2.serialize()));
+        data.insert("point3", JsonValue::Object(self.point3.serialize()));
+        data.insert("style", JsonValue::Object(self.style.serialize()));
+
+        data
+    }
+}
+
+impl Deserialize<Object> for Triangle
+{
+    fn deserialize(document: Object) -> Self where Self: Sized {
+        let mut triangle = Triangle { point1: Point::default(), point2: Point::default(), point3: Point::default(), style: Style::default() };
+
+        if let Some(JsonValue::Object(point1)) = document.get("point1") {
+            triangle.point1 = Point::deserialize(point1.clone());
+        }
+        if let Some(JsonValue::Object(point2)) = document.get("point2") {
+            triangle.point2 = Point::deserialize(point2.clone());
+        }
+        if let Some(JsonValue::Object(point3)) = document.get("point3") {
+            triangle.point3 = Point::deserialize(point3.clone());
+        }
+        if let Some(JsonValue::Object(style)) = document.get("style") {
+            triangle.style = Style::deserialize(style.clone());
+        }
+
+        triangle
+    }
+}
+
+impl Tool for Triangle {
+    fn add_to_frame(&self, frame: &mut Frame) {
+        let triangle = Path::new(|builder| {
+            builder.move_to(self.point1);
+            builder.line_to(self.point2);
+            builder.line_to(self.point3);
+            builder.close();
+        });
+
+        if let Some((width, color, _, _)) = self.style.stroke {
+            frame.stroke(&triangle, Stroke::default().with_width(width).with_color(color));
+        }
+        if let Some((color, _)) = self.style.fill {
+            frame.fill(&triangle, Fill::from(color));
+        }
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

@@ -12,7 +12,7 @@ use crate::scenes::auth::{AuthOptions, TabIds};
 use crate::scenes::scenes::Scenes;
 
 use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
-use crate::scenes::drawing::DrawingOptions;
+use crate::scenes::drawing::{DrawingOptions, SaveMode};
 use crate::theme::Theme;
 
 /// The [Messages](Action) of the main [Scene]:
@@ -214,7 +214,7 @@ impl Scene for Main {
                             if let Some(drawings) = self.drawings.clone() {
                             drawings.clone().iter().map(|uuid| {
                                 Element::from(button(text(uuid)).on_press(
-                                    Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(Some(uuid.clone()))))))
+                                    Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(Some(uuid.clone()), Some(SaveMode::Online))))))
                                 ))
                             }).collect()
                             } else {

@@ -5,6 +5,8 @@ use iced::{mouse, Point, Rectangle, Renderer, keyboard, Vector, Color};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
+use json::JsonValue;
+use json::object::Object;
 use mongodb::bson::{Bson, doc, Document};
 use svg::node::element::Group;
 use crate::canvas::layer::CanvasAction;
@@ -155,17 +157,17 @@ pub struct Polygon {
     style: Style,
 }
 
-impl Serialize for Polygon {
+impl Serialize<Document> for Polygon {
     fn serialize(&self) -> Document {
         doc! {
-            "first": self.first.serialize(),
+            "first": Document::from(self.first.serialize()),
             "offsets": self.offsets.iter().map(|offset| {offset.serialize()}).collect::<Vec<Document>>().as_slice(),
-            "style": self.style.serialize(),
+            "style": Document::from(self.style.serialize()),
         }
     }
 }
 
-impl Deserialize for Polygon {
+impl Deserialize<Document> for Polygon {
     fn deserialize(document: Document) -> Self where Self: Sized {
         let mut polygon = Polygon {first: Point::default(), offsets: vec![], style: Style::default()};
 
@@ -182,6 +184,63 @@ impl Deserialize for Polygon {
         }
 
         if let Some(Bson::Document(style)) = document.get("style") {
+            polygon.style = Style::deserialize(style.clone());
+        }
+
+        polygon
+    }
+}
+
+impl Serialize<Group> for Polygon
+{
+    fn serialize(&self) -> Group {
+    let polygon = svg::node::element::Polygon::new()
+        .set("stroke-width", self.style.get_stroke_width())
+        .set("stroke", self.style.get_stroke_color())
+        .set("stroke-opacity", self.style.get_stroke_alpha())
+        .set("fill", self.style.get_fill())
+        .set("fill-opacity", self.style.get_fill_alpha())
+        .set("style", "mix-blend-mode:hard-light")
+        .set("points", self.offsets.iter().fold(
+            (format!("{},{}", self.first.x, self.first.y), self.first), |(res, point), offset| {
+                (res + &*format!(" {},{}", point.x + offset.x, point.y + offset.y), point.add(*offset))
+            }).0);
+
+    Group::new()
+        .set("class", self.id())
+        .add(polygon)
+    }
+}
+
+impl Serialize<Object> for Polygon
+{
+    fn serialize(&self) -> Object {
+        let mut data = Object::new();
+
+        data.insert("first", JsonValue::Object(self.first.serialize()));
+        data.insert("offsets", JsonValue::Array(self.offsets.iter().map(|offset| JsonValue::Object(offset.serialize())).collect()));
+        data.insert("style", JsonValue::Object(self.style.serialize()));
+
+        data
+    }
+}
+
+impl Deserialize<Object> for Polygon
+{
+    fn deserialize(document: Object) -> Self where Self: Sized {
+        let mut polygon = Polygon { first: Point::default(), offsets: vec![], style: Style::default() };
+
+        if let Some(JsonValue::Object(first)) = document.get("first") {
+            polygon.first = Point::deserialize(first.clone());
+        }
+        if let Some(JsonValue::Array(offsets)) = document.get("offsets") {
+            for offset in offsets {
+                if let JsonValue::Object(offset) = offset {
+                    polygon.offsets.push(Vector::deserialize(offset.clone()));
+                }
+            }
+        }
+        if let Some(JsonValue::Object(style)) = document.get("style") {
             polygon.style = Style::deserialize(style.clone());
         }
 
@@ -207,22 +266,6 @@ impl Tool for Polygon {
         if let Some((color, _)) = self.style.fill {
             frame.fill(&polygon, Fill::from(color));
         }
-    }
-
-    fn add_to_svg(&self, svg: Group) -> Group {
-        let polygon = svg::node::element::Polygon::new()
-            .set("stroke-width", self.style.get_stroke_width())
-            .set("stroke", self.style.get_stroke_color())
-            .set("stroke-opacity", self.style.get_stroke_alpha())
-            .set("fill", self.style.get_fill())
-            .set("fill-opacity", self.style.get_fill_alpha())
-            .set("style", "mix-blend-mode:hard-light")
-            .set("points", self.offsets.iter().fold(
-                (format!("{},{}", self.first.x, self.first.y), self.first), |(res, point), offset| {
-                    (res + &*format!(" {},{}", point.x + offset.x, point.y + offset.y), point.add(*offset))
-                }).0);
-
-        svg.add(polygon)
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

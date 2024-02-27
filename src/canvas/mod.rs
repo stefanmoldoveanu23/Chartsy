@@ -3,3 +3,4 @@ pub mod canvas;
 pub mod tools;
 pub mod tool;
 pub mod style;
+pub mod svg;

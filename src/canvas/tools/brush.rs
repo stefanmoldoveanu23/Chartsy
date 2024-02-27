@@ -6,6 +6,8 @@ use iced::{mouse, Point, Rectangle, Renderer, keyboard, Vector, Color};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry};
+use json::JsonValue;
+use json::object::Object;
 use mongodb::bson::{Bson, doc, Document};
 use svg::node::element::Group;
 use crate::canvas::layer::CanvasAction;
@@ -159,18 +161,18 @@ pub trait Brush: Send+Sync+Debug {
     fn add_svg_end(point: Point, svg: Group, style: Style) -> Group where Self:Sized;
 }
 
-impl<BrushType> Serialize for BrushType
+impl<BrushType> Serialize<Document> for BrushType
 where BrushType: Brush+Clone+'static {
     fn serialize(&self) -> Document {
         doc! {
-            "start": self.get_start().serialize(),
+            "start": Document::from(self.get_start().serialize()),
             "offsets": self.get_offsets().iter().map(|offset| {offset.serialize()}).collect::<Vec<Document>>().as_slice(),
-            "style": self.get_style().serialize(),
+            "style": Document::from(self.get_style().serialize()),
         }
     }
 }
 
-impl<BrushType> Deserialize for BrushType
+impl<BrushType> Deserialize<Document> for BrushType
     where BrushType: Brush+Clone+'static {
     fn deserialize(document: Document) -> Self where Self: Sized {
         let mut brush_start :Point= Point::default();
@@ -197,6 +199,60 @@ impl<BrushType> Deserialize for BrushType
     }
 }
 
+impl<BrushType> Serialize<Group> for BrushType
+where BrushType: Brush+Clone+'static {
+    fn serialize(&self) -> Group {
+        let mut pos = self.get_start();
+
+        let mut ret = Group::new().set("class", BrushType::id());
+
+        for offset in self.get_offsets() {
+            ret = BrushType::add_svg_stroke_piece(pos, pos.add(offset), ret, self.get_style());
+            pos = pos.add(offset.clone());
+        }
+
+        BrushType::add_svg_end(pos, ret, self.get_style())
+    }
+}
+
+impl<BrushType> Serialize<Object> for BrushType
+where BrushType: Brush+Clone+'static {
+    fn serialize(&self) -> Object {
+        let mut data = Object::new();
+
+        data.insert("start", JsonValue::Object(self.get_start().serialize()));
+        data.insert("offsets", JsonValue::Array(self.get_offsets().iter().map(|offset| JsonValue::Object(offset.serialize())).collect()));
+        data.insert("style", JsonValue::Object(self.get_style().serialize()));
+
+        data
+    }
+}
+
+impl<BrushType> Deserialize<Object> for BrushType
+where BrushType: Brush+Clone+'static {
+    fn deserialize(document: Object) -> Self where Self: Sized {
+        let mut brush_start = Point::default();
+        let mut brush_offsets :Vec<Vector>= vec![];
+        let mut brush_style = Style::default();
+
+        if let Some(JsonValue::Object(start)) = document.get("start") {
+            brush_start = Point::deserialize(start.clone());
+        }
+        if let Some(JsonValue::Array(offsets)) = document.get("offsets") {
+            for offset in offsets {
+                if let JsonValue::Object(offset) = offset {
+                    brush_offsets.push(Vector::deserialize(offset.clone()));
+                }
+            }
+        }
+        if let Some(JsonValue::Object(style)) = document.get("style") {
+            brush_style = Style::deserialize(style.clone());
+        }
+
+        BrushType::new(brush_start, brush_offsets, brush_style)
+    }
+}
+
 impl<BrushType> Tool for BrushType
 where BrushType: Brush+Clone+'static {
     fn add_to_frame(&self, frame: &mut Frame) {
@@ -208,19 +264,6 @@ where BrushType: Brush+Clone+'static {
         }
 
         BrushType::add_end(pos, frame, self.get_style());
-    }
-
-    fn add_to_svg(&self, svg: Group) -> Group {
-        let mut pos = self.get_start();
-
-        let mut ret = svg;
-
-        for offset in self.get_offsets() {
-            ret = BrushType::add_svg_stroke_piece(pos, pos.add(offset), ret, self.get_style());
-            pos = pos.add(offset.clone());
-        }
-
-        BrushType::add_svg_end(pos, ret, self.get_style())
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

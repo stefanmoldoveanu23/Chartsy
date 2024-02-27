@@ -5,6 +5,8 @@ use iced::{mouse, Point, Rectangle, Renderer, keyboard, Size, Color};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
+use json::JsonValue;
+use json::object::Object;
 use mongodb::bson::{Bson, doc, Document};
 use svg::node::element::Group;
 use crate::canvas::layer::CanvasAction;
@@ -122,17 +124,17 @@ pub struct Rect {
     style: Style,
 }
 
-impl Serialize for Rect {
+impl Serialize<Document> for Rect {
     fn serialize(&self) -> Document {
         doc! {
-            "start" : self.start.serialize(),
-            "end": self.end.serialize(),
-            "style": self.style.serialize(),
+            "start" : Document::from(self.start.serialize()),
+            "end": Document::from(self.end.serialize()),
+            "style": Document::from(self.style.serialize()),
         }
     }
 }
 
-impl Deserialize for Rect {
+impl Deserialize<Document> for Rect {
     fn deserialize(document: Document) -> Self where Self: Sized {
         let mut rect = Rect {start: Point::default(), end: Point::default(), style: Style::default()};
 
@@ -152,21 +154,9 @@ impl Deserialize for Rect {
     }
 }
 
-impl Tool for Rect {
-    fn add_to_frame(&self, frame: &mut Frame) {
-        let rect = Path::new(|builder| {
-            builder.rectangle(self.start, Size::from(self.end.sub(self.start)));
-        });
-
-        if let Some((width, color, _, _)) = self.style.stroke {
-            frame.stroke(&rect, Stroke::default().with_width(width).with_color(color));
-        }
-        if let Some((color, _)) = self.style.fill {
-            frame.fill(&rect, Fill::from(color));
-        }
-    }
-
-    fn add_to_svg(&self, svg: Group) -> Group {
+impl Serialize<Group> for Rect
+{
+    fn serialize(&self) -> Group {
         let rect = svg::node::element::Rectangle::new()
             .set("x", self.start.x.min(self.end.x))
             .set("y", self.start.y.min(self.end.y))
@@ -179,7 +169,56 @@ impl Tool for Rect {
             .set("fill-opacity", self.style.get_fill_alpha())
             .set("style", "mix-blend-mode:hard-light");
 
-        svg.add(rect)
+        Group::new()
+            .set("class", self.id())
+            .add(rect)
+    }
+}
+
+impl Serialize<Object> for Rect
+{
+    fn serialize(&self) -> Object {
+        let mut data = Object::new();
+
+        data.insert("start", JsonValue::Object(self.start.serialize()));
+        data.insert("end", JsonValue::Object(self.end.serialize()));
+        data.insert("style", JsonValue::Object(self.style.serialize()));
+
+        data
+    }
+}
+
+impl Deserialize<Object> for Rect
+{
+    fn deserialize(document: Object) -> Self where Self: Sized {
+        let mut rect = Rect { start: Point::default(), end: Point::default(), style: Style::default() };
+
+        if let Some(JsonValue::Object(start)) = document.get("start") {
+            rect.start = Point::deserialize(start.clone());
+        }
+        if let Some(JsonValue::Object(end)) = document.get("end") {
+            rect.end = Point::deserialize(end.clone());
+        }
+        if let Some(JsonValue::Object(style)) = document.get("style") {
+            rect.style = Style::deserialize(style.clone());
+        }
+
+        rect
+    }
+}
+
+impl Tool for Rect {
+    fn add_to_frame(&self, frame: &mut Frame) {
+        let rect = Path::new(|builder| {
+            builder.rectangle(self.start, Size::from(self.end.sub(self.start)));
+        });
+
+        if let Some((width, color, _, _)) = self.style.stroke {
+            frame.stroke(&rect, Stroke::default().with_width(width).with_color(color));
+        }
+        if let Some((color, _)) = self.style.fill {
+            frame.fill(&rect, Fill::from(color));
+        }
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

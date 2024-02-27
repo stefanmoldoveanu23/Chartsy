@@ -1,5 +1,7 @@
 use iced::{Color, Element, Renderer, Command, Length};
 use iced::widget::{Button, Column, Slider};
+use json::JsonValue;
+use json::object::Object;
 use mongodb::bson::{Bson, doc, Document};
 use crate::scene::Message;
 use crate::serde::{Deserialize, Serialize};
@@ -168,23 +170,23 @@ pub enum StyleUpdate {
     Fill(Color),
 }
 
-impl Serialize for Style {
+impl Serialize<Document> for Style {
     fn serialize(&self) -> Document {
         let mut document = doc!{};
 
         if let Some((width, color, _, _)) = self.stroke {
-            document.insert("stroke", doc!{ "width": width, "color": color.serialize() });
+            document.insert("stroke", doc!{ "width": width, "color": Document::from(color.serialize()) });
         };
 
         if let Some((color, _)) = self.fill {
-            document.insert("fill", color.serialize());
+            document.insert("fill", Document::from(color.serialize()));
         }
 
         document
     }
 }
 
-impl Deserialize for Style {
+impl Deserialize<Document> for Style {
     fn deserialize(document: Document) -> Self where Self: Sized {
         let mut style :Style= Style::default();
 
@@ -204,6 +206,54 @@ impl Deserialize for Style {
         }
 
         if let Some(Bson::Document(fill)) = document.get("fill") {
+            style.fill = Some((Color::deserialize(fill.clone()), false));
+        }
+
+        style
+    }
+}
+
+impl Serialize<Object> for Style
+{
+    fn serialize(&self) -> Object {
+        let mut data = Object::new();
+
+        if let Some((width, color, _, _)) = self.stroke {
+            let mut stroke = Object::new();
+            stroke.insert("width", JsonValue::Number(width.into()));
+            stroke.insert("color", JsonValue::Object(color.serialize()));
+
+            data.insert("stroke", JsonValue::Object(stroke));
+        };
+
+        if let Some((color, _)) = self.fill {
+            data.insert("fill", JsonValue::Object(color.serialize()));
+        }
+
+        data
+    }
+}
+
+impl Deserialize<Object> for Style
+{
+    fn deserialize(document: Object) -> Self where Self: Sized {
+        let mut style = Style::default();
+
+        if let Some(JsonValue::Object(stroke)) = document.get("stroke") {
+            let mut width = 0.0;
+            let mut color = Color::default();
+
+            if let Some(JsonValue::Number(width_value)) = stroke.get("width") {
+                width = f32::from(*width_value);
+            }
+            if let Some(JsonValue::Object(color_value)) = stroke.get("color") {
+                color = Color::deserialize(color_value.clone());
+            }
+
+            style.stroke = Some((width, color, false, false));
+        }
+
+        if let Some(JsonValue::Object(fill)) = document.get("fill") {
             style.fill = Some((Color::deserialize(fill.clone()), false));
         }
 

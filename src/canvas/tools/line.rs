@@ -4,6 +4,8 @@ use iced::{Color, mouse, Point, Rectangle, Renderer};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
+use json::JsonValue;
+use json::object::Object;
 use mongodb::bson::{Bson, doc, Document};
 use svg::node::element::{self, Group, path::Data};
 use crate::canvas::layer::CanvasAction;
@@ -110,17 +112,17 @@ pub struct Line {
     style: Style,
 }
 
-impl Serialize for Line {
+impl Serialize<Document> for Line {
     fn serialize(&self) -> Document {
         doc! {
-            "start": self.start.serialize(),
-            "end": self.end.serialize(),
-            "style": self.style.serialize(),
+            "start": Document::from(self.start.serialize()),
+            "end": Document::from(self.end.serialize()),
+            "style": Document::from(self.style.serialize()),
         }
     }
 }
 
-impl Deserialize for Line {
+impl Deserialize<Document> for Line {
     fn deserialize(document: Document) -> Self where Self: Sized {
         let mut line = Line { start: Point::default(), end: Point::default(), style: Style::default() };
 
@@ -140,19 +142,9 @@ impl Deserialize for Line {
     }
 }
 
-impl Tool for Line {
-    fn add_to_frame(&self, frame: &mut Frame) {
-        let line = Path::new(|builder| {
-            builder.move_to(self.start);
-            builder.line_to(self.end);
-        });
-
-        if let Some((width, color, _, _)) = self.style.stroke {
-            frame.stroke(&line, Stroke::default().with_width(width).with_color(color));
-        }
-    }
-
-    fn add_to_svg(&self, svg: Group) -> Group {
+impl Serialize<Group> for Line
+{
+    fn serialize(&self) -> Group {
         let data = Data::new()
             .move_to((self.start.x, self.start.y))
             .line_to((self.end.x, self.end.y))
@@ -165,7 +157,54 @@ impl Tool for Line {
             .set("style", "mix-blend-mode:hard-light")
             .set("d", data);
 
-        svg.add(path)
+        Group::new()
+            .set("class", self.id())
+            .add(path)
+    }
+}
+
+impl Serialize<Object> for Line
+{
+    fn serialize(&self) -> Object {
+        let mut data = Object::new();
+
+        data.insert("start", JsonValue::Object(self.start.serialize()));
+        data.insert("end", JsonValue::Object(self.end.serialize()));
+        data.insert("style", JsonValue::Object(self.style.serialize()));
+
+        data
+    }
+}
+
+impl Deserialize<Object> for Line
+{
+    fn deserialize(document: Object) -> Self where Self: Sized {
+        let mut line = Line { start: Point::default(), end: Point::default(), style: Style::default() };
+
+        if let Some(JsonValue::Object(start)) = document.get("start") {
+            line.start = Point::deserialize(start.clone());
+        }
+        if let Some(JsonValue::Object(end)) = document.get("end") {
+            line.end = Point::deserialize(end.clone());
+        }
+        if let Some(JsonValue::Object(style)) = document.get("style") {
+            line.style = Style::deserialize(style.clone());
+        }
+
+        line
+    }
+}
+
+impl Tool for Line {
+    fn add_to_frame(&self, frame: &mut Frame) {
+        let line = Path::new(|builder| {
+            builder.move_to(self.start);
+            builder.line_to(self.end);
+        });
+
+        if let Some((width, color, _, _)) = self.style.stroke {
+            frame.stroke(&line, Stroke::default().with_width(width).with_color(color));
+        }
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {

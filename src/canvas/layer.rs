@@ -3,8 +3,7 @@ use iced::{Color, event, keyboard, Point, Rectangle, Renderer};
 use iced::advanced::mouse;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{self, fill::Rule};
-use mongodb::bson::Document;
-use mongodb::results::InsertManyResult;
+use json::JsonValue;
 use crate::canvas::style::{Style, StyleUpdate};
 use crate::theme::Theme;
 use crate::canvas::tool::{Pending, Tool};
@@ -154,8 +153,8 @@ pub enum CanvasAction {
     AddLayer,
     ActivateLayer(usize),
     Save,
-    Saved(Arc<InsertManyResult>),
-    Loaded(usize, Vec<Document>),
+    Saved(usize),
+    Loaded {layers: usize, tools: Vec<(Arc<dyn Tool>, usize)>, json_tools: Option<Vec<JsonValue>>},
     Undo,
     Redo,
 }

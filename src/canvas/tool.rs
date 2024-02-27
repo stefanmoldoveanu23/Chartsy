@@ -2,6 +2,8 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use iced::{mouse, Point, Rectangle, Renderer};
 use iced::widget::canvas::{event, Event, Frame, Geometry};
+use json::JsonValue;
+use json::object::Object;
 use mongodb::bson::{Bson, Document};
 use svg::node::element::Group;
 use crate::canvas::layer::CanvasAction;
@@ -12,12 +14,9 @@ use crate::canvas::tools::{line::Line, rect::Rect, triangle::Triangle, polygon::
 use crate::canvas::tools::brushes::{eraser::Eraser, pencil::Pencil, pen::Pen, airbrush::Airbrush};
 
 /// Any tool that can be used on the [canvas](crate::canvas::canvas::Canvas).
-pub trait Tool: Debug+Send+Sync+Serialize+Deserialize {
+pub trait Tool: Debug+Send+Sync+Serialize<Document>+Deserialize<Document>+Serialize<Group>+Serialize<Object>+Deserialize<Object> {
     /// Adds the [Tool] to the given [Frame].
     fn add_to_frame(&self, frame: &mut Frame);
-
-    /// Adds the [Tool] to the given [Group].
-    fn add_to_svg(&self, svg: Group) -> Group;
 
     /// Creates a clone of the [Tool] and encloses it into a [Box].
     fn boxed_clone(&self) -> Box<dyn Tool>;
@@ -44,6 +43,32 @@ pub fn get_deserialized(document: Document) -> Option<(Arc<dyn Tool>, usize)> {
             "Pencil" => Some((Arc::new(Pencil::deserialize(document)), layer)),
             "Airbrush" => Some((Arc::new(Airbrush::deserialize(document)), layer)),
             "Eraser" => Some((Arc::new(Eraser::deserialize(document)), layer)),
+            _ => None
+        }
+    } else {
+        None
+    }
+}
+
+pub fn get_json(value: Object) -> Option<(Arc<dyn Tool>, usize)>
+{
+    let mut layer :usize= 0;
+    if let Some(JsonValue::Number(layer_count)) = value.get("layer") {
+        layer = f32::from(*layer_count) as usize;
+    }
+
+    if let Some(JsonValue::String(name)) = value.get("name") {
+        match &name[..] {
+            "Line" => Some((Arc::new(Line::deserialize(value)), layer)),
+            "Rectangle" => Some((Arc::new(Rect::deserialize(value)), layer)),
+            "Triangle" => Some((Arc::new(Triangle::deserialize(value)), layer)),
+            "Polygon" => Some((Arc::new(Polygon::deserialize(value)), layer)),
+            "Circle" => Some((Arc::new(Circle::deserialize(value)), layer)),
+            "Ellipse" => Some((Arc::new(Ellipse::deserialize(value)), layer)),
+            "FountainPen" => Some((Arc::new(Pen::deserialize(value)), layer)),
+            "Pencil" => Some((Arc::new(Pencil::deserialize(value)), layer)),
+            "Airbrush" => Some((Arc::new(Airbrush::deserialize(value)), layer)),
+            "Eraser" => Some((Arc::new(Eraser::deserialize(value)), layer)),
             _ => None
         }
     } else {

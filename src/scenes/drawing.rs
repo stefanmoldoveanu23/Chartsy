@@ -1,4 +1,8 @@
 use std::any::Any;
+use std::fs::{create_dir_all, File};
+use std::io::{Read, Write};
+use std::sync::Arc;
+use directories::ProjectDirs;
 use dropbox_sdk::default_client::{NoauthDefaultClient, UserAuthDefaultClient};
 use dropbox_sdk::files;
 use dropbox_sdk::files::WriteMode;
@@ -8,6 +12,8 @@ use iced::alignment::Horizontal;
 use iced::widget::{button, text, column, row, Container, Row};
 use iced_aw::tabs::Tabs;
 use iced_aw::tab_bar::TabLabel;
+use json::JsonValue;
+use json::object::Object;
 use mongodb::bson::{Bson, doc, Uuid};
 use crate::canvas::canvas::Canvas;
 
@@ -16,6 +22,8 @@ use crate::canvas::tools::{line::LinePending, rect::RectPending, triangle::Trian
 use crate::canvas::tools::{brush::BrushPending, brushes::{pencil::Pencil, pen::Pen, airbrush::Airbrush, eraser::Eraser}};
 use crate::scenes::scenes::Scenes;
 use crate::canvas::layer::CanvasAction;
+use crate::canvas::tool;
+use crate::canvas::tool::Tool;
 use crate::config::{DROPBOX_ID, DROPBOX_REFRESH_TOKEN};
 use crate::errors::error::Error;
 
@@ -36,6 +44,15 @@ pub(crate) enum DrawingAction {
     PostDrawing,
     TabSelection(TabIds),
     ErrorHandler(Error),
+}
+
+/// The mode in which the progress will be saved:
+/// - [Offline](SaveMode::Offline) for local saving;
+/// - [Online](SaveMode::Online) for remote saving in a database.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum SaveMode {
+    Offline,
+    Online
 }
 
 impl Action for DrawingAction {
@@ -71,22 +88,173 @@ impl Into<Box<dyn Action + 'static>> for Box<DrawingAction> {
 pub struct Drawing {
     canvas: Canvas,
     active_tab: TabIds,
+    save_mode: SaveMode,
     globals: Globals,
 }
 
 impl Drawing {
+    fn init_online(self: &mut Box<Self>) -> Command<Message>
+    {
+        let mut uuid = self.canvas.id.clone();
+        if uuid != Uuid::from_bytes([0; 16]) {
+            Command::perform(
+                async {},
+                move |_| {
+                    Message::SendMongoRequests(
+                        vec![
+                            MongoRequest::new(
+                                "canvases".into(),
+                                MongoRequestType::Get(doc! {"id": uuid}),
+                            ),
+                            MongoRequest::new(
+                                "tools".into(),
+                                MongoRequestType::Get(doc! {"canvas_id": uuid}),
+                            )
+                        ],
+                        move |res| {
+                            if let (Some(MongoResponse::Get(canvas)),
+                                Some(MongoResponse::Get(tools))) = (res.get(0), res.get(1)) {
+                                let layer_count = canvas.get(0);
+                                let layer_count =
+                                    if let Some(document) = layer_count {
+                                        if let Some(Bson::Int32(layer_count)) = document.get("layers") {
+                                            *layer_count as usize
+                                        } else {
+                                            1
+                                        }
+                                    } else {
+                                        1
+                                    };
+
+                                let mut tools_vec :Vec<(Arc<dyn Tool>, usize)> = vec![];
+                                for tool in tools {
+                                    tools_vec.push(tool::get_deserialized(tool.clone()).unwrap());
+                                }
+
+                                Box::new(DrawingAction::CanvasAction(CanvasAction::Loaded {
+                                    layers: layer_count,
+                                    tools: tools_vec,
+                                    json_tools: None,
+                                }))
+                            } else {
+                                Box::new(DrawingAction::None)
+                            }
+                        }
+                    )
+                }
+            )
+        } else {
+            uuid = Uuid::new();
+            self.canvas.id = Uuid::from(uuid.clone());
+
+            Command::perform(
+                async {},
+                move |_| {
+                    Message::SendMongoRequests(
+                        vec![
+                            MongoRequest::new(
+                                "canvases".into(),
+                                MongoRequestType::Insert(vec![doc!{"id": uuid, "layers": 1}]),
+                            )
+                        ],
+                        |_| Box::new(DrawingAction::CanvasAction(
+                            CanvasAction::Loaded { layers: 1, tools: vec![], json_tools: None }
+                        )),
+                    )
+                }
+            )
+        }
+    }
+
+    fn init_offline(self: &mut Box<Self>) -> Command<Message>
+    {
+        let mut default_json = Object::new();
+        default_json.insert("layers", JsonValue::Number(1.into()));
+        default_json.insert("tools", JsonValue::Array(vec![]));
+
+        let mut uuid = self.canvas.id.clone();
+        if uuid != Uuid::from_bytes([0; 16]) {
+            Command::perform(
+                async move {
+                    let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
+                    let file_path = proj_dirs.data_local_dir().join(String::from("./") + &*uuid.to_string() + "/data.json");
+                    let mut file = File::open(file_path).unwrap();
+                    let mut empty_vec = vec![];
+                    let data_bytes :&mut [u8]= empty_vec.as_mut_slice();
+                    file.read(data_bytes).unwrap();
+
+                    let data = json::parse(std::str::from_utf8(data_bytes).unwrap()).unwrap();
+                    if let JsonValue::Object(data) = data.clone() {
+                        let mut layers = 1;
+                        let mut tools = vec![];
+                        let mut json_tools = vec![];
+
+                        if let Some(JsonValue::Number(cnt_layers)) = data.get("layers") {
+                            layers = f32::from(*cnt_layers) as usize;
+                        }
+                        if let Some(JsonValue::Array(tool_list)) = data.get("tools") {
+                            json_tools = tool_list.clone();
+
+                            for tool in tool_list {
+                                if let JsonValue::Object(tool) = tool {
+                                    if let Some(tool) = tool::get_json(tool.clone()) {
+                                        tools.push(tool);
+                                    }
+                                }
+                            }
+                        }
+
+                        (layers, tools, json_tools)
+                    } else {
+                        (1, vec![], vec![])
+                    }
+                },
+                |(layer_count, tools, json_tools)| Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Loaded{
+                    layers: layer_count,
+                    tools,
+                    json_tools: Some(json_tools),
+                })))
+            )
+        } else {
+            uuid = Uuid::new();
+            self.canvas.id = Uuid::from(uuid.clone());
+
+            let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
+            let dir_path = proj_dirs.data_local_dir().join(String::from("./") + &*uuid.to_string());
+            create_dir_all(dir_path.clone()).unwrap();
+
+            let file_path = dir_path.join(String::from("./data.json"));
+            let mut file = File::create(file_path).unwrap();
+            file.write(json::stringify(JsonValue::Object(default_json)).as_bytes()).unwrap();
+
+            self.update(Box::new(DrawingAction::CanvasAction(CanvasAction::Loaded{
+                layers: 1,
+                tools: vec![],
+                json_tools: Some(vec![])
+            })))
+        }
+    }
 }
 
 /// Contains the [uuid](Uuid) of the current [Drawing].
 #[derive(Debug, Clone, Copy)]
 pub struct DrawingOptions {
     uuid: Option<Uuid>,
+    save_mode: Option<SaveMode>,
 }
 
 impl DrawingOptions {
-    /// Returns a new instance with the given [uuid](Uuid).
-    pub(crate) fn new(uuid: Option<Uuid>) -> Self {
-        DrawingOptions { uuid }
+    /// Returns a new instance with the given parameters.
+    pub(crate) fn new(uuid: Option<Uuid>, save_mode: Option<SaveMode>) -> Self {
+        DrawingOptions { uuid, save_mode }
+    }
+
+    fn has_uuid(&self) -> bool {
+        self.uuid.is_some()
+    }
+
+    fn has_save_mode(&self) -> bool {
+        self.save_mode.is_some()
     }
 }
 
@@ -94,6 +262,10 @@ impl SceneOptions<Box<Drawing>> for DrawingOptions {
     fn apply_options(&self, scene: &mut Box<Drawing>) {
         if let Some(uuid) = self.uuid {
             scene.canvas.id = uuid;
+        }
+
+        if let Some(save_mode) = self.save_mode {
+            scene.save_mode = save_mode;
         }
     }
 
@@ -108,6 +280,7 @@ impl Scene for Box<Drawing> {
             Drawing {
                 canvas: Canvas::new().width(Length::Fixed(800.0)).height(Length::Fixed(600.0)),
                 active_tab: TabIds::Tools,
+                save_mode: SaveMode::Online,
                 globals,
             }
         );
@@ -118,69 +291,15 @@ impl Scene for Box<Drawing> {
                 Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::ChangeTool(Box::new(LinePending::None)))))
             }
         );
-        let init_data:Command<Message>=
-            if let Some(options) = options {
-                options.apply_options(&mut drawing);
 
-                let uuid = drawing.canvas.id.clone();
+        if let Some(options) = options {
+            options.apply_options(&mut drawing);
+        }
 
-                Command::perform(
-                    async {},
-                    move |_| {
-                        Message::SendMongoRequests(
-                            vec![
-                                MongoRequest::new(
-                                    "canvases".into(),
-                                    MongoRequestType::Get(doc! {"id": uuid}),
-                                ),
-                                MongoRequest::new(
-                                    "tools".into(),
-                                    MongoRequestType::Get(doc! {"canvas_id": uuid}),
-                                )
-                            ],
-                            move |res| {
-                                if let (Some(MongoResponse::Get(canvas)),
-                                    Some(MongoResponse::Get(tools))) = (res.get(0), res.get(1)) {
-                                    let layer_count = canvas.get(0);
-                                    let layer_count =
-                                        if let Some(document) = layer_count {
-                                            if let Some(Bson::Int32(layer_count)) = document.get("layers") {
-                                                *layer_count as usize
-                                            } else {
-                                                1
-                                            }
-                                        } else {
-                                            1
-                                        };
-
-                                    Box::new(DrawingAction::CanvasAction(CanvasAction::Loaded(layer_count, tools.clone())))
-                                } else {
-                                    Box::new(DrawingAction::None)
-                                }
-                            }
-                        )
-                    }
-                )
-            } else {
-                let uuid = drawing.canvas.id.clone();
-
-                Command::perform(
-                    async {},
-                        move |_| {
-                            Message::SendMongoRequests(
-                                vec![
-                                    MongoRequest::new(
-                                        "canvases".into(),
-                                        MongoRequestType::Insert(vec![doc!{"id": uuid, "layers": 1}]),
-                                    )
-                                ],
-                                |_| Box::new(DrawingAction::CanvasAction(
-                                    CanvasAction::Loaded(1, vec![])
-                                )),
-                            )
-                        }
-                )
-            };
+        let init_data :Command<Message>= match drawing.save_mode {
+            SaveMode::Online => drawing.init_online(),
+            SaveMode::Offline => drawing.init_offline()
+        };
 
         return (
             drawing,
@@ -205,31 +324,10 @@ impl Scene for Box<Drawing> {
                 self.canvas.update(action.clone())
             }
             DrawingAction::PostDrawing => {
-                let tool_layers = self.canvas.tool_layers.clone();
+                let document :svg::Document= self.canvas.svg.as_document();
 
                 Command::perform(
                     async move {
-                        let background = svg::node::element::Rectangle::new()
-                            .set("x", 0.0)
-                            .set("y", 0.0)
-                            .set("width", 1000.0)
-                            .set("height", 1000.0)
-                            .set("fill", "#ffffff");
-
-                        let mut group = svg::node::element::Group::new()
-                            .set("style", "isolation:isolate");
-
-                        for layer in tool_layers.iter() {
-                            for tool in layer {
-                                group = tool.add_to_svg(group);
-                            }
-                        }
-
-                        let document = svg::Document::new()
-                            .set("viewBox", (0, 0, 1000, 1000))
-                            .add(background)
-                            .add(group);
-
                         let buffer = document.to_string();
                         let img = buffer.as_bytes();
                         let mut auth = dropbox_sdk::oauth2::Authorization::from_refresh_token(

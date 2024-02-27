@@ -4,6 +4,8 @@ use iced::{mouse, Point, Rectangle, Renderer, keyboard, Color};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
+use json::JsonValue;
+use json::object::Object;
 use mongodb::bson::{Bson, doc, Document};
 use svg::node::element::Group;
 use crate::canvas::layer::CanvasAction;
@@ -125,17 +127,17 @@ pub struct Circle {
     style: Style,
 }
 
-impl Serialize for Circle {
+impl Serialize<Document> for Circle {
     fn serialize(&self) -> Document {
         doc! {
-            "center": self.center.serialize(),
+            "center": Document::from(self.center.serialize()),
             "radius": self.radius,
-            "style": self.style.serialize(),
+            "style": Document::from(self.style.serialize()),
         }
     }
 }
 
-impl Deserialize for Circle {
+impl Deserialize<Document> for Circle {
     fn deserialize(document: Document) -> Self where Self: Sized {
         let mut circle = Circle {center: Point::default(), radius: 0.0, style: Style::default() };
 
@@ -155,6 +157,58 @@ impl Deserialize for Circle {
     }
 }
 
+impl Serialize<Group> for Circle
+{
+    fn serialize(&self) -> Group {
+        let circle = svg::node::element::Circle::new()
+            .set("cx", self.center.x)
+            .set("cy", self.center.y)
+            .set("r", self.radius)
+            .set("stroke-width", self.style.get_stroke_width())
+            .set("stroke", self.style.get_stroke_color())
+            .set("stroke-opacity", self.style.get_stroke_alpha())
+            .set("fill", self.style.get_fill())
+            .set("fill-opacity", self.style.get_fill_alpha())
+            .set("style", "mix-blend-mode:hard-light");
+
+        Group::new()
+            .set("class", self.id())
+            .add(circle)
+    }
+}
+
+impl Serialize<Object> for Circle
+{
+    fn serialize(&self) -> Object {
+        let mut data = Object::new();
+
+        data.insert("center", JsonValue::Object(self.center.serialize()));
+        data.insert("radius", JsonValue::Number(self.radius.into()));
+        data.insert("style", JsonValue::Object(self.style.serialize()));
+
+        data
+    }
+}
+
+impl Deserialize<Object> for Circle
+{
+    fn deserialize(document: Object) -> Self where Self: Sized {
+        let mut circle = Circle { center: Point::default(), radius: 0.0, style: Style::default() };
+
+        if let Some(JsonValue::Object(center)) = document.get("center") {
+            circle.center = Point::deserialize(center.clone());
+        }
+        if let Some(JsonValue::Number(radius)) = document.get("radius") {
+            circle.radius = f32::from(*radius);
+        }
+        if let Some(JsonValue::Object(style)) = document.get("style") {
+            circle.style = Style::deserialize(style.clone());
+        }
+
+        circle
+    }
+}
+
 impl Tool for Circle {
     fn add_to_frame(&self, frame: &mut Frame) {
         let circle = Path::new(|builder| {
@@ -167,21 +221,6 @@ impl Tool for Circle {
         if let Some((color, _)) = self.style.fill {
             frame.fill(&circle, Fill::from(color));
         }
-    }
-
-    fn add_to_svg(&self, svg: Group) -> Group {
-        let circle = svg::node::element::Circle::new()
-            .set("cx", self.center.x)
-            .set("cy", self.center.y)
-            .set("r", self.radius)
-            .set("stroke-width", self.style.get_stroke_width())
-            .set("stroke", self.style.get_stroke_color())
-            .set("stroke-opacity", self.style.get_stroke_alpha())
-            .set("fill", self.style.get_fill())
-            .set("fill-opacity", self.style.get_fill_alpha())
-            .set("style", "mix-blend-mode:hard-light");
-
-        svg.add(circle)
     }
 
     fn boxed_clone(&self) -> Box<dyn Tool> {
