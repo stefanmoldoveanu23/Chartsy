@@ -1,20 +1,31 @@
-use std::fmt::Debug;
-use std::sync::Arc;
-use iced::{mouse, Point, Rectangle, Renderer};
-use iced::widget::canvas::{event, Event, Frame, Geometry};
-use json::JsonValue;
-use json::object::Object;
-use mongodb::bson::{Bson, Document};
-use svg::node::element::Group;
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
+use crate::canvas::tools::brushes::{airbrush::Airbrush, eraser::Eraser, pen::Pen, pencil::Pencil};
+use crate::canvas::tools::{
+    circle::Circle, ellipse::Ellipse, line::Line, polygon::Polygon, rect::Rect, triangle::Triangle,
+};
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
-use crate::canvas::tools::{line::Line, rect::Rect, triangle::Triangle, polygon::Polygon, circle::Circle, ellipse::Ellipse};
-use crate::canvas::tools::brushes::{eraser::Eraser, pencil::Pencil, pen::Pen, airbrush::Airbrush};
+use iced::widget::canvas::{event, Event, Frame, Geometry};
+use iced::{mouse, Point, Rectangle, Renderer};
+use json::object::Object;
+use json::JsonValue;
+use mongodb::bson::{Bson, Document};
+use std::fmt::Debug;
+use std::sync::Arc;
+use svg::node::element::Group;
 
 /// Any tool that can be used on the [canvas](crate::canvas::canvas::Canvas).
-pub trait Tool: Debug+Send+Sync+Serialize<Document>+Deserialize<Document>+Serialize<Group>+Serialize<Object>+Deserialize<Object> {
+pub trait Tool:
+    Debug
+    + Send
+    + Sync
+    + Serialize<Document>
+    + Deserialize<Document>
+    + Serialize<Group>
+    + Serialize<Object>
+    + Deserialize<Object>
+{
     /// Adds the [Tool] to the given [Frame].
     fn add_to_frame(&self, frame: &mut Frame);
 
@@ -26,7 +37,7 @@ pub trait Tool: Debug+Send+Sync+Serialize<Document>+Deserialize<Document>+Serial
 }
 
 pub fn get_deserialized(document: Document) -> Option<(Arc<dyn Tool>, usize)> {
-    let mut layer :usize= 0;
+    let mut layer: usize = 0;
     if let Some(Bson::Int32(layer_count)) = document.get("layer") {
         layer = *layer_count as usize;
     }
@@ -43,21 +54,20 @@ pub fn get_deserialized(document: Document) -> Option<(Arc<dyn Tool>, usize)> {
             "Pencil" => Some((Arc::new(Pencil::deserialize(document)), layer)),
             "Airbrush" => Some((Arc::new(Airbrush::deserialize(document)), layer)),
             "Eraser" => Some((Arc::new(Eraser::deserialize(document)), layer)),
-            _ => None
+            _ => None,
         }
     } else {
         None
     }
 }
 
-pub fn get_json(value: Object) -> Option<(Arc<dyn Tool>, usize)>
-{
-    let mut layer :usize= 0;
+pub fn get_json(value: Object) -> Option<(Arc<dyn Tool>, usize)> {
+    let mut layer: usize = 0;
     if let Some(JsonValue::Number(layer_count)) = value.get("layer") {
         layer = f32::from(*layer_count) as usize;
     }
 
-    if let Some(JsonValue::String(name)) = value.get("name") {
+    if let Some(JsonValue::Short(name)) = value.get("name") {
         match &name[..] {
             "Line" => Some((Arc::new(Line::deserialize(value)), layer)),
             "Rectangle" => Some((Arc::new(Rect::deserialize(value)), layer)),
@@ -69,7 +79,7 @@ pub fn get_json(value: Object) -> Option<(Arc<dyn Tool>, usize)>
             "Pencil" => Some((Arc::new(Pencil::deserialize(value)), layer)),
             "Airbrush" => Some((Arc::new(Airbrush::deserialize(value)), layer)),
             "Eraser" => Some((Arc::new(Eraser::deserialize(value)), layer)),
-            _ => None
+            _ => None,
         }
     } else {
         None
@@ -100,7 +110,7 @@ impl Clone for Box<dyn Tool> {
 /// }
 /// ```
 ///
-pub trait Pending: Send+Sync {
+pub trait Pending: Send + Sync {
     /// Handles an [Event] on the [canvas](crate::canvas::canvas::Canvas). To be used in the
     /// Programs' [update function](iced::widget::canvas::Program::update).
     fn update(
@@ -127,7 +137,9 @@ pub trait Pending: Send+Sync {
     fn id(&self) -> String;
 
     /// Returns a default version of the [pending tool](Pending).
-    fn default() -> Self where Self:Sized;
+    fn default() -> Self
+    where
+        Self: Sized;
 
     /// Returns a clone of the [pending tool](Pending) enclosed in a [Box].
     fn boxed_clone(&self) -> Box<dyn Pending>;

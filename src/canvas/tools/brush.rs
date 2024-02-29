@@ -1,32 +1,36 @@
-use std::fmt::{Debug};
-use std::marker::PhantomData;
-use std::ops::{Add, Sub};
-use std::sync::Arc;
-use iced::{mouse, Point, Rectangle, Renderer, keyboard, Vector, Color};
-use iced::event::Status;
-use iced::mouse::Cursor;
-use iced::widget::canvas::{Event, Frame, Geometry};
-use json::JsonValue;
-use json::object::Object;
-use mongodb::bson::{Bson, doc, Document};
-use svg::node::element::Group;
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
+use iced::event::Status;
+use iced::mouse::Cursor;
+use iced::widget::canvas::{Event, Frame, Geometry};
+use iced::{keyboard, mouse, Color, Point, Rectangle, Renderer, Vector};
+use json::object::Object;
+use json::JsonValue;
+use mongodb::bson::{doc, Bson, Document};
+use std::fmt::Debug;
+use std::marker::PhantomData;
+use std::ops::{Add, Sub};
+use std::sync::Arc;
+use svg::node::element::Group;
 
 use crate::canvas::tool::{Pending, Tool};
 
 #[derive(Clone)]
 pub enum BrushPending<BrushType>
-where BrushType: Send+Sync+Clone+Brush {
+where
+    BrushType: Send + Sync + Clone + Brush,
+{
     None,
-    Stroking (Point, Point, Vec<Vector>),
-    _PhantomVariant (PhantomData<BrushType>),
+    Stroking(Point, Point, Vec<Vector>),
+    _PhantomVariant(PhantomData<BrushType>),
 }
 
-impl<BrushType: Send+Sync+Clone+Brush+'static> Pending for BrushPending<BrushType>
-where Box<BrushType>: Into<Box<dyn Tool>> {
+impl<BrushType: Send + Sync + Clone + Brush + 'static> Pending for BrushPending<BrushType>
+where
+    Box<BrushType>: Into<Box<dyn Tool>>,
+{
     fn update(
         &mut self,
         event: Event,
@@ -36,66 +40,61 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
         match event {
             Event::Mouse(mouse_event) => {
                 let message = match mouse_event {
-                    mouse::Event::ButtonPressed(mouse::Button::Left) => {
-                        match self {
-                            BrushPending::None => {
-                                *self = BrushPending::Stroking(
-                                    cursor,
-                                    cursor,
-                                    vec![Vector::new(0.0, 0.0)],
-                                );
+                    mouse::Event::ButtonPressed(mouse::Button::Left) => match self {
+                        BrushPending::None => {
+                            *self =
+                                BrushPending::Stroking(cursor, cursor, vec![Vector::new(0.0, 0.0)]);
 
-                                None
-                            }
-                            _ => None
+                            None
                         }
-                    }
-                    mouse::Event::CursorMoved {..} => {
-                        match self {
-                            BrushPending::Stroking(start, last, offsets) => {
-                                let mut new_offsets = offsets.clone();
-                                new_offsets.push(cursor.sub(*last));
+                        _ => None,
+                    },
+                    mouse::Event::CursorMoved { .. } => match self {
+                        BrushPending::Stroking(start, last, offsets) => {
+                            let mut new_offsets = offsets.clone();
+                            new_offsets.push(cursor.sub(*last));
 
-                                *self = BrushPending::Stroking(
-                                    *start,
-                                    cursor,
-                                    new_offsets,
-                                );
+                            *self = BrushPending::Stroking(*start, cursor, new_offsets);
 
-                                None
-                            }
-                            _ => None
+                            None
                         }
-                    }
-                    mouse::Event::ButtonReleased(mouse::Button::Left) => {
-                        match self {
-                            BrushPending::Stroking(start, _last, offsets) => {
-                                let start_clone = start.clone();
-                                let offsets_clone = offsets.clone();
+                        _ => None,
+                    },
+                    mouse::Event::ButtonReleased(mouse::Button::Left) => match self {
+                        BrushPending::Stroking(start, _last, offsets) => {
+                            let start_clone = start.clone();
+                            let offsets_clone = offsets.clone();
 
-                                *self = BrushPending::None;
+                            *self = BrushPending::None;
 
-                                Some(CanvasAction::UseTool(Arc::new(BrushType::new(start_clone, offsets_clone, style))).into())
-                            }
-                            _ => None
+                            Some(
+                                CanvasAction::UseTool(Arc::new(BrushType::new(
+                                    start_clone,
+                                    offsets_clone,
+                                    style,
+                                )))
+                                .into(),
+                            )
                         }
-                    }
-                    _ => None
+                        _ => None,
+                    },
+                    _ => None,
                 };
 
                 (Status::Captured, message)
             }
-            Event::Keyboard(key_event) => {
-                match key_event {
-                    keyboard::Event::KeyPressed { key_code: keyboard::KeyCode::S, .. } => {
-                        *self = BrushPending::None;
+            Event::Keyboard(key_event) => match key_event {
+                keyboard::Event::KeyPressed {
+                    key_code: keyboard::KeyCode::S,
+                    ..
+                } => {
+                    *self = BrushPending::None;
 
-                        (Status::Captured, None)
-                    }
-                    _ => (Status::Ignored, None)
+                    (Status::Captured, None)
                 }
-            }
-            _ => (Status::Ignored, None)
+                _ => (Status::Ignored, None),
+            },
+            _ => (Status::Ignored, None),
         }
     }
 
@@ -114,7 +113,12 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
                     let mut pos = *start;
 
                     for offset in offsets.clone() {
-                        BrushType::add_stroke_piece(pos, pos.add(offset), &mut frame, style.clone());
+                        BrushType::add_stroke_piece(
+                            pos,
+                            pos.add(offset),
+                            &mut frame,
+                            style.clone(),
+                        );
                         pos = pos.add(offset.clone());
                     }
                 }
@@ -137,7 +141,10 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
         BrushType::id()
     }
 
-    fn default() -> Self where Self: Sized {
+    fn default() -> Self
+    where
+        Self: Sized,
+    {
         BrushPending::None
     }
 
@@ -146,23 +153,37 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
     }
 }
 
-pub trait Brush: Send+Sync+Debug {
-    fn new(start: Point, offsets: Vec<Vector>, style: Style) -> Self where Self:Sized;
-    fn id() -> String where Self:Sized;
+pub trait Brush: Send + Sync + Debug {
+    fn new(start: Point, offsets: Vec<Vector>, style: Style) -> Self
+    where
+        Self: Sized;
+    fn id() -> String
+    where
+        Self: Sized;
 
     fn get_start(&self) -> Point;
     fn get_offsets(&self) -> Vec<Vector>;
     fn get_style(&self) -> Style;
 
-    fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame, style: Style) where Self:Sized;
-    fn add_end(point: Point, frame: &mut Frame, style: Style) where Self:Sized;
+    fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame, style: Style)
+    where
+        Self: Sized;
+    fn add_end(point: Point, frame: &mut Frame, style: Style)
+    where
+        Self: Sized;
 
-    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Group, style: Style) -> Group where Self:Sized;
-    fn add_svg_end(point: Point, svg: Group, style: Style) -> Group where Self:Sized;
+    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Group, style: Style) -> Group
+    where
+        Self: Sized;
+    fn add_svg_end(point: Point, svg: Group, style: Style) -> Group
+    where
+        Self: Sized;
 }
 
 impl<BrushType> Serialize<Document> for BrushType
-where BrushType: Brush+Clone+'static {
+where
+    BrushType: Brush + Clone + 'static,
+{
     fn serialize(&self) -> Document {
         doc! {
             "start": Document::from(self.get_start().serialize()),
@@ -173,11 +194,16 @@ where BrushType: Brush+Clone+'static {
 }
 
 impl<BrushType> Deserialize<Document> for BrushType
-    where BrushType: Brush+Clone+'static {
-    fn deserialize(document: Document) -> Self where Self: Sized {
-        let mut brush_start :Point= Point::default();
-        let mut brush_offsets :Vec<Vector>= vec![];
-        let mut brush_style :Style= Style::default();
+where
+    BrushType: Brush + Clone + 'static,
+{
+    fn deserialize(document: Document) -> Self
+    where
+        Self: Sized,
+    {
+        let mut brush_start: Point = Point::default();
+        let mut brush_offsets: Vec<Vector> = vec![];
+        let mut brush_style: Style = Style::default();
 
         if let Some(Bson::Document(start)) = document.get("start") {
             brush_start = Point::deserialize(start.clone());
@@ -200,7 +226,9 @@ impl<BrushType> Deserialize<Document> for BrushType
 }
 
 impl<BrushType> Serialize<Group> for BrushType
-where BrushType: Brush+Clone+'static {
+where
+    BrushType: Brush + Clone + 'static,
+{
     fn serialize(&self) -> Group {
         let mut pos = self.get_start();
 
@@ -216,12 +244,22 @@ where BrushType: Brush+Clone+'static {
 }
 
 impl<BrushType> Serialize<Object> for BrushType
-where BrushType: Brush+Clone+'static {
+where
+    BrushType: Brush + Clone + 'static,
+{
     fn serialize(&self) -> Object {
         let mut data = Object::new();
 
         data.insert("start", JsonValue::Object(self.get_start().serialize()));
-        data.insert("offsets", JsonValue::Array(self.get_offsets().iter().map(|offset| JsonValue::Object(offset.serialize())).collect()));
+        data.insert(
+            "offsets",
+            JsonValue::Array(
+                self.get_offsets()
+                    .iter()
+                    .map(|offset| JsonValue::Object(offset.serialize()))
+                    .collect(),
+            ),
+        );
         data.insert("style", JsonValue::Object(self.get_style().serialize()));
 
         data
@@ -229,10 +267,15 @@ where BrushType: Brush+Clone+'static {
 }
 
 impl<BrushType> Deserialize<Object> for BrushType
-where BrushType: Brush+Clone+'static {
-    fn deserialize(document: Object) -> Self where Self: Sized {
+where
+    BrushType: Brush + Clone + 'static,
+{
+    fn deserialize(document: Object) -> Self
+    where
+        Self: Sized,
+    {
         let mut brush_start = Point::default();
-        let mut brush_offsets :Vec<Vector>= vec![];
+        let mut brush_offsets: Vec<Vector> = vec![];
         let mut brush_style = Style::default();
 
         if let Some(JsonValue::Object(start)) = document.get("start") {
@@ -254,7 +297,9 @@ where BrushType: Brush+Clone+'static {
 }
 
 impl<BrushType> Tool for BrushType
-where BrushType: Brush+Clone+'static {
+where
+    BrushType: Brush + Clone + 'static,
+{
     fn add_to_frame(&self, frame: &mut Frame) {
         let mut pos = self.get_start();
 

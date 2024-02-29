@@ -1,13 +1,15 @@
-use std::fmt::{self, Display, Formatter};
-use std::ops::Sub;
-use iced::advanced::{Layout, Widget, Renderer, Clipboard, Shell};
-use iced::{Background, BorderRadius, Element, event, Event, Length, mouse, Rectangle, Size, Vector};
+use crate::theme::Theme;
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::{Quad, Style};
-use iced::advanced::widget::{Tree, tree};
+use iced::advanced::widget::{tree, Tree};
+use iced::advanced::{Clipboard, Layout, Renderer, Shell, Widget};
 use iced::mouse::{Button, Cursor, Interaction};
 use iced::widget::Slider;
-use crate::theme::Theme;
+use iced::{
+    event, mouse, Background, BorderRadius, Element, Event, Length, Rectangle, Size, Vector,
+};
+use std::fmt::{self, Display, Formatter};
+use std::ops::Sub;
 
 /// A basic color picker widget.
 ///
@@ -22,7 +24,9 @@ pub struct ColorPicker<'a, Message> {
 }
 
 impl<'a, Message> ColorPicker<'a, Message>
-where Message: Clone + 'a {
+where
+    Message: Clone + 'a,
+{
     /// Computes the grid dimensions for the [ColorPicker], and initializes a new instance
     /// given the submit function.
     pub fn new(on_submit: fn(iced::Color) -> Message) -> Self {
@@ -33,13 +37,12 @@ where Message: Clone + 'a {
         ColorPicker {
             hovering: None,
             on_submit,
-            slider: Slider::new(
-                0.0..=255.0,
-                255.0,
-                move |val| {(on_submit)(iced::Color::new(0.0, 0.0, 0.0, val / 255.0))}),
+            slider: Slider::new(0.0..=255.0, 255.0, move |val| {
+                (on_submit)(iced::Color::new(0.0, 0.0, 0.0, val / 255.0))
+            }),
             alpha: 1.0,
             height,
-            width: 250.0
+            width: 250.0,
         }
     }
 
@@ -57,18 +60,18 @@ where Message: Clone + 'a {
     /// Changes the [color](iced::Color) of the [ColorPicker].
     pub fn color(mut self, color: iced::Color) -> Self {
         self.alpha = color.a;
-        self.slider = Slider::new(
-            0.0..=255.0,
-            color.a * 255.0,
-            move |val| {(self.on_submit)(iced::Color::new(color.r, color.g, color.b, val / 255.0))},
-        );
+        self.slider = Slider::new(0.0..=255.0, color.a * 255.0, move |val| {
+            (self.on_submit)(iced::Color::new(color.r, color.g, color.b, val / 255.0))
+        });
 
         self
     }
 }
 
 impl<'a, Message> Widget<Message, iced::Renderer<Theme>> for ColorPicker<'a, Message>
-where Message: Clone+'a {
+where
+    Message: Clone + 'a,
+{
     fn width(&self) -> Length {
         Length::Fixed(self.width)
     }
@@ -89,14 +92,14 @@ where Message: Clone+'a {
         style: &Style,
         layout: Layout<'_>,
         cursor: Cursor,
-        viewport: &Rectangle
+        viewport: &Rectangle,
     ) {
         let bounds = layout.bounds();
         let width = bounds.width;
         let row_size = ((width - 10.0) / 40.0) as usize;
 
-        let mut i :usize= 0;
-        let mut j :usize= 0;
+        let mut i: usize = 0;
+        let mut j: usize = 0;
 
         for color in Color::values().iter() {
             renderer.fill_quad(
@@ -111,7 +114,7 @@ where Message: Clone+'a {
                     border_width: 2.0,
                     border_color: iced::Color::from_rgb8(192, 192, 192),
                 },
-                Background::Color(color.to_color())
+                Background::Color(color.to_color()),
             );
 
             if j == row_size - 1 {
@@ -129,10 +132,10 @@ where Message: Clone+'a {
             style,
             Layout::with_offset(
                 Vector::new(0.0, self.height + bounds.y),
-                &Node::new(Size::new(self.width, 20.0))
+                &Node::new(Size::new(self.width, 20.0)),
             ),
             cursor,
-            viewport
+            viewport,
         );
     }
 
@@ -155,68 +158,66 @@ where Message: Clone+'a {
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) -> event::Status {
-
         if self.slider.on_event(
             state,
             event.clone(),
             Layout::with_offset(
                 Vector::new(0.0, self.height + layout.bounds().y),
-                &Node::new(Size::new(self.width, 20.0))
+                &Node::new(Size::new(self.width, 20.0)),
             ),
             cursor,
             renderer,
             clipboard,
             shell,
-            viewport
-        ) == event::Status::Captured {
+            viewport,
+        ) == event::Status::Captured
+        {
             return event::Status::Captured;
         }
 
         match event {
             Event::Keyboard(_) => event::Status::Ignored,
-            Event::Mouse(event) => {
-                match event {
-                    mouse::Event::CursorMoved { position } => {
-                        if !layout.bounds().contains(position) {
-                            self.hovering = None;
-                            return event::Status::Ignored;
-                        }
+            Event::Mouse(event) => match event {
+                mouse::Event::CursorMoved { position } => {
+                    if !layout.bounds().contains(position) {
+                        self.hovering = None;
+                        return event::Status::Ignored;
+                    }
 
-                        let relative = position.sub(Vector::new(layout.bounds().x, layout.bounds().y));
-                        if (relative.x / 40.0).fract() > 0.25 && (relative.y / 40.0).fract() > 0.25 {
-                            let row_size = ((layout.bounds().width - 10.0) / 40.0) as usize;
-                            let x = (relative.x / 40.0).floor() as usize;
-                            let y = (relative.y / 40.0).floor() as usize;
+                    let relative = position.sub(Vector::new(layout.bounds().x, layout.bounds().y));
+                    if (relative.x / 40.0).fract() > 0.25 && (relative.y / 40.0).fract() > 0.25 {
+                        let row_size = ((layout.bounds().width - 10.0) / 40.0) as usize;
+                        let x = (relative.x / 40.0).floor() as usize;
+                        let y = (relative.y / 40.0).floor() as usize;
 
-                            if y * row_size + x < Color::size() {
-                                self.hovering = Some(Color::get(y * row_size + x));
-                            } else {
-                                self.hovering = None;
-                            }
+                        if y * row_size + x < Color::size() {
+                            self.hovering = Some(Color::get(y * row_size + x));
                         } else {
                             self.hovering = None;
                         }
-
-                        event::Status::Captured
+                    } else {
+                        self.hovering = None;
                     }
-                    mouse::Event::ButtonPressed(Button::Left) => {
-                        if let Some(color) = self.hovering {
-                            shell.publish((self.on_submit)(iced::Color::new(color.r, color.g, color.b, self.alpha)));
-                            let on_submit = self.on_submit.clone();
 
-                            self.slider = Slider::new(
-                                0.0..=255.0,
-                                self.alpha * 255.0,
-                                move |val| {(on_submit)(iced::Color::new(color.r, color.g, color.b, val / 255.0))}
-                            );
-                            event::Status::Captured
-                        } else {
-                            event::Status::Ignored
-                        }
-                    }
-                    _ => event::Status::Ignored,
+                    event::Status::Captured
                 }
-            }
+                mouse::Event::ButtonPressed(Button::Left) => {
+                    if let Some(color) = self.hovering {
+                        shell.publish((self.on_submit)(iced::Color::new(
+                            color.r, color.g, color.b, self.alpha,
+                        )));
+                        let on_submit = self.on_submit.clone();
+
+                        self.slider = Slider::new(0.0..=255.0, self.alpha * 255.0, move |val| {
+                            (on_submit)(iced::Color::new(color.r, color.g, color.b, val / 255.0))
+                        });
+                        event::Status::Captured
+                    } else {
+                        event::Status::Ignored
+                    }
+                }
+                _ => event::Status::Ignored,
+            },
             Event::Window(_) => event::Status::Ignored,
             Event::Touch(_) => event::Status::Ignored,
         }
@@ -228,7 +229,7 @@ where Message: Clone+'a {
         layout: Layout<'_>,
         cursor: Cursor,
         viewport: &Rectangle,
-        renderer: &iced::Renderer<Theme>
+        renderer: &iced::Renderer<Theme>,
     ) -> Interaction {
         if self.hovering.is_some() {
             Interaction::Pointer
@@ -237,18 +238,20 @@ where Message: Clone+'a {
                 state,
                 Layout::with_offset(
                     Vector::new(0.0, self.height + layout.bounds().y),
-                    &Node::new(Size::new(self.width, 20.0))
+                    &Node::new(Size::new(self.width, 20.0)),
                 ),
                 cursor,
                 viewport,
-                renderer
+                renderer,
             )
         }
     }
 }
 
 impl<'a, Message: 'a> From<ColorPicker<'a, Message>> for Element<'a, Message, iced::Renderer<Theme>>
-where Message: Clone {
+where
+    Message: Clone,
+{
     fn from(value: ColorPicker<'a, Message>) -> Self {
         Self::new(value)
     }
@@ -306,7 +309,7 @@ impl Color {
             Color::GREEN,
             Color::YELLOW,
             Color::CYAN,
-            Color::PURPLE
+            Color::PURPLE,
         ]
     }
 
@@ -318,17 +321,15 @@ impl Color {
 
 impl Display for Color {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(
-            match self {
-                Color::BLACK => "BLACK",
-                Color::WHITE => "WHITE",
-                Color::RED => "RED",
-                Color::BLUE => "BLUE",
-                Color::GREEN => "GREEN",
-                Color::YELLOW => "YELLOW",
-                Color::CYAN => "CYAN",
-                Color::PURPLE => "PURPLE",
-            }
-        )
+        f.write_str(match self {
+            Color::BLACK => "BLACK",
+            Color::WHITE => "WHITE",
+            Color::RED => "RED",
+            Color::BLUE => "BLUE",
+            Color::GREEN => "GREEN",
+            Color::YELLOW => "YELLOW",
+            Color::CYAN => "CYAN",
+            Color::PURPLE => "PURPLE",
+        })
     }
 }

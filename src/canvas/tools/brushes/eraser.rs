@@ -1,11 +1,11 @@
-use std::f32::consts::PI;
-use std::fmt::{Debug};
-use std::ops::{Add, Sub};
-use iced::{Color, Point, Vector};
-use iced::widget::canvas::{Fill, Frame, Path};
-use svg::node::element::Group;
-use svg::node::element::path::Data;
 use crate::canvas::style::Style;
+use iced::widget::canvas::{Fill, Frame, Path};
+use iced::{Color, Point, Vector};
+use std::f32::consts::PI;
+use std::fmt::Debug;
+use std::ops::{Add, Sub};
+use svg::node::element::path::Data;
+use svg::node::element::Group;
 
 use crate::canvas::tool::Tool;
 
@@ -17,13 +17,18 @@ pub struct Eraser {
     offsets: Vec<Vector>,
 }
 
-
 impl Brush for Eraser {
-    fn new(start: Point, offsets: Vec<Vector>, _style: Style) -> Self where Self: Sized {
+    fn new(start: Point, offsets: Vec<Vector>, _style: Style) -> Self
+    where
+        Self: Sized,
+    {
         Eraser { start, offsets }
     }
 
-    fn id() -> String where Self: Sized {
+    fn id() -> String
+    where
+        Self: Sized,
+    {
         String::from("Eraser")
     }
 
@@ -38,7 +43,10 @@ impl Brush for Eraser {
         Style::default()
     }
 
-    fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame, _style: Style) where Self: Sized {
+    fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame, _style: Style)
+    where
+        Self: Sized,
+    {
         let offset = point2.sub(point1);
 
         let angle = offset.y.atan2(offset.x) + PI / 2.0;
@@ -61,7 +69,10 @@ impl Brush for Eraser {
         frame.fill(&quad, Fill::from(Color::WHITE));
     }
 
-    fn add_end(point: Point, frame: &mut Frame, _style: Style) where Self: Sized {
+    fn add_end(point: Point, frame: &mut Frame, _style: Style)
+    where
+        Self: Sized,
+    {
         let circle = Path::new(|builder| {
             builder.circle(point, 10.0);
         });
@@ -69,7 +80,10 @@ impl Brush for Eraser {
         frame.fill(&circle, Fill::from(Color::WHITE));
     }
 
-    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Group, _style: Style) -> Group where Self: Sized {
+    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Group, _style: Style) -> Group
+    where
+        Self: Sized,
+    {
         let offset = point2.sub(point1);
 
         let angle = offset.y.atan2(offset.x) + PI / 2.0;
@@ -92,12 +106,13 @@ impl Brush for Eraser {
             .set("fill", "#ffffffff")
             .set("d", data);
 
-        svg
-            .add(circle)
-            .add(path)
+        svg.add(circle).add(path)
     }
 
-    fn add_svg_end(point: Point, svg: Group, _style: Style) -> Group where Self: Sized {
+    fn add_svg_end(point: Point, svg: Group, _style: Style) -> Group
+    where
+        Self: Sized,
+    {
         let circle = svg::node::element::Circle::new()
             .set("cx", point.x)
             .set("cy", point.y)

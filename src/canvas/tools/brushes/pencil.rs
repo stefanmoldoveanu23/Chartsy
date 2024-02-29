@@ -1,10 +1,10 @@
-use std::fmt::{Debug};
-use iced::{Point, Vector};
-use iced::widget::canvas::{Frame, Path, Stroke};
-use svg::node::element::Group;
-use svg::node::element::path::Data;
 use crate::canvas::style::Style;
 use crate::canvas::tool::Tool;
+use iced::widget::canvas::{Frame, Path, Stroke};
+use iced::{Point, Vector};
+use std::fmt::Debug;
+use svg::node::element::path::Data;
+use svg::node::element::Group;
 
 use crate::canvas::tools::brush::Brush;
 
@@ -15,13 +15,22 @@ pub struct Pencil {
     style: Style,
 }
 
-
 impl Brush for Pencil {
-    fn new(start: Point, offsets: Vec<Vector>, style: Style) -> Self where Self: Sized {
-        Pencil {start, offsets, style}
+    fn new(start: Point, offsets: Vec<Vector>, style: Style) -> Self
+    where
+        Self: Sized,
+    {
+        Pencil {
+            start,
+            offsets,
+            style,
+        }
     }
 
-    fn id() -> String where Self: Sized {
+    fn id() -> String
+    where
+        Self: Sized,
+    {
         String::from("Pencil")
     }
 
@@ -37,7 +46,10 @@ impl Brush for Pencil {
         self.style.clone()
     }
 
-    fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame, style: Style) where Self: Sized {
+    fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame, style: Style)
+    where
+        Self: Sized,
+    {
         let line = Path::new(|builder| {
             builder.move_to(point1);
             builder.line_to(point2);
@@ -48,9 +60,16 @@ impl Brush for Pencil {
         }
     }
 
-    fn add_end(_point: Point, _frame: &mut Frame, _style: Style) where Self: Sized { }
+    fn add_end(_point: Point, _frame: &mut Frame, _style: Style)
+    where
+        Self: Sized,
+    {
+    }
 
-    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Group, style: Style) -> Group where Self: Sized {
+    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Group, style: Style) -> Group
+    where
+        Self: Sized,
+    {
         let data = Data::new()
             .move_to((point1.x, point1.y))
             .line_to((point2.x, point2.y));
@@ -65,7 +84,12 @@ impl Brush for Pencil {
         svg.add(path)
     }
 
-    fn add_svg_end(_point: Point, svg: Group, _style: Style) -> Group where Self: Sized { svg }
+    fn add_svg_end(_point: Point, svg: Group, _style: Style) -> Group
+    where
+        Self: Sized,
+    {
+        svg
+    }
 }
 
 impl Into<Box<dyn Tool>> for Box<Pencil> {

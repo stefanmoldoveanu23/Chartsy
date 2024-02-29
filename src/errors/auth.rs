@@ -6,16 +6,18 @@ use std::fmt::{Debug, Display, Formatter};
 /// - [RegisterUserAlreadyExists](AuthError::RegisterUserAlreadyExists) for when a user with the provided email already exists;
 /// - [LogInUserDoesntExist](AuthError::LogInUserDoesntExist) for when a user with the provided email doesn't exist.
 #[derive(Clone)]
-pub enum AuthError
-{
-    RegisterBadCredentials{ email: bool, username: bool, password: bool },
+pub enum AuthError {
+    RegisterBadCredentials {
+        email: bool,
+        username: bool,
+        password: bool,
+    },
     RegisterBadCode,
     RegisterUserAlreadyExists,
     LogInUserDoesntExist,
 }
 
-impl Display for AuthError
-{
+impl Display for AuthError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut message = String::from("");
         f.write_str(
@@ -41,8 +43,7 @@ impl Display for AuthError
     }
 }
 
-impl Debug for AuthError
-{
+impl Debug for AuthError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         Display::fmt(self, f)
     }

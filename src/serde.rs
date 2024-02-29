@@ -1,20 +1,26 @@
 use iced::{Color, Point, Vector};
-use json::JsonValue;
 use json::object::Object;
-use mongodb::bson::{Bson, doc, Document};
+use json::JsonValue;
+use mongodb::bson::{doc, Bson, Document};
 
 /// An object with this trait can be turned into document.
 pub trait Serialize<T>
-where T: Clone {
+where
+    T: Clone,
+{
     /// Serializes the object.
     fn serialize(&self) -> T;
 }
 
 /// An object with this trait can be deserialized from a document.
 pub trait Deserialize<T>
-where T: Clone {
+where
+    T: Clone,
+{
     /// Deserialized the document, returning an instance.
-    fn deserialize(document: T) -> Self where Self:Sized;
+    fn deserialize(document: T) -> Self
+    where
+        Self: Sized;
 }
 
 impl Serialize<Document> for Vector {
@@ -26,8 +32,7 @@ impl Serialize<Document> for Vector {
     }
 }
 
-impl Serialize<Object> for Vector
-{
+impl Serialize<Object> for Vector {
     fn serialize(&self) -> Object {
         let mut data = Object::new();
 
@@ -47,8 +52,7 @@ impl Serialize<Document> for Point {
     }
 }
 
-impl Serialize<Object> for Point
-{
+impl Serialize<Object> for Point {
     fn serialize(&self) -> Object {
         let mut data = Object::new();
 
@@ -70,8 +74,7 @@ impl Serialize<Document> for Color {
     }
 }
 
-impl Serialize<Object> for Color
-{
+impl Serialize<Object> for Color {
     fn serialize(&self) -> Object {
         let mut data = Object::new();
 
@@ -89,20 +92,22 @@ impl Deserialize<Document> for Vector {
         let mut vector = Vector::new(0.0, 0.0);
 
         if let Some(Bson::Double(x)) = document.get("x") {
-                vector.x = *x as f32;
+            vector.x = *x as f32;
         }
 
         if let Some(Bson::Double(y)) = document.get("y") {
-                vector.y = *y as f32;
+            vector.y = *y as f32;
         }
 
         vector
     }
 }
 
-impl Deserialize<Object> for Vector
-{
-    fn deserialize(document: Object) -> Self where Self: Sized {
+impl Deserialize<Object> for Vector {
+    fn deserialize(document: Object) -> Self
+    where
+        Self: Sized,
+    {
         let mut vector = Vector::default();
 
         if let Some(JsonValue::Number(x)) = document.get("x") {
@@ -122,20 +127,22 @@ impl Deserialize<Document> for Point {
         let mut point = Point::new(0.0, 0.0);
 
         if let Some(Bson::Double(x)) = document.get("x") {
-                point.x = *x as f32;
+            point.x = *x as f32;
         }
 
         if let Some(Bson::Double(y)) = document.get("y") {
-                point.y = *y as f32;
+            point.y = *y as f32;
         }
 
         point
     }
 }
 
-impl Deserialize<Object> for Point
-{
-    fn deserialize(document: Object) -> Self where Self: Sized {
+impl Deserialize<Object> for Point {
+    fn deserialize(document: Object) -> Self
+    where
+        Self: Sized,
+    {
         let mut point = Point::default();
 
         if let Some(JsonValue::Number(x)) = document.get("x") {
@@ -150,7 +157,10 @@ impl Deserialize<Object> for Point
 }
 
 impl Deserialize<Document> for Color {
-    fn deserialize(document: Document) -> Self where Self: Sized {
+    fn deserialize(document: Document) -> Self
+    where
+        Self: Sized,
+    {
         let mut color = Color::new(0.0, 0.0, 0.0, 1.0);
 
         if let Some(Bson::Double(r)) = document.get("r") {
@@ -173,9 +183,11 @@ impl Deserialize<Document> for Color {
     }
 }
 
-impl Deserialize<Object> for Color
-{
-    fn deserialize(document: Object) -> Self where Self: Sized {
+impl Deserialize<Object> for Color {
+    fn deserialize(document: Object) -> Self
+    where
+        Self: Sized,
+    {
         let mut color = Color::default();
 
         if let Some(JsonValue::Number(r)) = document.get("r") {

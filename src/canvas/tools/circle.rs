@@ -1,17 +1,17 @@
-use std::fmt::{Debug};
-use std::sync::Arc;
-use iced::{mouse, Point, Rectangle, Renderer, keyboard, Color};
-use iced::event::Status;
-use iced::mouse::Cursor;
-use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
-use json::JsonValue;
-use json::object::Object;
-use mongodb::bson::{Bson, doc, Document};
-use svg::node::element::Group;
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
+use iced::event::Status;
+use iced::mouse::Cursor;
+use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
+use iced::{keyboard, mouse, Color, Point, Rectangle, Renderer};
+use json::object::Object;
+use json::JsonValue;
+use mongodb::bson::{doc, Bson, Document};
+use std::fmt::Debug;
+use std::sync::Arc;
+use svg::node::element::Group;
 
 use crate::canvas::tool::{Pending, Tool};
 
@@ -28,40 +28,45 @@ impl Pending for CirclePending {
         cursor: Point,
         style: Style,
     ) -> (Status, Option<CanvasAction>) {
-
         match event {
             Event::Mouse(mouse_event) => {
                 let message = match mouse_event {
-                    mouse::Event::ButtonPressed(mouse::Button::Left) => {
-                        match self {
-                            CirclePending::None => {
-                                *self = CirclePending::One(cursor);
-                                None
-                            }
-                            CirclePending::One(center) => {
-                                let center_clone = center.clone();
-
-                                *self = CirclePending::None;
-                                Some(CanvasAction::UseTool(Arc::new(Circle { center: center_clone, radius: cursor.distance(center_clone), style: style.clone() })).into())
-                            }
+                    mouse::Event::ButtonPressed(mouse::Button::Left) => match self {
+                        CirclePending::None => {
+                            *self = CirclePending::One(cursor);
+                            None
                         }
-                    }
-                    _ => None
+                        CirclePending::One(center) => {
+                            let center_clone = center.clone();
+
+                            *self = CirclePending::None;
+                            Some(
+                                CanvasAction::UseTool(Arc::new(Circle {
+                                    center: center_clone,
+                                    radius: cursor.distance(center_clone),
+                                    style: style.clone(),
+                                }))
+                                .into(),
+                            )
+                        }
+                    },
+                    _ => None,
                 };
 
                 (Status::Captured, message)
             }
-            Event::Keyboard(key_event) => {
-                match key_event {
-                    keyboard::Event::KeyPressed { key_code: keyboard::KeyCode::S, .. } => {
-                        *self = CirclePending::None;
+            Event::Keyboard(key_event) => match key_event {
+                keyboard::Event::KeyPressed {
+                    key_code: keyboard::KeyCode::S,
+                    ..
+                } => {
+                    *self = CirclePending::None;
 
-                        (Status::Captured, None)
-                    }
-                    _ => (Status::Ignored, None)
+                    (Status::Captured, None)
                 }
-            }
-            _ => (Status::Ignored, None)
+                _ => (Status::Ignored, None),
+            },
+            _ => (Status::Ignored, None),
         }
     }
 
@@ -83,13 +88,13 @@ impl Pending for CirclePending {
                     });
 
                     if let Some((width, color, _, _)) = style.stroke {
-                        frame.stroke(&stroke, Stroke::default().with_width(width).with_color(color));
+                        frame.stroke(
+                            &stroke,
+                            Stroke::default().with_width(width).with_color(color),
+                        );
                     }
                     if let Some((color, _)) = style.fill {
-                        frame.fill(
-                            &stroke,
-                            Fill::from(color)
-                        );
+                        frame.fill(&stroke, Fill::from(color));
                     }
                 }
             }
@@ -111,7 +116,10 @@ impl Pending for CirclePending {
         String::from("Circle")
     }
 
-    fn default() -> Self where Self: Sized {
+    fn default() -> Self
+    where
+        Self: Sized,
+    {
         CirclePending::None
     }
 
@@ -138,8 +146,15 @@ impl Serialize<Document> for Circle {
 }
 
 impl Deserialize<Document> for Circle {
-    fn deserialize(document: Document) -> Self where Self: Sized {
-        let mut circle = Circle {center: Point::default(), radius: 0.0, style: Style::default() };
+    fn deserialize(document: Document) -> Self
+    where
+        Self: Sized,
+    {
+        let mut circle = Circle {
+            center: Point::default(),
+            radius: 0.0,
+            style: Style::default(),
+        };
 
         if let Some(Bson::Document(center)) = document.get("center") {
             circle.center = Point::deserialize(center.clone());
@@ -157,8 +172,7 @@ impl Deserialize<Document> for Circle {
     }
 }
 
-impl Serialize<Group> for Circle
-{
+impl Serialize<Group> for Circle {
     fn serialize(&self) -> Group {
         let circle = svg::node::element::Circle::new()
             .set("cx", self.center.x)
@@ -171,14 +185,11 @@ impl Serialize<Group> for Circle
             .set("fill-opacity", self.style.get_fill_alpha())
             .set("style", "mix-blend-mode:hard-light");
 
-        Group::new()
-            .set("class", self.id())
-            .add(circle)
+        Group::new().set("class", self.id()).add(circle)
     }
 }
 
-impl Serialize<Object> for Circle
-{
+impl Serialize<Object> for Circle {
     fn serialize(&self) -> Object {
         let mut data = Object::new();
 
@@ -190,10 +201,16 @@ impl Serialize<Object> for Circle
     }
 }
 
-impl Deserialize<Object> for Circle
-{
-    fn deserialize(document: Object) -> Self where Self: Sized {
-        let mut circle = Circle { center: Point::default(), radius: 0.0, style: Style::default() };
+impl Deserialize<Object> for Circle {
+    fn deserialize(document: Object) -> Self
+    where
+        Self: Sized,
+    {
+        let mut circle = Circle {
+            center: Point::default(),
+            radius: 0.0,
+            style: Style::default(),
+        };
 
         if let Some(JsonValue::Object(center)) = document.get("center") {
             circle.center = Point::deserialize(center.clone());
@@ -216,7 +233,10 @@ impl Tool for Circle {
         });
 
         if let Some((width, color, _, _)) = self.style.stroke {
-            frame.stroke(&circle, Stroke::default().with_width(width).with_color(color));
+            frame.stroke(
+                &circle,
+                Stroke::default().with_width(width).with_color(color),
+            );
         }
         if let Some((color, _)) = self.style.fill {
             frame.fill(&circle, Fill::from(color));

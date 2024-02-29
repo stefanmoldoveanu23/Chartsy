@@ -1,8 +1,8 @@
-use iced::{Command};
 use crate::scene::{Globals, Message, Scene, SceneOptions};
 use crate::scenes::auth::Auth;
 use crate::scenes::drawing::Drawing;
 use crate::scenes::main::Main;
+use iced::Command;
 
 /// The list of [Scenes](Scene) in the [Application](crate::Chartsy).
 #[derive(Debug, Clone)]
@@ -74,50 +74,38 @@ impl SceneLoader {
     }
 
     /// Returns the current [Scene] as a mutable variable.
-    pub fn get_mut(&mut self) -> Result<& mut dyn Scene, SceneErr> {
+    pub fn get_mut(&mut self) -> Result<&mut dyn Scene, SceneErr> {
         match self.current_scene {
-            Scenes::Main(_) => {
-                match self.main {
-                    None => Err(SceneErr::Error),
-                    Some(ref mut scene) => Ok(scene)
-                }
-            }
-            Scenes::Drawing(_) => {
-                match self.drawing {
-                    None => Err(SceneErr::Error),
-                    Some(ref mut scene) => Ok(scene)
-                }
-            }
-            Scenes::Auth(_) => {
-                match self.auth {
-                    None => Err(SceneErr::Error),
-                    Some(ref mut scene) => Ok(scene)
-                }
-            }
+            Scenes::Main(_) => match self.main {
+                None => Err(SceneErr::Error),
+                Some(ref mut scene) => Ok(scene),
+            },
+            Scenes::Drawing(_) => match self.drawing {
+                None => Err(SceneErr::Error),
+                Some(ref mut scene) => Ok(scene),
+            },
+            Scenes::Auth(_) => match self.auth {
+                None => Err(SceneErr::Error),
+                Some(ref mut scene) => Ok(scene),
+            },
         }
     }
 
     /// Returns the current [Scene].
-    pub fn get(&self) -> Result<& dyn Scene, SceneErr> {
+    pub fn get(&self) -> Result<&dyn Scene, SceneErr> {
         match self.current_scene {
-            Scenes::Main(_) => {
-                match self.main {
-                    None => Err(SceneErr::Error),
-                    Some(ref scene) => Ok(scene)
-                }
-            }
-            Scenes::Drawing(_) => {
-                match self.drawing {
-                    None => Err(SceneErr::Error),
-                    Some(ref scene) => Ok(scene)
-                }
-            }
-            Scenes::Auth(_) => {
-                match self.auth {
-                    None => Err(SceneErr::Error),
-                    Some(ref scene) => Ok(scene)
-                }
-            }
+            Scenes::Main(_) => match self.main {
+                None => Err(SceneErr::Error),
+                Some(ref scene) => Ok(scene),
+            },
+            Scenes::Drawing(_) => match self.drawing {
+                None => Err(SceneErr::Error),
+                Some(ref scene) => Ok(scene),
+            },
+            Scenes::Auth(_) => match self.auth {
+                None => Err(SceneErr::Error),
+                Some(ref scene) => Ok(scene),
+            },
         }
     }
 }

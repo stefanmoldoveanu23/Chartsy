@@ -1,12 +1,12 @@
-use iced::{Color, Element, Renderer, Command, Length};
-use iced::widget::{Button, Column, Slider};
-use json::JsonValue;
-use json::object::Object;
-use mongodb::bson::{Bson, doc, Document};
+use crate::color_picker::ColorPicker;
 use crate::scene::Message;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
-use crate::color_picker::ColorPicker;
+use iced::widget::{Button, Column, Slider};
+use iced::{Color, Command, Element, Length, Renderer};
+use json::object::Object;
+use json::JsonValue;
+use mongodb::bson::{doc, Bson, Document};
 
 /// A structure used to define the style of the drawn [tools](crate::canvas::tool::Tool).
 ///
@@ -20,43 +20,44 @@ pub struct Style {
 
 impl Style {
     /// Returns the width of the stroke.
-    pub fn get_stroke_width(&self) -> f32
-    {
+    pub fn get_stroke_width(&self) -> f32 {
         self.stroke.map_or_else(|| 0.0, |(width, _, _, _)| width)
     }
 
     /// Returns the color of the stroke in #rrggbb format.
-    pub fn get_stroke_color(&self) -> String
-    {
-        self.stroke.map_or_else(|| "transparent".into(), |(_, color, _, _)| {
-            let data = color.into_rgba8();
-            format!("#{:02x?}{:02x?}{:02x?}", data[0], data[1], data[2])
-        })
+    pub fn get_stroke_color(&self) -> String {
+        self.stroke.map_or_else(
+            || "transparent".into(),
+            |(_, color, _, _)| {
+                let data = color.into_rgba8();
+                format!("#{:02x?}{:02x?}{:02x?}", data[0], data[1], data[2])
+            },
+        )
     }
 
     /// Returns the transparency of the stroke.
-    pub fn get_stroke_alpha(&self) -> f32
-    {
-        self.stroke.map_or_else(|| 0.0, |(_, color, _, _)| {
-            (10.0f32.powf(color.a) - 1.0) / 9.0
-        })
+    pub fn get_stroke_alpha(&self) -> f32 {
+        self.stroke.map_or_else(
+            || 0.0,
+            |(_, color, _, _)| (10.0f32.powf(color.a) - 1.0) / 9.0,
+        )
     }
 
     /// Returns the fill in #rrggbb format.
-    pub fn get_fill(&self) -> String
-    {
-        self.fill.map_or_else(|| "transparent".into(), |(color, _)| {
-            let data = color.into_rgba8();
-            format!("#{:02x?}{:02x?}{:02x?}", data[0], data[1], data[2])
-        })
+    pub fn get_fill(&self) -> String {
+        self.fill.map_or_else(
+            || "transparent".into(),
+            |(color, _)| {
+                let data = color.into_rgba8();
+                format!("#{:02x?}{:02x?}{:02x?}", data[0], data[1], data[2])
+            },
+        )
     }
 
     /// Returns the transparency of the fill.
-    pub fn get_fill_alpha(&self) -> f32
-    {
-        self.fill.map_or_else(|| 0.0, |(color, _)| {
-            (10.0f32.powf(color.a) - 1.0) / 9.0
-        })
+    pub fn get_fill_alpha(&self) -> f32 {
+        self.fill
+            .map_or_else(|| 0.0, |(color, _)| (10.0f32.powf(color.a) - 1.0) / 9.0)
     }
 
     /// Modifies the stroke width of the [pending tool](crate::canvas::tool::Pending).
@@ -132,15 +133,23 @@ impl Style {
 
     /// Returns an interactable settings section for the [Style].
     pub(crate) fn view<'a>(&self) -> Element<'a, StyleUpdate, Renderer<Theme>> {
-        let mut column :Vec<Element<'a, StyleUpdate, Renderer<Theme>>>= vec![];
+        let mut column: Vec<Element<'a, StyleUpdate, Renderer<Theme>>> = vec![];
 
         if let Some((width, color, visibility_width, visibility_color)) = self.stroke {
-            column.push(Button::new("Stroke width").on_press(StyleUpdate::ToggleStrokeWidth).into());
+            column.push(
+                Button::new("Stroke width")
+                    .on_press(StyleUpdate::ToggleStrokeWidth)
+                    .into(),
+            );
             if visibility_width {
                 column.push(Slider::new(1.0..=5.0, width, StyleUpdate::StrokeWidth).into());
             }
 
-            column.push(Button::new("Stroke color").on_press(StyleUpdate::ToggleStrokeColor).into());
+            column.push(
+                Button::new("Stroke color")
+                    .on_press(StyleUpdate::ToggleStrokeColor)
+                    .into(),
+            );
             if visibility_color {
                 let picker = ColorPicker::new(StyleUpdate::StrokeColor).color(color);
                 column.push(picker.into());
@@ -155,7 +164,9 @@ impl Style {
             }
         }
 
-        Column::with_children(column).width(Length::Fixed(200.0)).into()
+        Column::with_children(column)
+            .width(Length::Fixed(200.0))
+            .into()
     }
 }
 
@@ -172,10 +183,13 @@ pub enum StyleUpdate {
 
 impl Serialize<Document> for Style {
     fn serialize(&self) -> Document {
-        let mut document = doc!{};
+        let mut document = doc! {};
 
         if let Some((width, color, _, _)) = self.stroke {
-            document.insert("stroke", doc!{ "width": width, "color": Document::from(color.serialize()) });
+            document.insert(
+                "stroke",
+                doc! { "width": width, "color": Document::from(color.serialize()) },
+            );
         };
 
         if let Some((color, _)) = self.fill {
@@ -187,8 +201,11 @@ impl Serialize<Document> for Style {
 }
 
 impl Deserialize<Document> for Style {
-    fn deserialize(document: Document) -> Self where Self: Sized {
-        let mut style :Style= Style::default();
+    fn deserialize(document: Document) -> Self
+    where
+        Self: Sized,
+    {
+        let mut style: Style = Style::default();
 
         if let Some(Bson::Document(stroke)) = document.get("stroke") {
             let mut stroke_width = 2.0;
@@ -213,8 +230,7 @@ impl Deserialize<Document> for Style {
     }
 }
 
-impl Serialize<Object> for Style
-{
+impl Serialize<Object> for Style {
     fn serialize(&self) -> Object {
         let mut data = Object::new();
 
@@ -234,9 +250,11 @@ impl Serialize<Object> for Style
     }
 }
 
-impl Deserialize<Object> for Style
-{
-    fn deserialize(document: Object) -> Self where Self: Sized {
+impl Deserialize<Object> for Style {
+    fn deserialize(document: Object) -> Self
+    where
+        Self: Sized,
+    {
         let mut style = Style::default();
 
         if let Some(JsonValue::Object(stroke)) = document.get("stroke") {

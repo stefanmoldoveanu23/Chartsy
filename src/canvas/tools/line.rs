@@ -1,17 +1,17 @@
-use std::fmt::{Debug};
-use std::sync::Arc;
-use iced::{Color, mouse, Point, Rectangle, Renderer};
-use iced::event::Status;
-use iced::mouse::Cursor;
-use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
-use json::JsonValue;
-use json::object::Object;
-use mongodb::bson::{Bson, doc, Document};
-use svg::node::element::{self, Group, path::Data};
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
+use iced::event::Status;
+use iced::mouse::Cursor;
+use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};
+use iced::{mouse, Color, Point, Rectangle, Renderer};
+use json::object::Object;
+use json::JsonValue;
+use mongodb::bson::{doc, Bson, Document};
+use std::fmt::Debug;
+use std::sync::Arc;
+use svg::node::element::{self, path::Data, Group};
 
 use crate::canvas::tool::{Pending, Tool};
 
@@ -31,26 +31,31 @@ impl Pending for LinePending {
         match event {
             Event::Mouse(mouse_event) => {
                 let message = match mouse_event {
-                    mouse::Event::ButtonPressed(mouse::Button::Left) => {
-                        match self {
-                            LinePending::None => {
-                                *self = LinePending::One(cursor);
-                                None
-                            }
-                            LinePending::One(start) => {
-                                let start_clone = start.clone();
-
-                                *self = LinePending::None;
-                                Some(CanvasAction::UseTool(Arc::new(Line{start:start_clone, end:cursor, style})).into())
-                            }
+                    mouse::Event::ButtonPressed(mouse::Button::Left) => match self {
+                        LinePending::None => {
+                            *self = LinePending::One(cursor);
+                            None
                         }
-                    }
-                    _ => None
+                        LinePending::One(start) => {
+                            let start_clone = start.clone();
+
+                            *self = LinePending::None;
+                            Some(
+                                CanvasAction::UseTool(Arc::new(Line {
+                                    start: start_clone,
+                                    end: cursor,
+                                    style,
+                                }))
+                                .into(),
+                            )
+                        }
+                    },
+                    _ => None,
                 };
 
                 (Status::Captured, message)
             }
-            _ => (Status::Ignored, None)
+            _ => (Status::Ignored, None),
         }
     }
 
@@ -73,7 +78,10 @@ impl Pending for LinePending {
                     });
 
                     if let Some((width, color, _, _)) = style.stroke {
-                        frame.stroke(&stroke, Stroke::default().with_width(width).with_color(color));
+                        frame.stroke(
+                            &stroke,
+                            Stroke::default().with_width(width).with_color(color),
+                        );
                     }
                 }
             }
@@ -96,7 +104,10 @@ impl Pending for LinePending {
         String::from("Line")
     }
 
-    fn default() -> Self where Self: Sized {
+    fn default() -> Self
+    where
+        Self: Sized,
+    {
         LinePending::None
     }
 
@@ -123,8 +134,15 @@ impl Serialize<Document> for Line {
 }
 
 impl Deserialize<Document> for Line {
-    fn deserialize(document: Document) -> Self where Self: Sized {
-        let mut line = Line { start: Point::default(), end: Point::default(), style: Style::default() };
+    fn deserialize(document: Document) -> Self
+    where
+        Self: Sized,
+    {
+        let mut line = Line {
+            start: Point::default(),
+            end: Point::default(),
+            style: Style::default(),
+        };
 
         if let Some(Bson::Document(start)) = document.get("start") {
             line.start = Point::deserialize(start.clone());
@@ -142,8 +160,7 @@ impl Deserialize<Document> for Line {
     }
 }
 
-impl Serialize<Group> for Line
-{
+impl Serialize<Group> for Line {
     fn serialize(&self) -> Group {
         let data = Data::new()
             .move_to((self.start.x, self.start.y))
@@ -157,14 +174,11 @@ impl Serialize<Group> for Line
             .set("style", "mix-blend-mode:hard-light")
             .set("d", data);
 
-        Group::new()
-            .set("class", self.id())
-            .add(path)
+        Group::new().set("class", self.id()).add(path)
     }
 }
 
-impl Serialize<Object> for Line
-{
+impl Serialize<Object> for Line {
     fn serialize(&self) -> Object {
         let mut data = Object::new();
 
@@ -176,10 +190,16 @@ impl Serialize<Object> for Line
     }
 }
 
-impl Deserialize<Object> for Line
-{
-    fn deserialize(document: Object) -> Self where Self: Sized {
-        let mut line = Line { start: Point::default(), end: Point::default(), style: Style::default() };
+impl Deserialize<Object> for Line {
+    fn deserialize(document: Object) -> Self
+    where
+        Self: Sized,
+    {
+        let mut line = Line {
+            start: Point::default(),
+            end: Point::default(),
+            style: Style::default(),
+        };
 
         if let Some(JsonValue::Object(start)) = document.get("start") {
             line.start = Point::deserialize(start.clone());

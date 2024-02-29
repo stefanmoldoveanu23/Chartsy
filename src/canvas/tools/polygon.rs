@@ -1,18 +1,18 @@
-use std::fmt::{Debug};
-use std::ops::{Add, Sub};
-use std::sync::Arc;
-use iced::{mouse, Point, Rectangle, Renderer, keyboard, Vector, Color};
-use iced::event::Status;
-use iced::mouse::Cursor;
-use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
-use json::JsonValue;
-use json::object::Object;
-use mongodb::bson::{Bson, doc, Document};
-use svg::node::element::Group;
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
+use iced::event::Status;
+use iced::mouse::Cursor;
+use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
+use iced::{keyboard, mouse, Color, Point, Rectangle, Renderer, Vector};
+use json::object::Object;
+use json::JsonValue;
+use mongodb::bson::{doc, Bson, Document};
+use std::fmt::Debug;
+use std::ops::{Add, Sub};
+use std::sync::Arc;
+use svg::node::element::Group;
 
 use crate::canvas::tool::{Pending, Tool};
 
@@ -34,49 +34,60 @@ impl Pending for PolygonPending {
         match event {
             Event::Mouse(mouse_event) => {
                 let message = match mouse_event {
-                    mouse::Event::ButtonPressed(mouse::Button::Left) => {
-                        match self {
-                            PolygonPending::None => {
-                                *self = PolygonPending::Drawing(cursor, cursor, vec![Vector::new(0.0, 0.0)]);
+                    mouse::Event::ButtonPressed(mouse::Button::Left) => match self {
+                        PolygonPending::None => {
+                            *self = PolygonPending::Drawing(
+                                cursor,
+                                cursor,
+                                vec![Vector::new(0.0, 0.0)],
+                            );
+                            None
+                        }
+                        PolygonPending::Drawing(first, last, offsets) => {
+                            if cursor.distance(*last) == 0.0 {
                                 None
-                            }
-                            PolygonPending::Drawing(first, last, offsets) => {
-                                if cursor.distance(*last) == 0.0 {
-                                    None
-                                } else {
-                                    let first_clone = first.clone();
-                                    let last_clone = last.clone();
-                                    let mut offsets_clone = offsets.clone();
+                            } else {
+                                let first_clone = first.clone();
+                                let last_clone = last.clone();
+                                let mut offsets_clone = offsets.clone();
 
-                                    if cursor.distance(first_clone) < RADIUS {
-                                        offsets_clone.push(first_clone.sub(last_clone));
-                                        *self = PolygonPending::None;
-                                        Some(CanvasAction::UseTool(Arc::new(Polygon { first: first_clone, offsets: offsets_clone, style })).into())
-                                    } else {
-                                        offsets_clone.push(cursor.sub(last_clone));
-                                        *self = PolygonPending::Drawing(first_clone, cursor, offsets_clone);
-                                        None
-                                    }
+                                if cursor.distance(first_clone) < RADIUS {
+                                    offsets_clone.push(first_clone.sub(last_clone));
+                                    *self = PolygonPending::None;
+                                    Some(
+                                        CanvasAction::UseTool(Arc::new(Polygon {
+                                            first: first_clone,
+                                            offsets: offsets_clone,
+                                            style,
+                                        }))
+                                        .into(),
+                                    )
+                                } else {
+                                    offsets_clone.push(cursor.sub(last_clone));
+                                    *self =
+                                        PolygonPending::Drawing(first_clone, cursor, offsets_clone);
+                                    None
                                 }
                             }
                         }
-                    }
-                    _ => None
+                    },
+                    _ => None,
                 };
 
                 (Status::Captured, message)
             }
-            Event::Keyboard(key_event) => {
-                match key_event {
-                    keyboard::Event::KeyPressed { key_code: keyboard::KeyCode::S, .. } => {
-                        *self = PolygonPending::None;
+            Event::Keyboard(key_event) => match key_event {
+                keyboard::Event::KeyPressed {
+                    key_code: keyboard::KeyCode::S,
+                    ..
+                } => {
+                    *self = PolygonPending::None;
 
-                        (Status::Captured, None)
-                    }
-                    _ => (Status::Ignored, None)
+                    (Status::Captured, None)
                 }
-            }
-            _ => (Status::Ignored, None)
+                _ => (Status::Ignored, None),
+            },
+            _ => (Status::Ignored, None),
         }
     }
 
@@ -103,7 +114,7 @@ impl Pending for PolygonPending {
                     let stroke = Path::new(|p| {
                         p.move_to(*first);
 
-                        let mut pos : Point = *first;
+                        let mut pos: Point = *first;
                         for offset in offsets {
                             pos = pos.add(offset.clone());
                             p.line_to(pos);
@@ -116,7 +127,10 @@ impl Pending for PolygonPending {
                     });
 
                     if let Some((width, color, _, _)) = style.stroke {
-                        frame.stroke(&stroke, Stroke::default().with_width(width).with_color(color));
+                        frame.stroke(
+                            &stroke,
+                            Stroke::default().with_width(width).with_color(color),
+                        );
                     }
                     if let Some((color, _)) = style.fill {
                         frame.fill(&stroke, Fill::from(color));
@@ -141,7 +155,10 @@ impl Pending for PolygonPending {
         String::from("Polygon")
     }
 
-    fn default() -> Self where Self: Sized {
+    fn default() -> Self
+    where
+        Self: Sized,
+    {
         PolygonPending::None
     }
 
@@ -168,8 +185,15 @@ impl Serialize<Document> for Polygon {
 }
 
 impl Deserialize<Document> for Polygon {
-    fn deserialize(document: Document) -> Self where Self: Sized {
-        let mut polygon = Polygon {first: Point::default(), offsets: vec![], style: Style::default()};
+    fn deserialize(document: Document) -> Self
+    where
+        Self: Sized,
+    {
+        let mut polygon = Polygon {
+            first: Point::default(),
+            offsets: vec![],
+            style: Style::default(),
+        };
 
         if let Some(Bson::Document(first)) = document.get("first") {
             polygon.first = Point::deserialize(first.clone());
@@ -191,44 +215,65 @@ impl Deserialize<Document> for Polygon {
     }
 }
 
-impl Serialize<Group> for Polygon
-{
+impl Serialize<Group> for Polygon {
     fn serialize(&self) -> Group {
-    let polygon = svg::node::element::Polygon::new()
-        .set("stroke-width", self.style.get_stroke_width())
-        .set("stroke", self.style.get_stroke_color())
-        .set("stroke-opacity", self.style.get_stroke_alpha())
-        .set("fill", self.style.get_fill())
-        .set("fill-opacity", self.style.get_fill_alpha())
-        .set("style", "mix-blend-mode:hard-light")
-        .set("points", self.offsets.iter().fold(
-            (format!("{},{}", self.first.x, self.first.y), self.first), |(res, point), offset| {
-                (res + &*format!(" {},{}", point.x + offset.x, point.y + offset.y), point.add(*offset))
-            }).0);
+        let polygon = svg::node::element::Polygon::new()
+            .set("stroke-width", self.style.get_stroke_width())
+            .set("stroke", self.style.get_stroke_color())
+            .set("stroke-opacity", self.style.get_stroke_alpha())
+            .set("fill", self.style.get_fill())
+            .set("fill-opacity", self.style.get_fill_alpha())
+            .set("style", "mix-blend-mode:hard-light")
+            .set(
+                "points",
+                self.offsets
+                    .iter()
+                    .fold(
+                        (format!("{},{}", self.first.x, self.first.y), self.first),
+                        |(res, point), offset| {
+                            (
+                                res + &*format!(" {},{}", point.x + offset.x, point.y + offset.y),
+                                point.add(*offset),
+                            )
+                        },
+                    )
+                    .0,
+            );
 
-    Group::new()
-        .set("class", self.id())
-        .add(polygon)
+        Group::new().set("class", self.id()).add(polygon)
     }
 }
 
-impl Serialize<Object> for Polygon
-{
+impl Serialize<Object> for Polygon {
     fn serialize(&self) -> Object {
         let mut data = Object::new();
 
         data.insert("first", JsonValue::Object(self.first.serialize()));
-        data.insert("offsets", JsonValue::Array(self.offsets.iter().map(|offset| JsonValue::Object(offset.serialize())).collect()));
+        data.insert(
+            "offsets",
+            JsonValue::Array(
+                self.offsets
+                    .iter()
+                    .map(|offset| JsonValue::Object(offset.serialize()))
+                    .collect(),
+            ),
+        );
         data.insert("style", JsonValue::Object(self.style.serialize()));
 
         data
     }
 }
 
-impl Deserialize<Object> for Polygon
-{
-    fn deserialize(document: Object) -> Self where Self: Sized {
-        let mut polygon = Polygon { first: Point::default(), offsets: vec![], style: Style::default() };
+impl Deserialize<Object> for Polygon {
+    fn deserialize(document: Object) -> Self
+    where
+        Self: Sized,
+    {
+        let mut polygon = Polygon {
+            first: Point::default(),
+            offsets: vec![],
+            style: Style::default(),
+        };
 
         if let Some(JsonValue::Object(first)) = document.get("first") {
             polygon.first = Point::deserialize(first.clone());
@@ -261,7 +306,10 @@ impl Tool for Polygon {
         });
 
         if let Some((width, color, _, _)) = self.style.stroke {
-            frame.stroke(&polygon, Stroke::default().with_width(width).with_color(color));
+            frame.stroke(
+                &polygon,
+                Stroke::default().with_width(width).with_color(color),
+            );
         }
         if let Some((color, _)) = self.style.fill {
             frame.fill(&polygon, Fill::from(color));

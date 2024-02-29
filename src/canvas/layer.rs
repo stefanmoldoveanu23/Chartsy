@@ -1,13 +1,14 @@
-use std::sync::Arc;
-use iced::{Color, event, keyboard, Point, Rectangle, Renderer};
+use crate::canvas::style::{Style, StyleUpdate};
+use crate::canvas::tool::{Pending, Tool};
+use crate::theme::Theme;
 use iced::advanced::mouse;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{self, fill::Rule};
+use iced::{event, keyboard, Color, Point, Rectangle, Renderer};
 use json::JsonValue;
-use crate::canvas::style::{Style, StyleUpdate};
-use crate::theme::Theme;
-use crate::canvas::tool::{Pending, Tool};
+use std::sync::Arc;
 
+/// A layer in the [canvas](crate::canvas::canvas::Canvas).
 pub struct Layer<'a> {
     pub(crate) state: Option<&'a canvas::Cache>,
     pub(crate) tools: &'a [Arc<dyn Tool>],
@@ -16,8 +17,7 @@ pub struct Layer<'a> {
     pub active: bool,
 }
 
-impl<'a> canvas::Program<CanvasAction, Renderer<Theme>> for Layer<'a>
-{
+impl<'a> canvas::Program<CanvasAction, Renderer<Theme>> for Layer<'a> {
     type State = Option<Box<dyn Pending>>;
 
     fn update(
@@ -33,31 +33,37 @@ impl<'a> canvas::Program<CanvasAction, Renderer<Theme>> for Layer<'a>
 
         if let canvas::Event::Keyboard(event) = event {
             match event {
-                keyboard::Event::KeyPressed {key_code, modifiers} => {
+                keyboard::Event::KeyPressed {
+                    key_code,
+                    modifiers,
+                } => {
                     if key_code == keyboard::KeyCode::Z && modifiers == keyboard::Modifiers::CTRL {
-                        return (event::Status::Captured, Some(CanvasAction::Undo))
-                    } else if key_code == keyboard::KeyCode::S && modifiers == keyboard::Modifiers::CTRL {
-                        return (event::Status::Captured, Some(CanvasAction::Save))
-                    } else if key_code == keyboard::KeyCode::Y && modifiers == keyboard::Modifiers::CTRL {
-                        return (event::Status::Captured, Some(CanvasAction::Redo))
+                        return (event::Status::Captured, Some(CanvasAction::Undo));
+                    } else if key_code == keyboard::KeyCode::S
+                        && modifiers == keyboard::Modifiers::CTRL
+                    {
+                        return (event::Status::Captured, Some(CanvasAction::Save));
+                    } else if key_code == keyboard::KeyCode::Y
+                        && modifiers == keyboard::Modifiers::CTRL
+                    {
+                        return (event::Status::Captured, Some(CanvasAction::Redo));
                     }
                 }
                 _ => {}
             }
         }
 
-        let cursor_position =
-            if let Some(position) = cursor.position_in(bounds) {
-                position
-            } else {
-                return (event::Status::Ignored, None);
-            };
+        let cursor_position = if let Some(position) = cursor.position_in(bounds) {
+            position
+        } else {
+            return (event::Status::Ignored, None);
+        };
 
         match state {
             None => {
                 *state = Some((*self.current_tool).boxed_clone());
                 (event::Status::Captured, None)
-            },
+            }
             Some(pending_state) => {
                 let new_tool = pending_state.id() != self.current_tool.id();
                 if new_tool {
@@ -76,9 +82,8 @@ impl<'a> canvas::Program<CanvasAction, Renderer<Theme>> for Layer<'a>
         renderer: &Renderer<Theme>,
         _theme: &Theme,
         bounds: Rectangle,
-        cursor: Cursor
+        cursor: Cursor,
     ) -> Vec<canvas::Geometry> {
-
         let base = {
             let mut frame = canvas::Frame::new(renderer, bounds.size());
 
@@ -87,12 +92,13 @@ impl<'a> canvas::Program<CanvasAction, Renderer<Theme>> for Layer<'a>
                 frame.size(),
                 canvas::Fill {
                     style: canvas::Style::Solid(Color::TRANSPARENT),
-                    rule: Rule::NonZero }
+                    rule: Rule::NonZero,
+                },
             );
 
             frame.stroke(
                 &canvas::Path::rectangle(Point::ORIGIN, frame.size()),
-                canvas::Stroke::default().with_width(2.0)
+                canvas::Stroke::default().with_width(2.0),
             );
 
             frame.into_geometry()
@@ -102,17 +108,11 @@ impl<'a> canvas::Program<CanvasAction, Renderer<Theme>> for Layer<'a>
             None => {
                 return vec![base];
             }
-            Some(state) => {
-                state.draw(
-                    renderer,
-                    bounds.size(),
-                    |frame| {
-                        for tool in self.tools {
-                            tool.add_to_frame(frame);
-                        }
-                    }
-                )
-            }
+            Some(state) => state.draw(renderer, bounds.size(), |frame| {
+                for tool in self.tools {
+                    tool.add_to_frame(frame);
+                }
+            }),
         };
 
         if !self.active {
@@ -123,9 +123,7 @@ impl<'a> canvas::Program<CanvasAction, Renderer<Theme>> for Layer<'a>
             None => {
                 return vec![base, content];
             }
-            Some(state) => {
-                state.draw(renderer, bounds, cursor, self.style.clone())
-            }
+            Some(state) => state.draw(renderer, bounds, cursor, self.style.clone()),
         };
 
         vec![base, content, pending]
@@ -145,6 +143,17 @@ impl<'a> canvas::Program<CanvasAction, Renderer<Theme>> for Layer<'a>
     }
 }
 
+/// Scene messages that relate to the [canvas](crate::canvas::canvas::Canvas):
+/// - [UseTool](CanvasAction::UseTool), to add a tool to the drawing;
+/// - [ChangeTool](CanvasAction::ChangeTool), to select a new drawing tool;
+/// - [UpdateStyle](CanvasAction::UpdateStyle), to modify the drawing style parameters;
+/// - [AddLayer](CanvasAction::AddLayer), to add a new layer to the drawing;
+/// - [ActivateLayer](CanvasAction::ActivateLayer), to select the layer on which the tools will be added;
+/// - [Save](CanvasAction::Save), to save the progress since the last save;
+/// - [Saved](CanvasAction::Saved), which triggers when a save is complete;
+/// - [Loaded](CanvasAction::Loaded), which triggers when the drawing data is received;
+/// - [Undo](CanvasAction::Undo), to undo the last tool addition;
+/// - [Redo](CanvasAction::Redo), to redo the last undo.
 #[derive(Clone)]
 pub enum CanvasAction {
     UseTool(Arc<dyn Tool>),
@@ -153,8 +162,12 @@ pub enum CanvasAction {
     AddLayer,
     ActivateLayer(usize),
     Save,
-    Saved(usize),
-    Loaded {layers: usize, tools: Vec<(Arc<dyn Tool>, usize)>, json_tools: Option<Vec<JsonValue>>},
+    Saved,
+    Loaded {
+        layers: usize,
+        tools: Vec<(Arc<dyn Tool>, usize)>,
+        json_tools: Option<Vec<JsonValue>>,
+    },
     Undo,
     Redo,
 }

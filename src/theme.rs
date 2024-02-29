@@ -1,4 +1,4 @@
-use iced::application::{StyleSheet, Appearance};
+use iced::application::{Appearance, StyleSheet};
 use iced_style::theme::Application;
 
 /// Custom theme created for the drawing [Application].
@@ -15,8 +15,8 @@ impl StyleSheet for Theme {
 
 /// Module that implements the [text](iced::widget::text::Text) [StyleSheet] for the custom [Theme].
 pub(crate) mod text {
-    use iced::widget::text::{StyleSheet, Appearance};
     use crate::theme::Theme;
+    use iced::widget::text::{Appearance, StyleSheet};
     use iced_style::theme::Text;
 
     impl StyleSheet for Theme {
@@ -29,9 +29,9 @@ pub(crate) mod text {
 }
 
 pub(crate) mod text_input {
-    use iced::Color;
-    use iced::widget::text_input::{StyleSheet, Appearance};
     use crate::theme::Theme;
+    use iced::widget::text_input::{Appearance, StyleSheet};
+    use iced::Color;
     use iced_style::theme::TextInput;
 
     impl StyleSheet for Theme {
@@ -69,8 +69,8 @@ pub(crate) mod text_input {
 
 /// Module that implements the [button](iced::widget::button::Button) [StyleSheet] for the custom [Theme].
 pub(crate) mod button {
-    use iced::widget::button::{StyleSheet, Appearance};
     use crate::theme::Theme;
+    use iced::widget::button::{Appearance, StyleSheet};
     use iced_style::theme::Button;
 
     impl StyleSheet for Theme {
@@ -91,8 +91,9 @@ pub(crate) mod container {
 
     #[derive(Default)]
     pub enum Container {
-        #[default] Default,
-        Canvas
+        #[default]
+        Default,
+        Canvas,
     }
     impl StyleSheet for super::Theme {
         type Style = Container;
@@ -102,12 +103,10 @@ pub(crate) mod container {
                 Container::Default => {
                     iced::Theme::Light.appearance(&iced_style::theme::Container::Transparent)
                 }
-                Container::Canvas => {
-                    Appearance {
-                        background: Some(Background::Color(Color::BLACK)),
-                        ..Appearance::default()
-                    }
-                }
+                Container::Canvas => Appearance {
+                    background: Some(Background::Color(Color::BLACK)),
+                    ..Appearance::default()
+                },
             }
         }
     }
@@ -116,9 +115,9 @@ pub(crate) mod container {
 /// Module that implements the [scrollable](iced::widget::scrollable::Scrollable) [StyleSheet]
 /// for the custom [Theme].
 pub(crate) mod scrollable {
+    use crate::theme::Theme;
     use iced::widget::scrollable::{Scrollbar, StyleSheet};
     use iced_style::theme::Scrollable;
-    use crate::theme::Theme;
 
     impl StyleSheet for Theme {
         type Style = Scrollable;
@@ -136,9 +135,9 @@ pub(crate) mod scrollable {
 /// Module that implements the [slider](iced::widget::slider::Slider) [StyleSheet] for the
 /// custom [Theme].
 pub(crate) mod slider {
+    use crate::theme::Theme;
     use iced::widget::slider::{Appearance, StyleSheet};
     use iced_style::theme::Slider;
-    use crate::theme::Theme;
 
     impl StyleSheet for Theme {
         type Style = Slider;
@@ -159,9 +158,9 @@ pub(crate) mod slider {
 
 /// Module that implements the [modal](iced_aw::modal::Modal) [StyleSheet] for the custom [Theme].
 pub(crate) mod modal {
+    use crate::theme::Theme;
     use iced_aw::modal::StyleSheet;
     use iced_aw::style::modal::Appearance;
-    use crate::theme::Theme;
 
     impl StyleSheet for Theme {
         type Style = ();
@@ -174,8 +173,8 @@ pub(crate) mod modal {
 
 /// Module that implements the [card](iced_aw::card::Card) [StyleSheet] for the custom [Theme].
 pub(crate) mod card {
-    use iced_aw::card::{Appearance, StyleSheet};
     use crate::theme::Theme;
+    use iced_aw::card::{Appearance, StyleSheet};
 
     impl StyleSheet for Theme {
         type Style = ();
@@ -189,8 +188,8 @@ pub(crate) mod card {
 /// Module that implements the [tab_bar](iced_aw::tab_bar::TabBar) [StyleSheet] for the
 /// custom [Theme].
 pub(crate) mod tab_bar {
-    use iced_aw::tab_bar::{Appearance, StyleSheet};
     use crate::theme::Theme;
+    use iced_aw::tab_bar::{Appearance, StyleSheet};
 
     impl StyleSheet for Theme {
         type Style = iced_aw::style::tab_bar::TabBarStyles;

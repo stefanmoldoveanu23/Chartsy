@@ -1,12 +1,12 @@
-use std::fmt::{Debug};
-use std::ops::{Add, Sub};
-use iced::{Point, Vector};
-use iced::widget::canvas::{Fill, Frame, Path};
-use iced_runtime::core::Color;
-use svg::node::element::Group;
-use svg::node::element::path::Data;
 use crate::canvas::style::Style;
 use crate::canvas::tool::Tool;
+use iced::widget::canvas::{Fill, Frame, Path};
+use iced::{Point, Vector};
+use iced_runtime::core::Color;
+use std::fmt::Debug;
+use std::ops::{Add, Sub};
+use svg::node::element::path::Data;
+use svg::node::element::Group;
 
 use crate::canvas::tools::brush::Brush;
 
@@ -17,10 +17,16 @@ pub struct Pen {
     style: Style,
 }
 
-
 impl Brush for Pen {
-    fn new(start: Point, offsets: Vec<Vector>, style: Style) -> Self where Self: Sized {
-        Pen { start, offsets, style }
+    fn new(start: Point, offsets: Vec<Vector>, style: Style) -> Self
+    where
+        Self: Sized,
+    {
+        Pen {
+            start,
+            offsets,
+            style,
+        }
     }
 
     fn id() -> String {
@@ -38,7 +44,10 @@ impl Brush for Pen {
         self.style.clone()
     }
 
-    fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame, style: Style) where Self: Sized {
+    fn add_stroke_piece(point1: Point, point2: Point, frame: &mut Frame, style: Style)
+    where
+        Self: Sized,
+    {
         let mut radius = 2.0;
         let mut fill = Color::BLACK;
         if let Some((width, color, _, _)) = style.stroke {
@@ -59,9 +68,16 @@ impl Brush for Pen {
         frame.fill(&quad, Fill::from(fill));
     }
 
-    fn add_end(_point: Point, _frame: &mut Frame, _style: Style) where Self: Sized { }
+    fn add_end(_point: Point, _frame: &mut Frame, _style: Style)
+    where
+        Self: Sized,
+    {
+    }
 
-    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Group, style: Style) -> Group where Self: Sized {
+    fn add_svg_stroke_piece(point1: Point, point2: Point, svg: Group, style: Style) -> Group
+    where
+        Self: Sized,
+    {
         let radius = style.get_stroke_width();
 
         let offset = Vector::new((45_f32).cos() * radius, (45_f32).sin() * radius);
@@ -82,7 +98,12 @@ impl Brush for Pen {
         svg.add(path)
     }
 
-    fn add_svg_end(_point: Point, svg: Group, _style: Style) -> Group where Self: Sized { svg }
+    fn add_svg_end(_point: Point, svg: Group, _style: Style) -> Group
+    where
+        Self: Sized,
+    {
+        svg
+    }
 }
 
 impl Into<Box<dyn Tool>> for Box<Pen> {

@@ -1,18 +1,23 @@
-use std::any::Any;
-use std::fmt::{Debug, Formatter};
-use iced::{Command, Element, Event, Renderer, Size};
-use mongodb::{Database};
 use crate::errors::error::Error;
 use crate::mongo::{MongoRequest, MongoResponse};
 use crate::scenes::auth::User;
 use crate::scenes::scenes::Scenes;
 use crate::theme::Theme;
+use iced::{Command, Element, Event, Renderer, Size};
+use mongodb::Database;
+use std::any::Any;
+use std::fmt::{Debug, Formatter};
 
 /// An individual scene that handles its actions internally.
-pub trait Scene: Send+Sync {
+pub trait Scene: Send + Sync {
     /// Returns a [Scene] by initializing it with its [options](SceneOptions) and giving it access to
     /// the [global](Globals) values.
-    fn new(options: Option<Box<dyn SceneOptions<Self>>>, globals: Globals) -> (Self, Command<Message>) where Self:Sized;
+    fn new(
+        options: Option<Box<dyn SceneOptions<Self>>>,
+        globals: Globals,
+    ) -> (Self, Command<Message>)
+    where
+        Self: Sized;
     /// Returns the name of the [Scene].
     fn get_title(&self) -> String;
     /// Updates the [Scene] using the given [message](Action); to be called in the
@@ -36,21 +41,21 @@ impl Debug for dyn Scene {
 }
 
 /// Options that help initialize a [Scene].
-pub trait SceneOptions<SceneType:Scene>: Debug+Send+Sync {
+pub trait SceneOptions<SceneType: Scene>: Debug + Send + Sync {
     /// This function applies the options to the given [Scene].
     fn apply_options(&self, scene: &mut SceneType);
     /// Returns a clone of the reference to the [options](SceneOptions) enclosed in a [Box].
     fn boxed_clone(&self) -> Box<dyn SceneOptions<SceneType>>;
 }
 
-impl<SceneType:Scene> Clone for Box<dyn SceneOptions<SceneType>> {
+impl<SceneType: Scene> Clone for Box<dyn SceneOptions<SceneType>> {
     fn clone(&self) -> Self {
         self.boxed_clone()
     }
 }
 
 /// The individual messages for a [Scene].
-pub trait Action: Send+Sync {
+pub trait Action: Send + Sync {
     /// Returns an upcasted reference of the [Action] as [Any].
     fn as_any(&self) -> &dyn Any;
     /// Returns the name of the [Action].
@@ -93,7 +98,7 @@ pub enum Message {
     DoneDatabaseInit(Result<Database, Error>),
     SendMongoRequests(Vec<MongoRequest>, fn(Vec<MongoResponse>) -> Box<dyn Action>),
     SendSmtpMail(lettre::Message),
-    Event(Event)
+    Event(Event),
 }
 
 /// The [Applications](crate::Chartsy) global values.
@@ -105,10 +110,14 @@ pub struct Globals {
 
 impl Globals {
     /// Updates the value of the user.
-    pub(crate) fn set_user (&mut self, user: Option<User>) { self.user = user; }
+    pub(crate) fn set_user(&mut self, user: Option<User>) {
+        self.user = user;
+    }
 
     /// Returns the user data.
-    pub(crate) fn get_user (&self) -> Option<User> { self.user.clone() }
+    pub(crate) fn get_user(&self) -> Option<User> {
+        self.user.clone()
+    }
 
     /// Updates the value of the window_size.
     pub(crate) fn set_window_size(&mut self, size: Size) {
@@ -135,7 +144,7 @@ impl Default for Globals {
     fn default() -> Self {
         Globals {
             user: None,
-            window_size: Size::new(0.0, 0.0)
+            window_size: Size::new(0.0, 0.0),
         }
     }
 }

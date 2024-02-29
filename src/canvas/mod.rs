@@ -1,6 +1,6 @@
-pub(crate) mod layer;
 pub mod canvas;
-pub mod tools;
-pub mod tool;
+pub(crate) mod layer;
 pub mod style;
 pub mod svg;
+pub mod tool;
+pub mod tools;
