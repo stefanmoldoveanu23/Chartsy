@@ -4,7 +4,7 @@ use directories::ProjectDirs;
 
 use crate::errors::error::Error;
 use iced::alignment::{Horizontal, Vertical};
-use iced::widget::{button, column, horizontal_space, row, text, Column, Container, Scrollable};
+use iced::widget::{button, column, horizontal_space, vertical_space, row, text, Column, Container, Scrollable};
 use iced::{Alignment, Command, Element, Length, Renderer};
 use iced::advanced::widget::Text;
 use iced_aw::{modal, Card, Tabs, TabLabel};
@@ -80,7 +80,6 @@ pub struct Main {
     drawings_online: Option<Vec<Uuid>>,
     drawings_offline: Option<Vec<Uuid>>,
     active_tab: MainTabIds,
-    globals: Globals,
 }
 
 /// The [Main] scene has no options.
@@ -98,7 +97,7 @@ impl SceneOptions<Main> for MainOptions {
 impl Scene for Main {
     fn new(
         options: Option<Box<dyn SceneOptions<Main>>>,
-        globals: Globals,
+        _: &mut Globals,
     ) -> (Self, Command<Message>)
     where
         Self: Sized,
@@ -108,7 +107,6 @@ impl Scene for Main {
             drawings_online: None,
             drawings_offline: None,
             active_tab: MainTabIds::Offline,
-            globals,
         };
         if let Some(options) = options {
             options.apply_options(&mut main);
@@ -124,7 +122,7 @@ impl Scene for Main {
         String::from("Main")
     }
 
-    fn update(&mut self, message: Box<dyn Action>) -> Command<Message> {
+    fn update(&mut self, globals: &mut Globals, message: Box<dyn Action>) -> Command<Message> {
         let message: &MainAction = message
             .as_any()
             .downcast_ref::<MainAction>()
@@ -135,7 +133,7 @@ impl Scene for Main {
                 self.modals.toggle_modal(modal.clone());
 
                 if modal.clone() == ModalType::ShowingDrawings {
-                    return self.update(Box::new(MainAction::SelectTab(self.active_tab)));
+                    return self.update(globals, Box::new(MainAction::SelectTab(self.active_tab)));
                 }
             }
             MainAction::LoadedDrawings(drawings, tab) => {
@@ -149,10 +147,7 @@ impl Scene for Main {
                 }
             }
             MainAction::LogOut => {
-                self.globals.set_user(None);
-                let globals = self.globals.clone();
-
-                return Command::perform(async {}, |_| Message::UpdateGlobals(globals));
+                globals.set_user(None);
             }
             MainAction::SelectTab(tab_id) => {
                 self.active_tab = tab_id.clone();
@@ -184,31 +179,41 @@ impl Scene for Main {
                     }
                     MainTabIds::Online => {
                         if self.drawings_online.is_none() {
-                            return Command::perform(async { }, move |_| {
-                                Message::SendMongoRequests(
-                                    vec![MongoRequest::new(
-                                        "canvases".into(),
-                                        MongoRequestType::Get(doc! {}),
-                                    )],
-                                    |res| {
-                                        if let Some(MongoResponse::Get(cursor)) = res.get(0) {
-                                            let mut list = vec![];
-                                            for document in cursor {
-                                                if let Some(Bson::Binary(bin)) = document.get("id") {
-                                                    if let Ok(uuid) =
-                                                        bin.to_uuid_with_representation(UuidRepresentation::Standard)
-                                                    {
-                                                        list.push(uuid);
+
+                            if let Some(db) = globals.get_db() {
+                            return Command::perform(
+                                async {
+                                    MongoRequest::send_requests(
+                                        db,
+                                        vec![MongoRequest::new(
+                                            "canvases".into(),
+                                            MongoRequestType::Get(doc! {}),
+                                        )]
+                                    ).await
+                                },
+                                |res| {
+                                    match res {
+                                        Ok(res) => {
+                                            if let Some(MongoResponse::Get(cursor)) = res.get(0) {
+                                                let mut list = vec![];
+                                                for document in cursor {
+                                                    if let Some(Bson::Binary(bin)) = document.get("id") {
+                                                        if let Ok(uuid) =
+                                                            bin.to_uuid_with_representation(UuidRepresentation::Standard)
+                                                        {
+                                                            list.push(uuid);
+                                                        }
                                                     }
                                                 }
+                                                Message::DoAction(Box::new(MainAction::LoadedDrawings(list, MainTabIds::Online)))
+                                            } else {
+                                                Message::DoAction(Box::new(MainAction::None))
                                             }
-                                            Box::new(MainAction::LoadedDrawings(list, MainTabIds::Online))
-                                        } else {
-                                            Box::new(MainAction::None)
                                         }
-                                    },
-                                )
-                            });
+                                        Err(message) => message
+                                    }
+                                });
+                            }
                         }
                     }
                 }
@@ -220,9 +225,9 @@ impl Scene for Main {
         Command::none()
     }
 
-    fn view(&self) -> Element<Message, Renderer<Theme>> {
+    fn view(&self, globals: &Globals) -> Element<Message, Renderer<Theme>> {
         let container_auth: Element<Message, Renderer<Theme>> =
-            if let Some(user) = self.globals.get_user() {
+            if let Some(user) = globals.get_user() {
                 row![
                     horizontal_space(Length::Fill),
                     row![
@@ -373,19 +378,24 @@ impl Scene for Main {
                     Container::<Message, Renderer<Theme>>::new(
                         Card::new(
                             text("Create new drawing"),
-                            row![
-                                button("Offline")
-                                    .padding(8)
-                                    .width(Length::FillPortion(1))
-                                    .on_press(Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(None, Some(SaveMode::Offline))))))),
-                                horizontal_space(Length::FillPortion(2)),
-                                button("Online")
-                                    .padding(8)
-                                    .width(Length::FillPortion(1))
-                                    .on_press(Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(None, Some(SaveMode::Online))))))),
+                            column![
+                                vertical_space(Length::Fill),
+                                row![
+                                    button("Offline")
+                                        .padding(8)
+                                        .width(Length::FillPortion(1))
+                                        .on_press(Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(None, Some(SaveMode::Offline))))))),
+                                    horizontal_space(Length::FillPortion(2)),
+                                    button("Online")
+                                        .padding(8)
+                                        .width(Length::FillPortion(1))
+                                        .on_press(Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(None, Some(SaveMode::Online))))))),
+                                ]
                             ]
+                                .height(Length::Fixed(150.0))
                         )
-                            .height(Length::Fixed(500.0))
+                            .width(Length::Fixed(300.0))
+                            .on_close(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::SelectingSaveMode))))
                     )
                         .into()
                 }
@@ -401,10 +411,6 @@ impl Scene for Main {
 
     fn get_error_handler(&self, error: Error) -> Box<dyn Action> {
         Box::new(MainAction::ErrorHandler(error))
-    }
-
-    fn update_globals(&mut self, globals: Globals) {
-        self.globals = globals;
     }
 
     fn clear(&self) {}

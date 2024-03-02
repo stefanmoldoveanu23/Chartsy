@@ -5,7 +5,7 @@ use dropbox_sdk::files::WriteMode;
 use std::any::Any;
 use std::fs;
 use std::fs::{create_dir_all, File};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::sync::Arc;
 
 use crate::canvas::canvas::Canvas;
@@ -97,83 +97,101 @@ pub struct Drawing {
     canvas: Canvas,
     active_tab: TabIds,
     save_mode: SaveMode,
-    globals: Globals,
 }
 
 impl Drawing {
     /// Initialize the drawing scene from the mongo database.
     /// If the uuid is 0, then insert a new drawing in the database.
-    fn init_online(self: &mut Box<Self>) -> Command<Message> {
+    fn init_online(self: &mut Box<Self>, globals: &mut Globals) -> Command<Message> {
         let mut uuid = self.canvas.id.clone();
         if uuid != Uuid::from_bytes([0; 16]) {
-            Command::perform(async {}, move |_| {
-                Message::SendMongoRequests(
-                    vec![
-                        MongoRequest::new(
-                            "canvases".into(),
-                            MongoRequestType::Get(doc! {"id": uuid}),
-                        ),
-                        MongoRequest::new(
-                            "tools".into(),
-                            MongoRequestType::Get(doc! {"canvas_id": uuid}),
-                        ),
-                    ],
-                    move |res| {
-                        if let (Some(MongoResponse::Get(canvas)), Some(MongoResponse::Get(tools))) =
-                            (res.get(0), res.get(1))
-                        {
-                            let layer_count = canvas.get(0);
-                            let layer_count = if let Some(document) = layer_count {
-                                if let Some(Bson::Int32(layer_count)) = document.get("layers") {
-                                    *layer_count as usize
-                                } else {
-                                    1
-                                }
-                            } else {
-                                1
-                            };
-
-                            let mut tools_vec: Vec<(Arc<dyn Tool>, usize)> = vec![];
-                            for tool in tools {
-                                tools_vec.push(tool::get_deserialized(tool.clone()).unwrap());
-                            }
-
-                            Box::new(DrawingAction::CanvasAction(CanvasAction::Loaded {
-                                layers: layer_count,
-                                tools: tools_vec,
-                                json_tools: None,
-                            }))
-                        } else {
-                            Box::new(DrawingAction::None)
-                        }
+            if let Some(db) = globals.get_db() {
+                Command::perform(
+                    async move {
+                        MongoRequest::send_requests(
+                            db,
+                            vec![
+                                MongoRequest::new(
+                                    "canvases".into(),
+                                    MongoRequestType::Get(doc! {"id": uuid}),
+                                ),
+                                MongoRequest::new(
+                                    "tools".into(),
+                                    MongoRequestType::Get(doc! {"canvas_id": uuid}),
+                                ),
+                            ]
+                        ).await
                     },
+                    move |res| {
+                        match res {
+                            Ok(res) => {
+                                if let (Some(MongoResponse::Get(canvas)), Some(MongoResponse::Get(tools))) =
+                                    (res.get(0), res.get(1))
+                                {
+                                    let layer_count = canvas.get(0);
+                                    let layer_count = if let Some(document) = layer_count {
+                                        if let Some(Bson::Int32(layer_count)) = document.get("layers") {
+                                            *layer_count as usize
+                                        } else {
+                                            1
+                                        }
+                                    } else {
+                                        1
+                                    };
+
+                                    let mut tools_vec: Vec<(Arc<dyn Tool>, usize)> = vec![];
+                                    for tool in tools {
+                                        tools_vec.push(tool::get_deserialized(tool.clone()).unwrap());
+                                    }
+
+                                    Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Loaded {
+                                        layers: layer_count,
+                                        tools: tools_vec,
+                                        json_tools: None,
+                                    })))
+                                } else {
+                                    Message::DoAction(Box::new(DrawingAction::None))
+                                }
+                            }
+                            Err(message) => message
+                        }
+                    }
                 )
-            })
+            } else {
+                Command::none()
+            }
         } else {
             uuid = Uuid::new();
             self.canvas.id = Uuid::from(uuid.clone());
 
-            Command::perform(async {}, move |_| {
-                Message::SendMongoRequests(
-                    vec![MongoRequest::new(
-                        "canvases".into(),
-                        MongoRequestType::Insert(vec![doc! {"id": uuid, "layers": 1}]),
-                    )],
-                    |_| {
-                        Box::new(DrawingAction::CanvasAction(CanvasAction::Loaded {
+            if let Some(db) = globals.get_db() {
+                Command::perform(
+                    async move {
+                        MongoRequest::send_requests(
+                            db,
+                            vec![MongoRequest::new(
+                                "canvases".into(),
+                                MongoRequestType::Insert(vec![doc! {"id": uuid, "layers": 1}]),
+                            )]
+                        ).await
+                    },
+                    move |_| {
+                        Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Loaded {
                             layers: 1,
                             tools: vec![],
                             json_tools: None,
-                        }))
-                    },
+                        })))
+                    }
                 )
-            })
+            } else {
+                Command::none()
+            }
         }
     }
 
     /// Initialize the drawing scene from the user's computer.
     /// If the uuid is 0, then create a new directory.
-    fn init_offline(self: &mut Box<Self>) -> Command<Message> {
+    fn init_offline(self: &mut Box<Self>, globals: &mut Globals) -> Command<Message> {
         let mut default_json = Object::new();
         default_json.insert("layers", JsonValue::Number(1.into()));
         default_json.insert("tools", JsonValue::Array(vec![]));
@@ -240,7 +258,7 @@ impl Drawing {
             file.write(json::stringify(JsonValue::Object(default_json)).as_bytes())
                 .unwrap();
 
-            self.update(Box::new(DrawingAction::CanvasAction(
+            self.update(globals, Box::new(DrawingAction::CanvasAction(
                 CanvasAction::Loaded {
                     layers: 1,
                     tools: vec![],
@@ -284,7 +302,7 @@ impl SceneOptions<Box<Drawing>> for DrawingOptions {
 impl Scene for Box<Drawing> {
     fn new(
         options: Option<Box<dyn SceneOptions<Box<Drawing>>>>,
-        globals: Globals,
+        globals: &mut Globals,
     ) -> (Self, Command<Message>)
     where
         Self: Sized,
@@ -295,7 +313,6 @@ impl Scene for Box<Drawing> {
                 .height(Length::Fixed(600.0)),
             active_tab: TabIds::Tools,
             save_mode: SaveMode::Online,
-            globals,
         });
 
         let set_tool = Command::perform(async {}, |_| {
@@ -309,8 +326,8 @@ impl Scene for Box<Drawing> {
         }
 
         let init_data: Command<Message> = match drawing.save_mode {
-            SaveMode::Online => drawing.init_online(),
-            SaveMode::Offline => drawing.init_offline(),
+            SaveMode::Online => drawing.init_online(globals),
+            SaveMode::Offline => drawing.init_offline(globals),
         };
 
         return (drawing, Command::batch([set_tool, init_data]));
@@ -320,14 +337,14 @@ impl Scene for Box<Drawing> {
         String::from("Drawing")
     }
 
-    fn update(&mut self, message: Box<dyn Action>) -> Command<Message> {
+    fn update(&mut self, globals: &mut Globals, message: Box<dyn Action>) -> Command<Message> {
         let message: &DrawingAction = message
             .as_any()
             .downcast_ref::<DrawingAction>()
             .expect("Panic downcasting to DrawingAction");
 
         match message {
-            DrawingAction::CanvasAction(action) => self.canvas.update(action.clone()),
+            DrawingAction::CanvasAction(action) => self.canvas.update(globals, action.clone()),
             DrawingAction::PostDrawing => {
                 let document: svg::Document = self.canvas.svg.as_document();
 
@@ -375,8 +392,8 @@ impl Scene for Box<Drawing> {
         }
     }
 
-    fn view(&self) -> Element<'_, Message, Renderer<Theme>> {
-        if self.globals.get_window_height() == 0.0 {
+    fn view(&self, globals: &Globals) -> Element<'_, Message, Renderer<Theme>> {
+        if globals.get_window_height() == 0.0 {
             return Element::new(text(""));
         }
 
@@ -477,7 +494,7 @@ impl Scene for Box<Drawing> {
             )
             .tab_bar_height(Length::Fixed(35.0))
             .width(Length::Fixed(250.0))
-            .height(Length::Fixed(self.globals.get_window_height() - 35.0))
+            .height(Length::Fixed(globals.get_window_height() - 35.0))
             .set_active_tab(&self.active_tab),
             column![
                 text(format!("{}", self.get_title()))
@@ -536,10 +553,6 @@ impl Scene for Box<Drawing> {
 
     fn get_error_handler(&self, error: Error) -> Box<dyn Action> {
         Box::new(DrawingAction::ErrorHandler(error))
-    }
-
-    fn update_globals(&mut self, globals: Globals) {
-        self.globals = globals;
     }
 
     fn clear(&self) {}

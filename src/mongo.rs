@@ -1,6 +1,5 @@
-use crate::scene::{Action, Message};
+use crate::scene::Message;
 use async_recursion::async_recursion;
-use iced::Command;
 use mongodb::bson::Document;
 use mongodb::results::{DeleteResult, InsertManyResult, UpdateResult};
 use mongodb::{options::ClientOptions, Client, Collection, Database};
@@ -241,36 +240,24 @@ impl MongoRequest {
     }
 
     /// Sends a list of requests to the given [Database].
-    ///
-    /// The requests field is a tuple comprised of:
-    /// - a [Vec] of [MongoRequests](MongoRequest);
-    /// - a function that takes the [Vec] of [MongoResponses](MongoResponse) and returns a [Message](Action).
-    pub fn send_requests(
+    pub async fn send_requests(
         database: Database,
-        requests: (Vec<Self>, fn(Vec<MongoResponse>) -> Box<dyn Action>),
-    ) -> Command<Message> {
-        Command::perform(
-            async move {
-                let mut responses: Vec<MongoResponse> = vec![];
+        requests: Vec<Self>,
+    ) -> Result<Vec<MongoResponse>, Message> {
+        let mut responses: Vec<MongoResponse> = vec![];
 
-                for request in requests.0 {
-                    match MongoRequest::handle_request(&database, request).await {
-                        Ok(result) => {
-                            responses.push(result);
-                        }
-                        Err(err) => {
-                            return Err(err);
-                        }
-                    }
+        for request in requests {
+            match MongoRequest::handle_request(&database, request).await {
+                Ok(result) => {
+                    responses.push(result);
                 }
+                Err(err) => {
+                    return Err(Message::Error(err));
+                }
+            }
+        }
 
-                Ok(responses)
-            },
-            move |responses| match responses {
-                Ok(responses) => Message::DoAction((requests.1)(responses)),
-                Err(err) => Message::Error(err),
-            },
-        )
+        Ok(responses)
     }
 }
 

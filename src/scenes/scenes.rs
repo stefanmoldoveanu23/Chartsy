@@ -29,8 +29,18 @@ pub struct SceneLoader {
 }
 
 impl SceneLoader {
+    pub fn new(globals: &mut Globals) -> Self
+    {
+        SceneLoader {
+            current_scene: Scenes::Main(None),
+            main: Some(Main::new(None, globals).0),
+            drawing: None,
+            auth: None,
+        }
+    }
+    
     /// Closes the current [Scene] and opens the requested [Scene].
-    pub fn load(&mut self, scene: Scenes, globals: Globals) -> Command<Message> {
+    pub fn load(&mut self, scene: Scenes, globals: &mut Globals) -> Command<Message> {
         match self.current_scene {
             Scenes::Main(_) => {
                 if let Some(main) = &self.main {
@@ -106,17 +116,6 @@ impl SceneLoader {
                 None => Err(SceneErr::Error),
                 Some(ref scene) => Ok(scene),
             },
-        }
-    }
-}
-
-impl Default for SceneLoader {
-    fn default() -> Self {
-        SceneLoader {
-            current_scene: Scenes::Main(None),
-            main: Some(Main::new(None, Globals::default()).0),
-            drawing: None,
-            auth: None,
         }
     }
 }

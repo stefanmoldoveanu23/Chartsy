@@ -194,7 +194,6 @@ pub struct Auth {
     log_in_form: LogInForm,
     register_code: Option<String>,
     code_error: Option<AuthError>,
-    globals: Globals,
 }
 
 /// The options for the authentication page. Holds the initial [tab id](TabIds).
@@ -319,7 +318,7 @@ impl Auth {
 impl Scene for Auth {
     fn new(
         options: Option<Box<dyn SceneOptions<Self>>>,
-        globals: Globals,
+        _: &mut Globals,
     ) -> (Self, Command<Message>)
     where
         Self: Sized,
@@ -330,7 +329,6 @@ impl Scene for Auth {
             log_in_form: LogInForm::default(),
             register_code: None,
             code_error: None,
-            globals,
         };
         if let Some(options) = options {
             options.apply_options(&mut auth);
@@ -343,7 +341,7 @@ impl Scene for Auth {
         String::from("Authentication")
     }
 
-    fn update(&mut self, message: Box<dyn Action>) -> Command<Message> {
+    fn update(&mut self, globals: &mut Globals, message: Box<dyn Action>) -> Command<Message> {
         let message: &AuthAction = message
             .as_any()
             .downcast_ref::<AuthAction>()
@@ -392,7 +390,7 @@ impl Scene for Auth {
                     let error = self.check_credentials();
 
                     if let Some(error) = error {
-                        return self.update(Box::new(AuthAction::HandleError(error)));
+                        return self.update(globals, Box::new(AuthAction::HandleError(error)));
                     }
 
                     let mut rng = rand::thread_rng();
@@ -402,28 +400,42 @@ impl Scene for Auth {
                     let mut register_form = self.register_form.clone();
                     register_form.password = pwhash::bcrypt::hash(register_form.password).unwrap();
 
-                    Command::perform(async {}, move |_| {
-                        Message::SendMongoRequests(
-                            vec![MongoRequest::new(
-                                "users".into(),
-                                MongoRequestType::Chain(
-                                    Box::new(MongoRequestType::Get(doc! {
-                                        "email": register_form.email.clone(),
-                                    })),
-                                    vec![(register_form.serialize(), Auth::check_user_exists)],
-                                ),
-                            )],
-                            |res| {
-                                if let Some(MongoResponse::Insert(_)) = res.get(0) {
-                                    Box::new(AuthAction::SendRegister(true))
-                                } else {
-                                    Box::new(AuthAction::HandleError(Error::DebugError(
-                                        DebugError::new("Wrong chain final typing!".into()),
-                                    )))
-                                }
-                            },
-                        )
-                    })
+                    match globals.get_db() {
+                        Some(db) => {
+                            Command::perform(
+                                async move {
+                                    MongoRequest::send_requests(
+                                        db,
+                                        vec![MongoRequest::new(
+                                            "users".into(),
+                                            MongoRequestType::Chain(
+                                                Box::new(MongoRequestType::Get(
+                                                    doc! {
+                                                        "email": register_form.email.clone(),
+                                                })),
+                                                vec![(register_form.serialize(), Auth::check_user_exists)],
+                                            ),
+                                        )]
+                                    ).await
+                                },
+                                move |res| {
+                                    match res {
+                                        Ok(res) => {
+                                            if let Some(MongoResponse::Insert(_)) = res.get(0) {
+                                                Message::DoAction(Box::new(AuthAction::SendRegister(true)))
+                                            } else {
+                                                Message::DoAction(Box::new(AuthAction::HandleError(Error::DebugError(
+                                                    DebugError::new("Wrong chain final typing!".into()),
+                                                ))))
+                                            }
+                                        }
+                                        Err(message) => message
+                                    }
+
+                                })
+                        }
+                        None => Command::none()
+                    }
                 };
             }
             AuthAction::ValidateEmail => {
@@ -432,32 +444,42 @@ impl Scene for Auth {
                 self.register_code = Some("".into());
                 self.code_error = None;
 
-                return Command::perform(async {}, move |_| {
-                    Message::SendMongoRequests(
-                        vec![MongoRequest::new(
-                            "users".into(),
-                            MongoRequestType::Chain(
-                                Box::new(MongoRequestType::Get(doc! {
+                if let Some(db) = globals.get_db() {
+                    return Command::perform(
+                        async {
+                            MongoRequest::send_requests(
+                                db,
+                                vec![MongoRequest::new(
+                                    "users".into(),
+                                    MongoRequestType::Chain(
+                                        Box::new(MongoRequestType::Get(doc! {
                                     "email": register_form.email.clone(),
                                     "code": register_code,
                                 })),
-                                vec![(
-                                    doc! {"email": register_form.email},
-                                    Auth::set_email_validated,
-                                )],
-                            ),
-                        )],
-                        |res| {
-                            if let Some(MongoResponse::Update(_)) = res.get(0) {
-                                Box::new(AuthAction::DoneRegistration)
-                            } else {
-                                Box::new(AuthAction::HandleError(Error::DebugError(
-                                    DebugError::new("Wrong chain final typing!".into()),
-                                )))
-                            }
+                                        vec![(
+                                            doc! {"email": register_form.email},
+                                            Auth::set_email_validated,
+                                        )],
+                                    ),
+                                )]
+                            ).await
                         },
-                    )
-                });
+                        move |res| {
+                            match res {
+                                Ok(res) => {
+                                    if let Some(MongoResponse::Update(_)) = res.get(0) {
+                                        Message::DoAction(Box::new(AuthAction::DoneRegistration))
+                                    } else {
+                                        Message::DoAction(Box::new(AuthAction::HandleError(Error::DebugError(
+                                            DebugError::new("Wrong chain final typing!".into()),
+                                        ))))
+                                    }
+                                }
+                                Err(message) => message
+                            }
+                        }
+                    );
+                }
             }
             AuthAction::DoneRegistration => {
                 self.register_code = None;
@@ -467,45 +489,50 @@ impl Scene for Auth {
                 self.log_in_form.error = None;
                 let log_in_form = self.log_in_form.clone();
 
-                return Command::perform(async {}, move |_| {
-                    Message::SendMongoRequests(
-                        vec![MongoRequest::new(
-                            "users".into(),
-                            MongoRequestType::Get(log_in_form.serialize()),
-                        )],
-                        |res| {
-                            if let Some(MongoResponse::Get(cursor)) = res.get(0) {
-                                if let Some(document) = cursor.get(0) {
-                                    Box::new(AuthAction::LoggedIn(User::deserialize(
-                                        document.clone(),
-                                    )))
-                                } else {
-                                    Box::new(AuthAction::HandleError(Error::AuthError(
-                                        AuthError::LogInUserDoesntExist,
-                                    )))
-                                }
-                            } else {
-                                Box::new(AuthAction::None)
-                            }
+                if let Some(db) = globals.get_db() {
+                    return Command::perform(
+                        async move {
+                            MongoRequest::send_requests(
+                                db,
+                                vec![MongoRequest::new(
+                                    "users".into(),
+                                    MongoRequestType::Get(log_in_form.serialize()),
+                                )]
+                            ).await
                         },
-                    )
-                });
+                        move |res| {
+                            match res {
+                                Ok(res) => {
+                                    if let Some(MongoResponse::Get(cursor)) = res.get(0) {
+                                        if let Some(document) = cursor.get(0) {
+                                            Message::DoAction(Box::new(AuthAction::LoggedIn(User::deserialize(
+                                                document.clone(),
+                                            ))))
+                                        } else {
+                                            Message::DoAction(Box::new(AuthAction::HandleError(Error::AuthError(
+                                                AuthError::LogInUserDoesntExist,
+                                            ))))
+                                        }
+                                    } else {
+                                        Message::DoAction(Box::new(AuthAction::None))
+                                    }
+                                }
+                                Err(message) => message
+                            }
+                        }
+                    );
+                }
             }
             AuthAction::LoggedIn(user) => {
                 if !user.test_password(&self.log_in_form.password) {
-                    return self.update(Box::new(AuthAction::HandleError(Error::AuthError(
+                    return self.update(globals, Box::new(AuthAction::HandleError(Error::AuthError(
                         AuthError::LogInUserDoesntExist,
                     ))));
                 }
 
-                self.globals.set_user(Some(user.clone()));
+                globals.set_user(Some(user.clone()));
 
-                let globals = self.globals.clone();
-
-                return Command::batch(vec![
-                    Command::perform(async {}, |_| Message::UpdateGlobals(globals)),
-                    Command::perform(async {}, |_| Message::ChangeScene(Scenes::Main(None))),
-                ]);
+                return Command::perform(async {}, |_| Message::ChangeScene(Scenes::Main(None)));
             }
             AuthAction::TabSelection(tab_id) => {
                 self.active_tab = *tab_id;
@@ -534,7 +561,7 @@ impl Scene for Auth {
         Command::none()
     }
 
-    fn view(&self) -> Element<'_, Message, Renderer<Theme>> {
+    fn view(&self, _: &Globals) -> Element<'_, Message, Renderer<Theme>> {
         let register_error_text = text(if let Some(error) = self.register_form.error.clone() {
             error.to_string()
         } else {
@@ -664,8 +691,6 @@ impl Scene for Auth {
     fn get_error_handler(&self, error: Error) -> Box<dyn Action> {
         Box::new(AuthAction::HandleError(error))
     }
-
-    fn update_globals(&mut self, _globals: Globals) {}
 
     fn clear(&self) {}
 }

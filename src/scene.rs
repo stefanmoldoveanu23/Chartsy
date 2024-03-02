@@ -1,5 +1,4 @@
 use crate::errors::error::Error;
-use crate::mongo::{MongoRequest, MongoResponse};
 use crate::scenes::auth::User;
 use crate::scenes::scenes::Scenes;
 use crate::theme::Theme;
@@ -14,7 +13,7 @@ pub trait Scene: Send + Sync {
     /// the [global](Globals) values.
     fn new(
         options: Option<Box<dyn SceneOptions<Self>>>,
-        globals: Globals,
+        globals: &mut Globals
     ) -> (Self, Command<Message>)
     where
         Self: Sized;
@@ -22,14 +21,12 @@ pub trait Scene: Send + Sync {
     fn get_title(&self) -> String;
     /// Updates the [Scene] using the given [message](Action); to be called in the
     /// [update](iced::Application::update) function of the [Application](crate::Chartsy).
-    fn update(&mut self, message: Box<dyn Action>) -> Command<Message>;
+    fn update(&mut self, globals: &mut Globals, message: Box<dyn Action>) -> Command<Message>;
     /// Returns a view of the [Scene]; to be called in the [view](iced::Application::view)
     /// function of the [Application](crate::Chartsy).
-    fn view(&self) -> Element<'_, Message, Renderer<Theme>>;
+    fn view(&self, globals: &Globals) -> Element<'_, Message, Renderer<Theme>>;
     /// Returns the [scenes](Scene) own error handler action.
     fn get_error_handler(&self, error: Error) -> Box<dyn Action>;
-    /// Updates the [global values](Globals) when they change externally.
-    fn update_globals(&mut self, globals: Globals);
     /// Handles closing the [Scene].
     fn clear(&self);
 }
@@ -81,11 +78,8 @@ impl Debug for dyn Action {
 /// - [ChangeScene](Message::ChangeScene), for handling transitions between [Scenes](Scene);
 /// - [DoAction](Message::DoAction), which is passed to the [update](Scene::update) function
 /// of the current [Scene];
-/// - [UpdateGlobals](Message::UpdateGlobals), to update the global values in the current [Scene](Scene);
 /// - [DoneDatabaseInit](Message::DoneDatabaseInit), which signals that the mongo [Database]
 /// connection was completed successfully;
-/// - [SendMongoRequests](Message::SendMongoRequests), for sending [MongoRequests](MongoRequest)
-/// to the [Database];
 /// - [SendSmtpMail](Message::SendSmtpMail), to send an e-mail using the official email address;
 /// - [Event](Message::Event), for handling [Events](Event).
 #[derive(Debug, Clone)]
@@ -94,9 +88,7 @@ pub enum Message {
     Error(Error),
     ChangeScene(Scenes),
     DoAction(Box<dyn Action>),
-    UpdateGlobals(Globals),
     DoneDatabaseInit(Result<Database, Error>),
-    SendMongoRequests(Vec<MongoRequest>, fn(Vec<MongoResponse>) -> Box<dyn Action>),
     SendSmtpMail(lettre::Message),
     Event(Event),
 }
@@ -105,6 +97,7 @@ pub enum Message {
 #[derive(Debug, Clone)]
 pub struct Globals {
     user: Option<User>,
+    mongo_db: Option<Database>,
     window_size: Size,
 }
 
@@ -118,6 +111,10 @@ impl Globals {
     pub(crate) fn get_user(&self) -> Option<User> {
         self.user.clone()
     }
+    
+    pub(crate) fn set_db(&mut self, db: Database) { self.mongo_db = Some(db); }
+    
+    pub(crate) fn get_db(&self) -> Option<Database> { self.mongo_db.clone() }
 
     /// Updates the value of the window_size.
     pub(crate) fn set_window_size(&mut self, size: Size) {
@@ -144,6 +141,7 @@ impl Default for Globals {
     fn default() -> Self {
         Globals {
             user: None,
+            mongo_db: None,
             window_size: Size::new(0.0, 0.0),
         }
     }

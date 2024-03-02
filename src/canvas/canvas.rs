@@ -4,7 +4,7 @@ use crate::canvas::layer::{CanvasAction, Layer};
 use crate::canvas::style::Style;
 use crate::canvas::svg::SVG;
 use crate::mongo::{MongoRequest, MongoRequestType};
-use crate::scene::Message;
+use crate::scene::{Globals, Message};
 use crate::scenes::drawing::DrawingAction;
 use crate::serde::Serialize;
 use crate::theme::Theme;
@@ -162,7 +162,7 @@ impl Canvas {
     }
 
     /// Update function, all canvas related messages are handled here.
-    pub(crate) fn update(&mut self, message: CanvasAction) -> Command<Message> {
+    pub(crate) fn update(&mut self, globals: &mut Globals, message: CanvasAction) -> Command<Message> {
         match message {
             CanvasAction::UseTool(tool) => {
                 self.tools.push((tool.clone(), self.current_layer));
@@ -185,18 +185,36 @@ impl Canvas {
                 if self.json_tools.is_none() {
                     let id = self.id.clone();
                     let layers = self.layers.len();
-                    return Command::perform(async {}, move |_| {
-                        Message::SendMongoRequests(
-                            vec![MongoRequest::new(
-                                "canvases".into(),
-                                MongoRequestType::Update(
-                                    doc! { "id": id },
-                                    doc! { "$set": { "layers": layers as u32 } },
-                                ),
-                            )],
-                            |_| Box::new(DrawingAction::None),
-                        )
-                    });
+                    let db = globals.get_db();
+
+                    if let Some(db) = db {
+                        return Command::perform(
+                            async move {
+                                MongoRequest::send_requests(
+                                    db,
+                                    vec![
+                                        MongoRequest::new(
+                                            "canvases".into(),
+                                            MongoRequestType::Update(
+                                                doc! { "id": id },
+                                                doc! { "$set": { "layers": layers as u32 } }
+                                            )
+                                        )
+                                    ]
+                                ).await
+                            },
+                            |responses| {
+                                match responses {
+                                    Ok(_) => {
+                                        Message::DoAction(Box::new(DrawingAction::None))
+                                    }
+                                    Err(message) => {
+                                        message
+                                    }
+                                }
+                            }
+                        );
+                    }
                 }
             }
             CanvasAction::ActivateLayer(layer) => {
@@ -254,30 +272,37 @@ impl Canvas {
                     )
                 } else {
                     let tools_mongo = self.get_tools_serialized();
+                    let db = globals.get_db();
 
-                    Command::perform(async {}, move |_| {
-                        Message::SendMongoRequests(
-                            vec![
-                                MongoRequest::new(
-                                    "tools".into(),
-                                    MongoRequestType::Delete(doc! {
-                                        "canvas_id": canvas_id,
-                                        "order": {
-                                            "$gte": delete_lower_bound as u32,
-                                            "$lte": delete_upper_bound as u32,
-                                        }
-                                    }),
-                                ),
-                                MongoRequest::new(
-                                    "tools".into(),
-                                    MongoRequestType::Insert(tools_mongo),
-                                ),
-                            ],
-                            move |_| {
-                                Box::new(DrawingAction::CanvasAction(CanvasAction::Saved))
-                            },
-                        )
-                    })
+                    if let Some(db) = db {
+                        Command::perform(
+                        async move {
+                            MongoRequest::send_requests(
+                                db,
+                                vec![
+                                    MongoRequest::new(
+                                        "tools".into(),
+                                        MongoRequestType::Delete(doc! {
+                                            "canvas_id": canvas_id,
+                                            "order": {
+                                                "$gte": delete_lower_bound as u32,
+                                                "$lte": delete_upper_bound as u32,
+                                            }
+                                        }),
+                                    ),
+                                    MongoRequest::new(
+                                        "tools".into(),
+                                        MongoRequestType::Insert(tools_mongo),
+                                    ),
+                                ]
+                            ).await
+                        },
+                        move |_| {
+                            Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Saved)))
+                        })
+                    } else {
+                        Command::none()
+                    }
                 };
             }
             CanvasAction::Undo => {

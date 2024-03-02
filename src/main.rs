@@ -28,7 +28,6 @@ use iced::{
 };
 use iced_runtime::command::Action;
 use lettre::{AsyncSmtpTransport, AsyncStd1Executor, AsyncTransport};
-use mongodb::Database;
 
 pub fn main() -> iced::Result {
     Chartsy::run(Settings {
@@ -42,11 +41,9 @@ pub fn main() -> iced::Result {
 /// Its purpose is to manage the basic aspects of the drawing app:
 /// - transitioning between different scenes, including the handling of
 /// closing and opening a scene using a [SceneLoader];
-/// - communication with a [Database];
 /// - holding and passing of global values, using the [Globals] structure.
 struct Chartsy {
     scene_loader: SceneLoader,
-    mongo_db: Option<Database>,
     globals: Globals,
 }
 
@@ -57,11 +54,13 @@ impl Application for Chartsy {
     type Flags = ();
 
     fn new(_flags: Self::Flags) -> (Chartsy, Command<Self::Message>) {
+        let mut globals = Globals::default();
+        let scene_loader = SceneLoader::new(&mut globals);
+
         (
             Chartsy {
-                scene_loader: SceneLoader::default(),
-                mongo_db: None,
-                globals: Globals::default(),
+                scene_loader,
+                globals,
             },
             Command::batch(vec![
                 Command::single(Action::Window(window::Action::Maximize(true))),
@@ -77,31 +76,26 @@ impl Application for Chartsy {
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         match message {
             Message::None => Command::none(),
-            Message::ChangeScene(scene) => self.scene_loader.load(scene, self.globals.clone()),
+            Message::ChangeScene(scene) => self.scene_loader.load(scene, &mut self.globals),
             Message::DoAction(action) => {
                 let scene = self.scene_loader.get_mut().expect("Error getting scene.");
-                scene.update(action)
-            }
-            Message::UpdateGlobals(globals) => {
-                self.globals = globals;
-
-                let scene = self.scene_loader.get_mut().expect("Error getting scene.");
-                scene.update_globals(self.globals.clone());
-
-                Command::none()
+                scene.update(&mut self.globals, action)
             }
             Message::DoneDatabaseInit(result) => {
-                self.mongo_db = Some(result.expect("Error connecting to database."));
+                match result {
+                    Ok(db) => {
+                        self.globals.set_db(db);
 
-                println!("Successfully connected to database.");
-                Command::none()
-            }
-            Message::SendMongoRequests(requests, response_handler) => match &self.mongo_db {
-                None => Command::none(),
-                Some(db) => {
-                    mongo::MongoRequest::send_requests(db.clone(), (requests, response_handler))
+                        println!("Successfully connected to database.");
+                        Command::none()
+                    }
+                    Err(err) => {
+                        println!("Error connecting to database: {}", err);
+                        Command::perform(mongo::connect_to_mongodb(), Message::DoneDatabaseInit)
+                    }
                 }
-            },
+
+            }
             Message::SendSmtpMail(mail) => Command::perform(
                 async {
                     let connection = AsyncSmtpTransport::<AsyncStd1Executor>::from_url(&*format!(
@@ -138,7 +132,7 @@ impl Application for Chartsy {
                     Command::none()
                 } else {
                     let scene = self.scene_loader.get_mut().expect("Error getting scene.");
-                    scene.update(scene.get_error_handler(error))
+                    scene.update(&mut self.globals, scene.get_error_handler(error))
                 }
             }
         }
@@ -146,7 +140,7 @@ impl Application for Chartsy {
 
     fn view(&self) -> Element<'_, Self::Message, Renderer<Self::Theme>> {
         let scene = self.scene_loader.get().expect("Error getting scene.");
-        scene.view()
+        scene.view(&self.globals)
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
