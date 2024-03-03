@@ -26,7 +26,6 @@ enum ModalType {
 }
 
 /// The [Messages](Action) of the main [Scene]:
-/// - [None](MainAction::None) for when no action is required;
 /// - [ToggleModal](MainAction::ToggleModal), which opens or closes the given overlay;
 /// - [LoadedDrawings](MainAction::LoadedDrawings), which receives the list of drawings from
 /// the [Database](mongodb::Database), or locally;
@@ -82,7 +81,7 @@ pub struct Main {
     active_tab: MainTabIds,
 }
 
-/// The [Main] scene has no options.
+/// The [Main] scene has no optional data.
 #[derive(Debug, Clone, Copy)]
 pub struct MainOptions {}
 
@@ -148,6 +147,7 @@ impl Scene for Main {
             }
             MainAction::LogOut => {
                 globals.set_user(None);
+                self.drawings_online = None;
             }
             MainAction::SelectTab(tab_id) => {
                 self.active_tab = tab_id.clone();
@@ -180,39 +180,42 @@ impl Scene for Main {
                     MainTabIds::Online => {
                         if self.drawings_online.is_none() {
 
-                            if let Some(db) = globals.get_db() {
-                            return Command::perform(
-                                async {
-                                    MongoRequest::send_requests(
-                                        db,
-                                        vec![MongoRequest::new(
-                                            "canvases".into(),
-                                            MongoRequestType::Get(doc! {}),
-                                        )]
-                                    ).await
-                                },
-                                |res| {
-                                    match res {
-                                        Ok(res) => {
-                                            if let Some(MongoResponse::Get(cursor)) = res.get(0) {
-                                                let mut list = vec![];
-                                                for document in cursor {
-                                                    if let Some(Bson::Binary(bin)) = document.get("id") {
-                                                        if let Ok(uuid) =
-                                                            bin.to_uuid_with_representation(UuidRepresentation::Standard)
-                                                        {
-                                                            list.push(uuid);
+                            if let (Some(db), Some(user)) = (globals.get_db(), globals.get_user()) {
+                                let user_id = user.get_id();
+                                
+                                return Command::perform(
+                                    async move {
+                                        MongoRequest::send_requests(
+                                            db,
+                                            vec![MongoRequest::new(
+                                                "canvases".into(),
+                                                MongoRequestType::Get(doc! {"user_id": user_id}),
+                                            )]
+                                        ).await
+                                    },
+                                    |res| {
+                                        match res {
+                                            Ok(res) => {
+                                                if let Some(MongoResponse::Get(cursor)) = res.get(0) {
+                                                    let mut list = vec![];
+                                                    for document in cursor {
+                                                        if let Some(Bson::Binary(bin)) = document.get("id") {
+                                                            if let Ok(uuid) =
+                                                                bin.to_uuid_with_representation(UuidRepresentation::Standard)
+                                                            {
+                                                                list.push(uuid);
+                                                            }
                                                         }
                                                     }
+                                                    Message::DoAction(Box::new(MainAction::LoadedDrawings(list, MainTabIds::Online)))
+                                                } else {
+                                                    Message::DoAction(Box::new(MainAction::None))
                                                 }
-                                                Message::DoAction(Box::new(MainAction::LoadedDrawings(list, MainTabIds::Online)))
-                                            } else {
-                                                Message::DoAction(Box::new(MainAction::None))
                                             }
+                                            Err(message) => message
                                         }
-                                        Err(message) => message
                                     }
-                                });
+                                );
                             }
                         }
                     }
@@ -386,10 +389,16 @@ impl Scene for Main {
                                         .width(Length::FillPortion(1))
                                         .on_press(Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(None, Some(SaveMode::Offline))))))),
                                     horizontal_space(Length::FillPortion(2)),
-                                    button("Online")
-                                        .padding(8)
-                                        .width(Length::FillPortion(1))
-                                        .on_press(Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(None, Some(SaveMode::Online))))))),
+                                    if globals.get_db().is_some() && globals.get_user().is_some() {
+                                        button("Online")
+                                            .padding(8)
+                                            .width(Length::FillPortion(1))
+                                            .on_press(Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(None, Some(SaveMode::Online)))))))
+                                    } else {
+                                        button("Online")
+                                            .padding(8)
+                                            .width(Length::FillPortion(1))
+                                    },
                                 ]
                             ]
                                 .height(Length::Fixed(150.0))

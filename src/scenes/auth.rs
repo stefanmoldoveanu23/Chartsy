@@ -14,7 +14,7 @@ use iced::{Element, Length, Renderer};
 use iced_aw::{TabLabel, Tabs};
 use iced_runtime::Command;
 use lettre::message::MultiPart;
-use mongodb::bson::{doc, Document};
+use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
 use rand::Rng;
 use regex::Regex;
 use std::any::Any;
@@ -101,15 +101,20 @@ impl Into<Box<dyn Action + 'static>> for Box<AuthAction> {
     }
 }
 
-/// Structure for the user data: the email, username, and the hash of the password.
+/// Structure for the user data: the user id, email, username, and the hash of the password.
 #[derive(Default, Debug, Clone)]
 pub struct User {
+    id: Uuid,
     email: String,
     username: String,
     password_hash: String,
 }
 
 impl User {
+    /// Returns the id of the [user](User).
+    pub fn get_id(&self) -> Uuid {
+        self.id.clone()
+    }
     /// Returns the email of the [user](User).
     pub fn get_email(&self) -> String {
         self.email.clone()
@@ -132,6 +137,11 @@ impl Deserialize<Document> for User {
     {
         let mut user: User = User::default();
 
+        if let Some(Bson::Binary(bin)) = document.get("id") {
+            if let Ok(uuid) = bin.to_uuid_with_representation(UuidRepresentation::Standard) {
+                user.id = uuid;
+            }
+        }
         if let Ok(email) = document.get_str("email") {
             user.email = email.into();
         }
@@ -159,6 +169,7 @@ pub struct RegisterForm {
 impl Serialize<Document> for RegisterForm {
     fn serialize(&self) -> Document {
         doc! {
+            "id": Uuid::new(),
             "email": self.email.clone(),
             "username": self.username.clone(),
             "password": self.password.clone(),
@@ -186,7 +197,7 @@ impl Serialize<Document> for LogInForm {
 }
 
 /// Model for authentication scene. Holds the [id](TabIds) of the currently active tab, the data for the [registration form](RegisterForm),
-/// the data for the [authentication form](LogInForm), the user input value of the email verification code with optional errors, and the global data.
+/// the data for the [authentication form](LogInForm), and the user input value of the email verification code with optional errors.
 #[derive(Clone)]
 pub struct Auth {
     active_tab: AuthTabIds,
@@ -561,7 +572,7 @@ impl Scene for Auth {
         Command::none()
     }
 
-    fn view(&self, _: &Globals) -> Element<'_, Message, Renderer<Theme>> {
+    fn view(&self, globals: &Globals) -> Element<'_, Message, Renderer<Theme>> {
         let register_error_text = text(if let Some(error) = self.register_form.error.clone() {
             error.to_string()
         } else {
@@ -636,9 +647,13 @@ impl Scene for Auth {
                                             ))
                                         })
                                         .password(),
-                                    button("Register").on_press(Message::DoAction(Box::new(
-                                        AuthAction::SendRegister(false)
-                                    )))
+                                    if globals.get_db().is_some() {
+                                        button("Register").on_press(Message::DoAction(Box::new(
+                                            AuthAction::SendRegister(false)
+                                        )))
+                                    } else {
+                                        button("Register")
+                                    }
                                 ]
                                 .into()
                             }
@@ -668,8 +683,12 @@ impl Scene for Auth {
                                         ))
                                     })
                                     .password(),
-                                button("Log In")
-                                    .on_press(Message::DoAction(Box::new(AuthAction::SendLogIn)))
+                                if globals.get_db().is_some() {
+                                    button("Log In")
+                                        .on_press(Message::DoAction(Box::new(AuthAction::SendLogIn)))
+                                } else {
+                                    button("Log In")
+                                }
                             ]
                             .into()
                         )

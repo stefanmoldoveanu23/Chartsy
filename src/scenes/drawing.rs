@@ -30,6 +30,7 @@ use crate::canvas::tools::{
     rect::RectPending, triangle::TrianglePending,
 };
 use crate::config::{DROPBOX_ID, DROPBOX_REFRESH_TOKEN};
+use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::scenes::scenes::Scenes;
@@ -39,7 +40,6 @@ use crate::theme::Theme;
 use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 
 /// The [Messages](Action) for the [Drawing] scene:
-/// - [None](DrawingAction::None), for when no action is required;
 /// - [CanvasAction](DrawingAction::CanvasAction), for when the user interacts with the canvas;
 /// to be sent to the [Canvas] instance for handling;
 /// - [PostDrawing](DrawingAction::PostDrawing), to post a drawing for other users;
@@ -165,13 +165,15 @@ impl Drawing {
             self.canvas.id = Uuid::from(uuid.clone());
 
             if let Some(db) = globals.get_db() {
+                let user_id = globals.get_user().unwrap().get_id();
+
                 Command::perform(
                     async move {
                         MongoRequest::send_requests(
                             db,
                             vec![MongoRequest::new(
                                 "canvases".into(),
-                                MongoRequestType::Insert(vec![doc! {"id": uuid, "layers": 1}]),
+                                MongoRequestType::Insert(vec![doc! {"id": uuid, "user_id": user_id, "layers": 1}]),
                             )]
                         ).await
                     },
@@ -347,6 +349,9 @@ impl Scene for Box<Drawing> {
             DrawingAction::CanvasAction(action) => self.canvas.update(globals, action.clone()),
             DrawingAction::PostDrawing => {
                 let document: svg::Document = self.canvas.svg.as_document();
+                let db = globals.get_db().unwrap();
+                let user_id = globals.get_user().unwrap().get_id();
+                let drawing_id = self.canvas.id;
 
                 Command::perform(
                     async move {
@@ -364,7 +369,7 @@ impl Scene for Box<Drawing> {
 
                         match files::upload(
                             &client,
-                            &files::UploadArg::new("/image.svg".into())
+                            &files::UploadArg::new(format!("/{}/{}.svg", user_id, drawing_id))
                                 .with_mute(false)
                                 .with_mode(WriteMode::Overwrite),
                             img,
@@ -373,14 +378,34 @@ impl Scene for Box<Drawing> {
                                 println!("File successfully sent!");
                             }
                             Ok(Err(err)) => {
-                                println!("Error sending file: {}", err);
+                                return Err(Error::DebugError(DebugError::new(format!("Error sending file: {}", err))));
                             }
                             Err(err) => {
-                                println!("Error with upload request: {}", err);
+                                return Err(Error::DebugError(DebugError::new(format!("Error with upload request: {}", err))));
                             }
                         }
+
+                        Ok(MongoRequest::send_requests(
+                            db,
+                            vec![
+                                MongoRequest::new(
+                                    "posts".into(),
+                                    MongoRequestType::Insert(vec![
+                                        doc!{
+                                            "drawing_id": drawing_id,
+                                            "user_id": user_id,
+                                        }
+                                    ])
+                                )
+                            ]
+                        ).await)
                     },
-                    |_| Message::DoAction(Box::new(DrawingAction::None)),
+                    |res| {
+                        match res {
+                            Ok(_) => Message::DoAction(Box::new(DrawingAction::None)),
+                            Err(err) => Message::Error(err)
+                        }
+                    },
                 )
             }
             DrawingAction::TabSelection(tab_id) => {
@@ -510,9 +535,14 @@ impl Scene for Box<Drawing> {
                     button("Back")
                         .padding(8)
                         .on_press(Message::ChangeScene(Scenes::Main(None))),
-                    button("Post")
-                        .padding(8)
-                        .on_press(Message::DoAction(Box::new(DrawingAction::PostDrawing))),
+                    if globals.get_db().is_some() && globals.get_user().is_some() {
+                        button("Post")
+                            .padding(8)
+                            .on_press(Message::DoAction(Box::new(DrawingAction::PostDrawing)))
+                    } else {
+                        button("Post")
+                            .padding(8)
+                    },
                     button("Save")
                         .padding(8)
                         .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
