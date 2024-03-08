@@ -15,9 +15,10 @@ use iced_aw::{TabLabel, Tabs};
 use iced_runtime::Command;
 use lettre::message::MultiPart;
 use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
-use rand::Rng;
+use rand::{Rng};
 use regex::Regex;
 use std::any::Any;
+use crate::mongo;
 
 /// User account registration fields; possible values are:
 /// - [Email(String)](RegisterField::Email);
@@ -542,8 +543,15 @@ impl Scene for Auth {
                 }
 
                 globals.set_user(Some(user.clone()));
+                let db = globals.get_db().unwrap();
+                let id = user.id;
 
-                return Command::perform(async {}, |_| Message::ChangeScene(Scenes::Main(None)));
+                return Command::perform(
+                    async move {
+                        mongo::update_user_token(db, id).await
+                    },
+                    |_| Message::ChangeScene(Scenes::Main(None))
+                );
             }
             AuthAction::TabSelection(tab_id) => {
                 self.active_tab = *tab_id;

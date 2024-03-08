@@ -28,6 +28,8 @@ pub(crate) mod text {
     }
 }
 
+/// Module that implements the [text input](iced::widget::text_input::TextInput) [StyleSheet]
+/// for the custom [Theme].
 pub(crate) mod text_input {
     use crate::theme::Theme;
     use iced::widget::text_input::{Appearance, StyleSheet};
@@ -77,7 +79,7 @@ pub(crate) mod button {
         type Style = ();
 
         fn active(&self, _style: &Self::Style) -> Appearance {
-            iced::Theme::Dark.active(&Button::default())
+            iced::Theme::Light.active(&Button::default())
         }
     }
 }
@@ -156,6 +158,21 @@ pub(crate) mod slider {
     }
 }
 
+/// Module that implements the [svg](iced::widget::svg::Svg) [StyleSheet] for the custom [Theme].
+pub(crate) mod svg {
+    use crate::theme::Theme;
+    use iced::widget::svg::{Appearance, StyleSheet};
+    use iced_style::theme::Svg;
+
+    impl StyleSheet for Theme {
+        type Style = Svg;
+
+        fn appearance(&self, style: &Self::Style) -> Appearance {
+            iced::Theme::Light.appearance(style)
+        }
+    }
+}
+
 /// Module that implements the [modal](iced_aw::modal::Modal) [StyleSheet] for the custom [Theme].
 pub(crate) mod modal {
     use crate::theme::Theme;
@@ -200,6 +217,80 @@ pub(crate) mod tab_bar {
 
         fn hovered(&self, style: &Self::Style, is_active: bool) -> Appearance {
             iced::Theme::Light.hovered(style, is_active)
+        }
+    }
+}
+
+/// Module that implements the [post](crate::widgets::post_summary::PostSummary) [StyleSheet]
+/// for the custom [Theme].
+pub(crate) mod post {
+    use iced::Color;
+    use crate::theme::Theme;
+    use crate::widgets::post_summary::{Appearance, StyleSheet};
+
+    #[derive(Default)]
+    pub enum PostSummary {
+        #[default]
+        Default
+    }
+
+    impl StyleSheet for Theme {
+        type Style = PostSummary;
+
+        fn active(&self, style: &Self::Style) -> Appearance {
+            match style {
+                PostSummary::Default => {
+                    Appearance {
+                        border_color: Color::from_rgb(0.5, 0.5, 0.5),
+                        ..Appearance::default()
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Module that implements the [closeable](crate::widgets::closeable::Closeable) [StyleSheet]
+/// for the custom [Theme].
+pub(crate) mod closeable {
+    use iced::Color;
+    use iced_runtime::core::Background;
+    use crate::theme::Theme;
+    use crate::widgets::closeable::{Appearance, StyleSheet};
+
+    #[derive(Default)]
+    pub enum Closeable {
+        #[default]
+        Default,
+        Monochrome(Color),
+        SpotLight,
+        Transparent
+    }
+    
+    impl StyleSheet for Theme {
+        type Style = Closeable;
+
+        fn active(&self, style: &Self::Style) -> Appearance {
+            match style {
+                Closeable::Default => {
+                    Appearance::default()
+                }
+                Closeable::Monochrome(color) => {
+                    Appearance {
+                        background: Background::Color(*color)
+                    }
+                }
+                Closeable::SpotLight => {
+                    Appearance {
+                        background: Background::Color(Color::from_rgba(0.8, 0.8, 0.8, 0.5))
+                    }
+                }
+                Closeable::Transparent => {
+                    Appearance {
+                        background: Background::Color(Color::TRANSPARENT)
+                    }
+                }
+            }
         }
     }
 }

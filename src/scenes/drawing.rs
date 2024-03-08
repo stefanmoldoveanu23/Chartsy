@@ -255,7 +255,7 @@ impl Drawing {
                 .join(String::from("./") + &*uuid.to_string());
             create_dir_all(dir_path.clone()).unwrap();
 
-            let file_path = dir_path.join(String::from("./data.json"));
+            let file_path = dir_path.join("./data.json");
             let mut file = File::create(file_path).unwrap();
             file.write(json::stringify(JsonValue::Object(default_json)).as_bytes())
                 .unwrap();
@@ -402,7 +402,7 @@ impl Scene for Box<Drawing> {
                     },
                     |res| {
                         match res {
-                            Ok(_) => Message::DoAction(Box::new(DrawingAction::None)),
+                            Ok(_) => Message::None,
                             Err(err) => Message::Error(err)
                         }
                     },

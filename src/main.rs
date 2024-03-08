@@ -7,7 +7,6 @@
 )]
 
 mod canvas;
-mod color_picker;
 mod config;
 mod errors;
 mod mongo;
@@ -15,7 +14,7 @@ mod scene;
 mod scenes;
 mod serde;
 mod theme;
-mod modal_stack;
+mod widgets;
 
 use scene::{Globals, Message};
 use scenes::scenes::SceneLoader;
@@ -84,10 +83,30 @@ impl Application for Chartsy {
             Message::DoneDatabaseInit(result) => {
                 match result {
                     Ok(db) => {
-                        self.globals.set_db(db);
+                        self.globals.set_db(db.clone());
 
                         println!("Successfully connected to database.");
-                        Command::none()
+                        Command::perform(
+                            async move {
+                                let result = mongo::get_user_from_token(db.clone()).await;
+
+                                if let Ok(user) = &result {
+                                    let user_id = user.get_id();
+
+                                    mongo::update_user_token(db, user_id).await;
+                                }
+
+                                result
+                            },
+                            |result| {
+                                match result {
+                                    Ok(user) => {
+                                        Message::AutoLoggedIn(user)
+                                    }
+                                    Err(message) => message
+                                }
+                            }
+                        )
                     }
                     Err(err) => {
                         println!("Error connecting to database: {}", err);
@@ -95,6 +114,10 @@ impl Application for Chartsy {
                     }
                 }
 
+            }
+            Message::AutoLoggedIn(user) => {
+                self.globals.set_user(Some(user));
+                Command::none()
             }
             Message::SendSmtpMail(mail) => Command::perform(
                 async {

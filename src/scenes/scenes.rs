@@ -3,6 +3,7 @@ use crate::scenes::auth::Auth;
 use crate::scenes::drawing::Drawing;
 use crate::scenes::main::Main;
 use iced::Command;
+use crate::scenes::posts::Posts;
 
 /// The list of [Scenes](Scene) in the [Application](crate::Chartsy).
 #[derive(Debug, Clone)]
@@ -10,6 +11,7 @@ pub enum Scenes {
     Main(Option<Box<dyn SceneOptions<Main>>>),
     Drawing(Option<Box<dyn SceneOptions<Box<Drawing>>>>),
     Auth(Option<Box<dyn SceneOptions<Auth>>>),
+    Posts(Option<Box<dyn SceneOptions<Posts>>>),
 }
 
 /// An enum that is returned when an unusual behaviour occurs during the handling of [Scenes](Scene).
@@ -26,6 +28,7 @@ pub struct SceneLoader {
     main: Option<Main>,
     drawing: Option<Box<Drawing>>,
     auth: Option<Auth>,
+    posts: Option<Posts>,
 }
 
 impl SceneLoader {
@@ -36,6 +39,7 @@ impl SceneLoader {
             main: Some(Main::new(None, globals).0),
             drawing: None,
             auth: None,
+            posts: None,
         }
     }
     
@@ -60,6 +64,12 @@ impl SceneLoader {
                 }
                 self.auth = None;
             }
+            Scenes::Posts(_) => {
+                if let Some(posts) = &self.posts {
+                    posts.clear();
+                }
+                self.posts = None;
+            }
         }
 
         self.current_scene = scene;
@@ -80,6 +90,11 @@ impl SceneLoader {
                 self.auth = Some(auth);
                 Command::batch(vec![command])
             }
+            Scenes::Posts(options) => {
+                let (posts, command) = Scene::new(options.clone(), globals);
+                self.posts = Some(posts);
+                Command::batch(vec![command])
+            }
         }
     }
 
@@ -95,6 +110,10 @@ impl SceneLoader {
                 Some(ref mut scene) => Ok(scene),
             },
             Scenes::Auth(_) => match self.auth {
+                None => Err(SceneErr::Error),
+                Some(ref mut scene) => Ok(scene),
+            },
+            Scenes::Posts(_) => match self.posts {
                 None => Err(SceneErr::Error),
                 Some(ref mut scene) => Ok(scene),
             },
@@ -116,6 +135,10 @@ impl SceneLoader {
                 None => Err(SceneErr::Error),
                 Some(ref scene) => Ok(scene),
             },
+            Scenes::Posts(_) => match self.posts {
+                None => Err(SceneErr::Error),
+                Some(ref scene) => Ok(scene),
+            }
         }
     }
 }

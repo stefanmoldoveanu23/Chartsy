@@ -1,12 +1,22 @@
 use crate::scene::Message;
 use async_recursion::async_recursion;
-use mongodb::bson::Document;
+use mongodb::bson::{Bson, Document, Binary, doc, Uuid};
 use mongodb::results::{DeleteResult, InsertManyResult, UpdateResult};
 use mongodb::{options::ClientOptions, Client, Collection, Database};
 use std::fmt::Debug;
+use std::fs;
+use std::fs::File;
+use std::io::Write;
+use directories::ProjectDirs;
+use mongodb::bson::spec::BinarySubtype;
+use rand::random;
+use sha2::{Digest, Sha256};
 
 use crate::config::{MONGO_NAME, MONGO_PASS};
+use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
+use crate::scenes::auth::User;
+use crate::serde::Deserialize;
 
 /// Attempts to connect to the mongo [Database].
 ///
@@ -22,6 +32,83 @@ where
     let client = Client::with_options(client_options).map_err(|error| Error::from(error))?;
 
     Ok(client.database("chartsy"))
+}
+
+/// Checks if an authentication token is saved on the user's computer.
+///
+/// If there is one, the user will be automatically logged in.
+pub async fn get_user_from_token(database: Database) -> Result<User, Message>
+{
+    let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
+    let file_path = proj_dirs.data_local_dir().join("./token");
+    let token = fs::read(file_path);
+
+    if let Ok(token) = token {
+        let mut sha = Sha256::new();
+        Digest::update(&mut sha, token);
+        let hash = sha.finalize();
+        let bin = Bson::Binary(Binary {
+            bytes: Vec::from(hash.as_slice()),
+            subtype: BinarySubtype::Generic,
+        });
+
+        let result = MongoRequest::send_requests(
+            database.clone(),
+            vec![
+                MongoRequest::new(
+                    "users".into(),
+                    MongoRequestType::Get(doc!{"code": bin})
+                )
+            ]
+        ).await;
+
+        if let Ok(response) = result {
+            if let Some(MongoResponse::Get(users)) = response.get(0) {
+                if users.len() > 0 {
+                    return Ok(User::deserialize(users.get(0).unwrap().clone()));
+                }
+            }
+        }
+    }
+
+    Err(Message::Error(Error::DebugError(DebugError::new("No user previously logged in.".into()))))
+}
+
+/// When a user is logged in, the authentication token is updated in the database in order
+/// to increase security.
+pub async fn update_user_token(database: Database, user_id: Uuid)
+{
+    let code = random::<[u8; 32]>();
+    let mut sha = Sha256::new();
+    Digest::update(&mut sha, code);
+    let hash = sha.finalize();
+    let bin = Bson::Binary(Binary {
+        bytes: Vec::from(hash.as_slice()),
+        subtype: BinarySubtype::Generic,
+    });
+
+    let response = MongoRequest::send_requests(
+        database.clone(),
+        vec![
+            MongoRequest::new(
+                "users".into(),
+                MongoRequestType::Update(
+                    doc! { "id": user_id },
+                    doc! { "$set": {
+                        "code": bin
+                    } }
+                )
+            )
+        ]
+    ).await;
+
+    if response.is_ok() {
+        let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
+        let file_path = proj_dirs.data_local_dir().join("./token");
+
+        let mut file = File::create(file_path).unwrap();
+        file.write(code.as_slice()).unwrap();
+    }
 }
 
 /// The four [Database] request types:
@@ -265,7 +352,7 @@ impl MongoRequest {
 /// - [Get](MongoResponse::Get), with a list of [Documents](Document);
 /// - [Insert](MongoResponse::Insert), with the list of [inserted ids](InsertManyResult);
 /// - [Update](MongoResponse::Update), with the [update results](UpdateResult);
-/// - [Delete](MongoResponse::Delete), with the [number of deleted records](DeleteResult)/
+/// - [Delete](MongoResponse::Delete), with the [number of deleted records](DeleteResult).
 pub enum MongoResponse {
     Get(Vec<Document>),
     Insert(InsertManyResult),

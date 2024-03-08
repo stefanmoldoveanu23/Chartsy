@@ -80,6 +80,7 @@ impl Debug for dyn Action {
 /// of the current [Scene];
 /// - [DoneDatabaseInit](Message::DoneDatabaseInit), which signals that the mongo [Database]
 /// connection was completed successfully;
+/// - [AutoLoggedIn](Message::AutoLoggedIn), for when the user had previously logged in;
 /// - [SendSmtpMail](Message::SendSmtpMail), to send an e-mail using the official email address;
 /// - [Event](Message::Event), for handling [Events](Event).
 #[derive(Debug, Clone)]
@@ -89,6 +90,7 @@ pub enum Message {
     ChangeScene(Scenes),
     DoAction(Box<dyn Action>),
     DoneDatabaseInit(Result<Database, Error>),
+    AutoLoggedIn(User),
     SendSmtpMail(lettre::Message),
     Event(Event),
 }

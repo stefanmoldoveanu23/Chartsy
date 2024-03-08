@@ -7,9 +7,9 @@ use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{button, column, horizontal_space, vertical_space, row, text, Column, Container, Scrollable};
 use iced::{Alignment, Command, Element, Length, Renderer};
 use iced::advanced::widget::Text;
-use iced_aw::{modal, Card, Tabs, TabLabel};
+use iced_aw::{Card, Tabs, TabLabel};
 use mongodb::bson::{doc, Bson, Uuid, UuidRepresentation};
-use crate::modal_stack::ModalStack;
+use crate::widgets::modal_stack::ModalStack;
 
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::scenes::auth::{AuthOptions, AuthTabIds};
@@ -148,6 +148,12 @@ impl Scene for Main {
             MainAction::LogOut => {
                 globals.set_user(None);
                 self.drawings_online = None;
+
+                let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
+                let dir_path = proj_dirs.data_local_dir();
+                let file_path = dir_path.join("./token");
+
+                fs::remove_file(file_path).unwrap();
             }
             MainAction::SelectTab(tab_id) => {
                 self.active_tab = tab_id.clone();
@@ -280,6 +286,16 @@ impl Scene for Main {
                     button("Continue drawing")
                         .padding(8)
                         .on_press(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::ShowingDrawings)))),
+                    if globals.get_db().is_some() && globals.get_user().is_some() {
+                        Element::<Message, Renderer<Theme>>::from(
+                            button("Browse posts")
+                                .padding(8)
+                                .on_press(Message::ChangeScene(Scenes::Posts(None)))
+                        )
+                    } else {
+                        vertical_space(Length::Shrink)
+                            .into()
+                    }
                 ]
                 .spacing(20)
                 .height(Length::FillPortion(3))
@@ -411,11 +427,7 @@ impl Scene for Main {
             }
         };
 
-        modal::<Message, Renderer<Theme>>(
-            container_entrance,
-            self.modals.get_modal(modal_generator),
-        )
-        .into()
+        self.modals.get_modal(container_entrance.into(), modal_generator)
     }
 
     fn get_error_handler(&self, error: Error) -> Box<dyn Action> {

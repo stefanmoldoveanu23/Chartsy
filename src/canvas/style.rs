@@ -1,4 +1,4 @@
-use crate::color_picker::ColorPicker;
+use crate::widgets::color_picker::ColorPicker;
 use crate::scene::Message;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
