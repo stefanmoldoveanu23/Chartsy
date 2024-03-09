@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use crate::canvas::canvas::Canvas;
 use iced::alignment::Horizontal;
-use iced::widget::{button, column, row, text, Container, Row};
+use iced::widget::{Container, Row, Column, Text, Button};
 use iced::{Alignment, Command, Element, Length, Renderer};
 use iced_aw::tab_bar::TabLabel;
 use iced_aw::tabs::Tabs;
@@ -20,7 +20,7 @@ use mongodb::bson::{doc, Bson, Uuid};
 
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::tool;
-use crate::canvas::tool::Tool;
+use crate::canvas::tool::{Pending, Tool};
 use crate::canvas::tools::{
     brush::BrushPending,
     brushes::{airbrush::Airbrush, eraser::Eraser, pen::Pen, pencil::Pencil},
@@ -419,166 +419,158 @@ impl Scene for Box<Drawing> {
 
     fn view(&self, globals: &Globals) -> Element<'_, Message, Renderer<Theme>> {
         if globals.get_window_height() == 0.0 {
-            return Element::new(text(""));
+            return Element::new(Text::new(""));
         }
 
-        row![
-            Tabs::with_tabs(
-                vec![
-                    (
-                        TabIds::Tools,
-                        TabLabel::Text("Tools".into()),
-                        column![
-                            text("Geometry")
-                                .horizontal_alignment(Horizontal::Center)
-                                .size(20.0),
-                            column![
-                                button("Line").on_press(Message::DoAction(Box::new(
-                                    DrawingAction::CanvasAction(CanvasAction::ChangeTool(
-                                        Box::new(LinePending::None)
-                                    ))
-                                ))),
-                                button("Rectangle").on_press(Message::DoAction(Box::new(
-                                    DrawingAction::CanvasAction(CanvasAction::ChangeTool(
-                                        Box::new(RectPending::None)
-                                    ))
-                                ))),
-                                button("Triangle").on_press(Message::DoAction(Box::new(
-                                    DrawingAction::CanvasAction(CanvasAction::ChangeTool(
-                                        Box::new(TrianglePending::None)
-                                    ))
-                                ))),
-                                button("Polygon").on_press(Message::DoAction(Box::new(
-                                    DrawingAction::CanvasAction(CanvasAction::ChangeTool(
-                                        Box::new(PolygonPending::None)
-                                    ))
-                                ))),
-                                button("Circle").on_press(Message::DoAction(Box::new(
-                                    DrawingAction::CanvasAction(CanvasAction::ChangeTool(
-                                        Box::new(CirclePending::None)
-                                    ))
-                                ))),
-                                button("Ellipse").on_press(Message::DoAction(Box::new(
-                                    DrawingAction::CanvasAction(CanvasAction::ChangeTool(
-                                        Box::new(EllipsePending::None)
-                                    ))
-                                ))),
-                            ]
-                            .spacing(5.0)
-                            .padding(10.0),
-                            text("Brushes")
-                                .horizontal_alignment(Horizontal::Center)
-                                .size(20.0),
-                            column![
-                                button("Pencil").on_press(Message::DoAction(Box::new(
-                                    DrawingAction::CanvasAction(CanvasAction::ChangeTool(
-                                        Box::new(BrushPending::<Pencil>::None)
-                                    ))
-                                ))),
-                                button("Fountain pen").on_press(Message::DoAction(Box::new(
-                                    DrawingAction::CanvasAction(CanvasAction::ChangeTool(
-                                        Box::new(BrushPending::<Pen>::None)
-                                    ))
-                                ))),
-                                button("Airbrush").on_press(Message::DoAction(Box::new(
-                                    DrawingAction::CanvasAction(CanvasAction::ChangeTool(
-                                        Box::new(BrushPending::<Airbrush>::None)
-                                    ))
-                                ))),
-                            ]
-                            .spacing(5.0)
-                            .padding(10.0),
-                            text("Eraser")
-                                .horizontal_alignment(Horizontal::Center)
-                                .size(20.0),
-                            column![button("Eraser").on_press(Message::DoAction(Box::new(
-                                DrawingAction::CanvasAction(CanvasAction::ChangeTool(Box::new(
-                                    BrushPending::<Eraser>::None
-                                )))
-                            )))]
-                            .spacing(5.0)
-                            .padding(10.0),
-                        ]
-                        .spacing(15.0)
-                        .height(Length::Fill)
-                        .width(Length::Fixed(250.0))
-                        .into()
-                    ),
-                    (
-                        TabIds::Style,
-                        TabLabel::Text("Style".into()),
-                        self.canvas
-                            .style
-                            .view()
-                            .map(|update| Message::DoAction(Box::new(
-                                DrawingAction::CanvasAction(CanvasAction::UpdateStyle(update))
-                            ))),
-                    )
-                ],
-                |tab_id| Message::DoAction(Box::new(DrawingAction::TabSelection(tab_id))),
-            )
-            .tab_bar_height(Length::Fixed(35.0))
-            .width(Length::Fixed(250.0))
-            .height(Length::Fixed(globals.get_window_height() - 35.0))
-            .set_active_tab(&self.active_tab),
-            column![
-                text(format!("{}", self.get_title()))
-                    .width(Length::Shrink)
-                    .size(50),
-                Container::new::<&Canvas>(&self.canvas)
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .center_x()
-                    .center_y(),
-                //.style(container::Container::Canvas),
-                row![
-                    button("Back")
-                        .padding(8)
-                        .on_press(Message::ChangeScene(Scenes::Main(None))),
-                    if globals.get_db().is_some() && globals.get_user().is_some() {
-                        button("Post")
-                            .padding(8)
-                            .on_press(Message::DoAction(Box::new(DrawingAction::PostDrawing)))
-                    } else {
-                        button("Post")
-                            .padding(8)
-                    },
-                    button("Save")
-                        .padding(8)
-                        .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
-                            CanvasAction::Save
-                        )))),
-                    button("Add layer")
-                        .padding(8)
-                        .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
-                            CanvasAction::AddLayer
-                        )))),
-                    Row::with_children((|layers: usize| {
-                        let mut buttons = vec![];
-                        for layer in 0..layers.clone() {
-                            buttons.push(
-                                button(text(format!("Layer {}", layer + 1)))
-                                    .on_press(Message::DoAction(Box::new(
-                                        DrawingAction::CanvasAction(CanvasAction::ActivateLayer(
-                                            layer,
-                                        )),
-                                    )))
-                                    .into(),
-                            );
-                        }
+        let tool_button = |name: String, pending: Box<dyn Pending>| {
+            Button::new(Text::new(name))
+                .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
+                    CanvasAction::ChangeTool(pending)
+                ))))
+                .into()
+        };
 
-                        buttons
-                    })(self.canvas.get_layer_count()))
-                ]
+        let geometry_section :Element<Message, Renderer<Theme>>= Column::with_children(vec![
+            tool_button("Line".into(), Box::new(LinePending::None)),
+            tool_button("Rectangle".into(), Box::new(RectPending::None)),
+            tool_button("Triangle".into(), Box::new(TrianglePending::None)),
+            tool_button("Polygon".into(), Box::new(PolygonPending::None)),
+            tool_button("Circle".into(), Box::new(CirclePending::None)),
+            tool_button("Ellipse".into(), Box::new(EllipsePending::None)),
+        ])
+            .spacing(5.0)
+            .padding(10.0)
+            .into();
+
+        let brushes_section :Element<Message, Renderer<Theme>>= Column::with_children(vec![
+            tool_button("Pencil".into(), Box::new(BrushPending::<Pencil>::None)),
+            tool_button("Fountain Pen".into(), Box::new(BrushPending::<Pen>::None)),
+            tool_button("Airbrush".into(), Box::new(BrushPending::<Airbrush>::None))
+        ])
+            .spacing(5.0)
+            .padding(10.0)
+            .into();
+
+        let eraser_section :Element<Message, Renderer<Theme>>= Column::with_children(vec![
+            tool_button("Eraser".into(), Box::new(BrushPending::<Eraser>::None))
+        ])
+            .spacing(5.0)
+            .padding(10.0)
+            .into();
+
+        let layers_section :Element<Message, Renderer<Theme>>= Row::with_children((|layers: usize| {
+            let mut buttons = vec![];
+            for layer in 0..layers.clone() {
+                buttons.push(
+                    Button::new(Text::new(format!("Layer {}", layer + 1)))
+                        .on_press(Message::DoAction(Box::new(
+                            DrawingAction::CanvasAction(CanvasAction::ActivateLayer(
+                                layer,
+                            )),
+                        )))
+                        .into(),
+                );
+            }
+
+            buttons
+        })(self.canvas.get_layer_count()))
+            .into();
+
+        let buttons_section :Element<Message, Renderer<Theme>>= Row::with_children(vec![
+            Button::new(Text::new("Back"))
+                .on_press(Message::ChangeScene(Scenes::Main(None)))
+                .into(),
+            if globals.get_db().is_some() && globals.get_user().is_some() {
+                Button::new(Text::new("Post"))
+                    .on_press(Message::DoAction(Box::new(DrawingAction::PostDrawing)))
+            } else {
+                Button::new(Text::new("Post"))
+            }
+                .into(),
+            Button::new(Text::new("Save"))
+                .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Save))))
+                .into(),
+            Button::new(Text::new("Add layer"))
+                .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::AddLayer))))
+                .into(),
+            layers_section,
+        ])
+            .spacing(8.0)
+            .into();
+
+        Row::with_children(
+            vec![
+                Tabs::with_tabs(
+                    vec![
+                        (
+                            TabIds::Tools,
+                            TabLabel::Text("Tools".into()),
+                            Column::with_children(
+                                vec![
+                                    Text::new("Geometry")
+                                        .horizontal_alignment(Horizontal::Center)
+                                        .size(20.0)
+                                        .into(),
+                                    geometry_section,
+                                    Text::new("Brushes")
+                                        .horizontal_alignment(Horizontal::Center)
+                                        .size(20.0)
+                                        .into(),
+                                    brushes_section,
+                                    Text::new("Eraser")
+                                        .horizontal_alignment(Horizontal::Center)
+                                        .size(20.0)
+                                        .into(),
+                                    eraser_section,
+                                ]
+                            )
+                                .spacing(15.0)
+                                .height(Length::Fill)
+                                .width(Length::Fixed(250.0))
+                                .into()
+                        ),
+                        (
+                            TabIds::Style,
+                            TabLabel::Text("Style".into()),
+                            self.canvas
+                                .style
+                                .view()
+                                .map(|update| Message::DoAction(Box::new(
+                                    DrawingAction::CanvasAction(CanvasAction::UpdateStyle(update))
+                                ))),
+                        )
+                    ],
+                    |tab_id| Message::DoAction(Box::new(DrawingAction::TabSelection(tab_id))),
+                )
+                    .tab_bar_height(Length::Fixed(35.0))
+                    .width(Length::Fixed(250.0))
+                    .height(Length::Fixed(globals.get_window_height() - 35.0))
+                    .set_active_tab(&self.active_tab)
+                    .into(),
+                Column::with_children(vec![
+                    Text::new(format!("{}", self.get_title()))
+                        .width(Length::Shrink)
+                        .size(50)
+                        .into(),
+                    Container::new::<&Canvas>(&self.canvas)
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .center_x()
+                        .center_y()
+                        //.style(container::Container::Canvas),
+                        .into(),
+                    buttons_section
+                ])
+                    .height(Length::Fill)
+                    .into()
             ]
+        )
+            .padding(0)
+            .spacing(20)
+            .width(Length::Fill)
             .height(Length::Fill)
-        ]
-        .padding(0)
-        .spacing(20)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_items(Alignment::Center)
-        .into()
+            .align_items(Alignment::Center)
+            .into()
     }
 
     fn get_error_handler(&self, error: Error) -> Box<dyn Action> {
