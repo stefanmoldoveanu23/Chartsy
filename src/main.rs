@@ -20,13 +20,14 @@ use scene::{Message, Globals};
 use scenes::scenes::SceneLoader;
 use theme::Theme;
 
-use iced::{Application, Command, Element, executor, Renderer, Settings, Size, Subscription, window};
-use iced::event::listen;
-use iced::widget::{container, text};
+use crate::config::{EMAIL_PASS, EMAIL_USERNAME};
+use iced::event;
+use iced::{
+    executor, window, Application, Command, Element, Renderer, Settings, Size, Subscription,
+};
 use iced_runtime::command::Action;
 use lettre::{AsyncSmtpTransport, AsyncStd1Executor, AsyncTransport};
 use mongodb::Database;
-use crate::config::{EMAIL_PASS, EMAIL_USERNAME};
 
 pub fn main() -> iced::Result {
     Chartsy::run(Settings {
@@ -61,12 +62,10 @@ impl Application for Chartsy {
                 mongo_db: None,
                 globals: Globals::default()
             },
-            Command::batch(
-                vec![
-                    //Command::single(Action::Window(window::Action::Maximize(window::Id::MAIN, true))),
-                    //Command::perform(mongo::connect_to_mongodb(), Message::DoneDatabaseInit),
-                ]
-            )
+            Command::batch(vec![
+                Command::single(Action::Window(window::Action::Maximize(window::Id::MAIN, true))),
+                Command::perform(mongo::connect_to_mongodb(), Message::DoneDatabaseInit),
+            ]),
         )
     }
 
@@ -129,8 +128,9 @@ impl Application for Chartsy {
             }
             Message::Event(event) => {
                 match event {
-                    iced::Event::Window(window::Id::MAIN, window::Event::Resized {width, height}) => {
-                        self.globals.set_window_size(Size::new(width as f32, height as f32));
+                    iced::Event::Window(window::Id::MAIN, window::Event::Resized { width, height }) => {
+                        self.globals
+                            .set_window_size(Size::new(width as f32, height as f32));
                     }
                     _ => {}
                 }
@@ -149,13 +149,11 @@ impl Application for Chartsy {
     }
 
     fn view(&self) -> Element<'_, Self::Message, Self::Theme, Renderer> {
-        //let scene = self.scene_loader.get().expect("Error getting scene.");
-        //scene.view()
-
-        container(text("")).into()
+        let scene = self.scene_loader.get().expect("Error getting scene.");
+        scene.view(&self.globals)
     }
 
-    //fn subscription(&self) -> Subscription<Self::Message> {
-        //listen().map(Message::Event)
-    //}
+    fn subscription(&self) -> Subscription<Self::Message> {
+        event::listen().map(Message::Event)
+    }
 }

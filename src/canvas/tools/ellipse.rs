@@ -10,6 +10,22 @@ use mongodb::bson::{Bson, doc, Document};
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
+<<<<<<< Updated upstream
+=======
+use iced::event::Status;
+use iced::mouse::Cursor;
+use iced::widget::canvas::path::arc::Elliptical;
+use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
+use iced::{mouse, Color, Point, Rectangle, Renderer, Vector};
+use json::object::Object;
+use json::JsonValue;
+use mongodb::bson::{doc, Bson, Document};
+use std::fmt::Debug;
+use std::ops::{Add, Sub};
+use std::sync::Arc;
+use svg::node::element::path::Data;
+use svg::node::element::Group;
+>>>>>>> Stashed changes
 
 use crate::canvas::tool::{Pending, Tool};
 
@@ -115,9 +131,15 @@ impl Pending for EllipsePending {
                             p.ellipse(Elliptical {
                                 center,
                                 radii,
+<<<<<<< Updated upstream
                                 rotation: Radians(rotation),
                                 start_angle: Radians(0.0),
                                 end_angle: Radians(360.0),
+=======
+                                rotation: rotation.into(),
+                                start_angle: 0.0.into(),
+                                end_angle: 360.0.into(),
+>>>>>>> Stashed changes
                             });
                         }
                     });
@@ -211,9 +233,15 @@ impl Tool for Ellipse {
                 builder.ellipse(Elliptical{
                     center: self.center,
                     radii: self.radii.clone(),
+<<<<<<< Updated upstream
                     rotation: Radians(self.rotation.clone()),
                     start_angle: Radians(0.0),
                     end_angle: Radians(360.0),
+=======
+                    rotation: self.rotation.clone().into(),
+                    start_angle: 0.0.into(),
+                    end_angle: 360.0.into(),
+>>>>>>> Stashed changes
                 });
             }
         });

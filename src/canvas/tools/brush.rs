@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 use std::fmt::{Debug};
 use std::marker::PhantomData;
 use std::ops::{Add, Sub};
@@ -11,6 +12,26 @@ use mongodb::bson::{Bson, doc, Document};
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
+=======
+use crate::canvas::layer::CanvasAction;
+use crate::canvas::style::Style;
+use crate::serde::{Deserialize, Serialize};
+use iced::event::Status;
+use iced::mouse::Cursor;
+use iced::widget::canvas::{Event, Frame, Geometry};
+use iced::{keyboard, mouse, Color, Point, Rectangle, Renderer, Vector};
+use json::object::Object;
+use json::JsonValue;
+use mongodb::bson::{doc, Bson, Document};
+use std::fmt::Debug;
+use std::marker::PhantomData;
+use std::ops::{Add, Sub};
+use std::sync::Arc;
+use std::str::FromStr;
+use iced::keyboard::Key;
+use iced_style::core::SmolStr;
+use svg::node::element::Group;
+>>>>>>> Stashed changes
 
 use crate::canvas::tool::{Pending, Tool};
 
@@ -84,6 +105,7 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
 
                 (Status::Captured, message)
             }
+<<<<<<< Updated upstream
             Event::Keyboard(key_event) => {
                 match key_event {
                     keyboard::Event::KeyPressed { key: keyboard::Key::Character(str), .. } => {
@@ -96,6 +118,20 @@ where Box<BrushType>: Into<Box<dyn Tool>> {
                         }
                     }
                     _ => (Status::Ignored, None)
+=======
+            Event::Keyboard(key_event) => match key_event {
+                keyboard::Event::KeyPressed {
+                    key: Key::Character(char),
+                    ..
+                } => {
+                    if char == SmolStr::from_str("S").unwrap() {
+                        *self = BrushPending::None;
+
+                        (Status::Captured, None)
+                    } else {
+                        (Status::Ignored, None)
+                    }
+>>>>>>> Stashed changes
                 }
             }
             _ => (Status::Ignored, None)

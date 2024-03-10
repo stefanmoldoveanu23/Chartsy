@@ -20,7 +20,7 @@ pub trait Scene: Send+Sync {
     fn update(&mut self, message: Box<dyn Action>) -> Command<Message>;
     /// Returns a view of the [Scene]; to be called in the [view](iced::Application::view)
     /// function of the [Application](crate::Chartsy).
-    fn view(&self) -> Element<'_, Message, Theme, Renderer>;
+    fn view(&self, globals: &Globals) -> Element<'_, Message, Theme, Renderer>;
     /// Returns the [scenes](Scene) own error handler action.
     fn get_error_handler(&self, error: Error) -> Box<dyn Action>;
     /// Updates the [global values](Globals) when they change externally.

@@ -1,3 +1,18 @@
+<<<<<<< Updated upstream
+=======
+use crate::canvas::layer::CanvasAction;
+use crate::canvas::style::Style;
+use crate::canvas::tools::brushes::{airbrush::Airbrush, eraser::Eraser, pen::Pen, pencil::Pencil};
+use crate::canvas::tools::{
+    circle::Circle, ellipse::Ellipse, line::Line, polygon::Polygon, rect::Rect, triangle::Triangle,
+};
+use crate::serde::{Deserialize, Serialize};
+use iced::widget::canvas::{event, Event, Frame, Geometry};
+use iced::{mouse, Point, Rectangle, Renderer};
+use json::object::Object;
+use json::JsonValue;
+use mongodb::bson::{Bson, Document};
+>>>>>>> Stashed changes
 use std::fmt::Debug;
 use std::sync::Arc;
 use iced::{mouse, Point, Rectangle, Renderer};

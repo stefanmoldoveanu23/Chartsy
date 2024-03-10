@@ -1,12 +1,13 @@
-use std::fmt::{self, Display, Formatter};
-use std::ops::Sub;
-use iced::advanced::{Layout, Widget, Clipboard, Shell};
-use iced::{Background, Border, Element, event, Event, Length, mouse, Rectangle, Size, Vector};
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::{Quad, Style};
-use iced::advanced::widget::{Tree, tree};
+use iced::advanced::widget::{tree, Tree};
+use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::mouse::{Button, Cursor, Interaction};
 use iced::widget::Slider;
+use iced::{event, mouse, Background, Element, Event, Length, Rectangle, Size, Vector, Border};
+use std::fmt::{self, Display, Formatter};
+use std::ops::Sub;
+use iced::border::Radius;
 use crate::theme::Theme;
 
 /// A basic color picker widget.
@@ -33,10 +34,9 @@ where Message: Clone + 'a {
         ColorPicker {
             hovering: None,
             on_submit,
-            slider: Slider::new(
-                0.0..=255.0,
-                255.0,
-                move |val| {on_submit(iced::Color::new(0.0, 0.0, 0.0, val / 255.0))}),
+            slider: Slider::new(0.0..=255.0, 255.0, move |val| {
+                on_submit(iced::Color::new(0.0, 0.0, 0.0, val / 255.0))
+            }),
             alpha: 1.0,
             height,
             width: 250.0
@@ -69,14 +69,14 @@ where Message: Clone + 'a {
 
 impl<'a, Message, Renderer> Widget<Message, Theme, Renderer> for ColorPicker<'a, Message>
 where
-    Message: Clone+'a,
-    Renderer: iced::advanced::Renderer
+    Message: Clone + 'a,
+    Renderer: 'a+iced::advanced::Renderer
 {
     fn size(&self) -> Size<Length> {
-        Size {
-            width: Length::Fixed(self.width),
-            height: Length::Fixed(self.height + 20.0)
-        }
+        Size::new(
+            Length::Fixed(self.width),
+            Length::Fixed(self.height + 20.0)
+        )
     }
 
     fn layout(&self, _tree: &mut Tree, _renderer: &Renderer, _limits: &Limits) -> Node {
@@ -112,7 +112,7 @@ where
                     border: Border {
                         color: iced::Color::from_rgb8(192, 192, 192),
                         width: 2.0,
-                        radius: 0.0.into(),
+                        radius: Radius::from(0.0),
                     },
                     shadow: Default::default(),
                 },
@@ -221,7 +221,7 @@ where
                     }
                     _ => event::Status::Ignored,
                 }
-            }
+            },
             Event::Window(..) => event::Status::Ignored,
             Event::Touch(_) => event::Status::Ignored,
         }
@@ -233,7 +233,7 @@ where
         layout: Layout<'_>,
         cursor: Cursor,
         viewport: &Rectangle,
-        renderer: &Renderer
+        renderer: &Renderer,
     ) -> Interaction {
         if self.hovering.is_some() {
             Interaction::Pointer
@@ -252,8 +252,11 @@ where
     }
 }
 
-impl<'a, Message: 'a> From<ColorPicker<'a, Message>> for Element<'a, Message, Theme, iced::Renderer>
-where Message: Clone {
+impl<'a, Message, Renderer> From<ColorPicker<'a, Message>> for Element<'a, Message, Theme, Renderer>
+where
+    Message: 'a+Clone,
+    Renderer: 'a+iced::advanced::Renderer
+{
     fn from(value: ColorPicker<'a, Message>) -> Self {
         Self::new(value)
     }

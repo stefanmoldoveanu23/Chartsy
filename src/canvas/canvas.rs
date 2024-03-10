@@ -274,9 +274,18 @@ impl<'a> CanvasVessel<'a> {
         };
 
         vessel.layers = Box::new(
+<<<<<<< Updated upstream
             vessel.states.iter().enumerate().map(|(pos, state)| {
                 canvas::Canvas::new(
                     Layer {
+=======
+            vessel
+                .states
+                .iter()
+                .enumerate()
+                .map(|(pos, state)| {
+                    canvas::Canvas::<Layer<'_>, CanvasAction, Theme, Renderer>::new(Layer {
+>>>>>>> Stashed changes
                         state: Some(&state.cache),
                         tools: &(canvas.tool_layers[pos]),
                         current_tool: &canvas.current_tool,
@@ -294,6 +303,7 @@ impl<'a> CanvasVessel<'a> {
 
 impl<'a> Widget<CanvasAction, Theme, Renderer> for CanvasVessel<'a> {
     fn size(&self) -> Size<Length> {
+<<<<<<< Updated upstream
         Size {
             width: self.width,
             height: self.height,
@@ -306,6 +316,15 @@ impl<'a> Widget<CanvasAction, Theme, Renderer> for CanvasVessel<'a> {
         _renderer: &Renderer,
         limits: &Limits
     ) -> Node {
+=======
+        Size::new(
+            self.width,
+            self.height
+        )
+    }
+
+    fn layout(&self, _tree: &mut Tree, _renderer: &Renderer, limits: &Limits) -> Node {
+>>>>>>> Stashed changes
         let limits = limits.width(self.width).height(self.height);
         let size = limits.resolve(self.width, self.height, Size::ZERO);
 
@@ -341,7 +360,15 @@ impl<'a> Widget<CanvasAction, Theme, Renderer> for CanvasVessel<'a> {
     }
 
     fn state(&self) -> tree::State {
+<<<<<<< Updated upstream
         tree::State::new(<Layer<'_> as canvas::Program<CanvasAction, Theme, Renderer>>::State::default())
+=======
+        tree::State::new(<Layer<'_> as canvas::Program<
+            CanvasAction,
+            Theme,
+            Renderer,
+        >>::State::default())
+>>>>>>> Stashed changes
     }
 
     fn on_event(
@@ -374,7 +401,11 @@ impl<'a> Widget<CanvasAction, Theme, Renderer> for CanvasVessel<'a> {
         layout: Layout<'_>,
         cursor: Cursor,
         viewport: &Rectangle,
+<<<<<<< Updated upstream
         renderer: &Renderer
+=======
+        renderer: &Renderer,
+>>>>>>> Stashed changes
     ) -> Interaction {
         self.layers[self.current_layer].mouse_interaction(
             state,

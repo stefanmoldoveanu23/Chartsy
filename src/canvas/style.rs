@@ -4,7 +4,15 @@ use mongodb::bson::{Bson, doc, Document};
 use crate::scene::Message;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
+<<<<<<< Updated upstream
 use crate::widgets::color_picker::ColorPicker;
+=======
+use iced::widget::{Button, Column, Slider, Text};
+use iced::{Color, Command, Element, Length, Renderer};
+use json::object::Object;
+use json::JsonValue;
+use mongodb::bson::{doc, Bson, Document};
+>>>>>>> Stashed changes
 
 /// A structure used to define the style of the drawn [tools](crate::canvas::tool::Tool).
 ///
@@ -90,10 +98,21 @@ impl Style {
 
     /// Returns an interactable settings section for the [Style].
     pub(crate) fn view<'a>(&self) -> Element<'a, StyleUpdate, Theme, Renderer> {
+<<<<<<< Updated upstream
         let mut column :Vec<Element<'a, StyleUpdate, Theme, Renderer>>= vec![];
 
         if let Some((width, color, visibility_width, visibility_color)) = self.stroke {
             column.push(Button::new("Stroke width").on_press(StyleUpdate::ToggleStrokeWidth).into());
+=======
+        let mut column: Vec<Element<'a, StyleUpdate, Theme, Renderer>> = vec![];
+
+        if let Some((width, color, visibility_width, visibility_color)) = self.stroke {
+            column.push(
+                Button::new(Text::new("Stroke width"))
+                    .on_press(StyleUpdate::ToggleStrokeWidth)
+                    .into(),
+            );
+>>>>>>> Stashed changes
             if visibility_width {
                 column.push(Slider::new(1.0..=5.0, width, StyleUpdate::StrokeWidth).into());
             }

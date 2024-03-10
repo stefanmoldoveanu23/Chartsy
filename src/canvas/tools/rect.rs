@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 use std::fmt::{Debug};
 use std::ops::Sub;
 use std::sync::Arc;
@@ -10,6 +11,24 @@ use mongodb::bson::{Bson, doc, Document};
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
+=======
+use crate::canvas::layer::CanvasAction;
+use crate::canvas::style::Style;
+use crate::serde::{Deserialize, Serialize};
+use iced::event::Status;
+use iced::mouse::Cursor;
+use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
+use iced::{keyboard, mouse, Color, Point, Rectangle, Renderer, Size};
+use json::object::Object;
+use json::JsonValue;
+use mongodb::bson::{doc, Bson, Document};
+use std::fmt::Debug;
+use std::ops::Sub;
+use std::sync::Arc;
+use std::str::FromStr;
+use iced_style::core::SmolStr;
+use svg::node::element::Group;
+>>>>>>> Stashed changes
 
 use crate::canvas::tool::{Pending, Tool};
 
@@ -50,6 +69,7 @@ impl Pending for RectPending {
 
                 (Status::Captured, message)
             }
+<<<<<<< Updated upstream
             Event::Keyboard(key_event) => {
                 match key_event {
                     keyboard::Event::KeyPressed { key: keyboard::Key::Character(str), .. } => {
@@ -62,6 +82,20 @@ impl Pending for RectPending {
                         }
                     }
                     _ => (Status::Ignored, None)
+=======
+            Event::Keyboard(key_event) => match key_event {
+                keyboard::Event::KeyPressed {
+                    key: keyboard::Key::Character(char),
+                    ..
+                } => {
+                    if char == SmolStr::from_str("S").unwrap() {
+                        *self = RectPending::None;
+
+                        (Status::Captured, None)
+                    } else {
+                        (Status::Ignored, None)
+                    }
+>>>>>>> Stashed changes
                 }
             }
             _ => (Status::Ignored, None)

@@ -1,10 +1,9 @@
 use std::any::Any;
 
 use iced::{Alignment, Command, Element, Length, Renderer};
-use iced::alignment::Horizontal;
-use iced::widget::{button, text, column, row, Container, Row};
-use mongodb::bson::{Bson, doc, Uuid};
-use crate::canvas::canvas::Canvas;
+use json::object::Object;
+use json::JsonValue;
+use mongodb::bson::{doc, Bson, Uuid};
 
 use crate::scene::{Scene, Action, Message, SceneOptions, Globals};
 use crate::canvas::tools::{line::LinePending, rect::RectPending, triangle::TrianglePending, polygon::PolygonPending, circle::CirclePending, ellipse::EllipsePending};
@@ -16,6 +15,7 @@ use crate::errors::error::Error;
 use crate::theme::Theme;
 
 use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
+use crate::widgets::tabs::{Tab, Tabs};
 
 /// The [Messages](Action) for the [Drawing] scene:
 /// - [None](DrawingAction::None), for when no action is required;
@@ -205,6 +205,7 @@ impl Scene for Box<Drawing> {
         }
     }
 
+<<<<<<< Updated upstream
     fn view(&self) -> Element<'_, Message, Theme, Renderer> {
         if self.globals.get_window_height() == 0.0 {
             return Element::new(text(""));
@@ -240,6 +241,143 @@ impl Scene for Box<Drawing> {
                             ].spacing(5.0).padding(10.0),
                         ]
                         .spacing(15.0)
+=======
+    fn view(&self, globals: &Globals) -> Element<'_, Message, Theme, Renderer> {
+        if globals.get_window_height() == 0.0 {
+            return Element::new(Text::new(""));
+        }
+
+        let tool_button = |name: String, pending: Box<dyn Pending>| {
+            Button::new(Text::new(name))
+                .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
+                    CanvasAction::ChangeTool(pending)
+                ))))
+                .into()
+        };
+
+        let geometry_section :Element<Message, Theme, Renderer>= Column::with_children(vec![
+            tool_button("Line".into(), Box::new(LinePending::None)),
+            tool_button("Rectangle".into(), Box::new(RectPending::None)),
+            tool_button("Triangle".into(), Box::new(TrianglePending::None)),
+            tool_button("Polygon".into(), Box::new(PolygonPending::None)),
+            tool_button("Circle".into(), Box::new(CirclePending::None)),
+            tool_button("Ellipse".into(), Box::new(EllipsePending::None)),
+        ])
+            .spacing(5.0)
+            .padding(10.0)
+            .into();
+
+        let brushes_section :Element<Message, Theme, Renderer>= Column::with_children(vec![
+            tool_button("Pencil".into(), Box::new(BrushPending::<Pencil>::None)),
+            tool_button("Fountain Pen".into(), Box::new(BrushPending::<Pen>::None)),
+            tool_button("Airbrush".into(), Box::new(BrushPending::<Airbrush>::None))
+        ])
+            .spacing(5.0)
+            .padding(10.0)
+            .into();
+
+        let eraser_section :Element<Message, Theme, Renderer>= Column::with_children(vec![
+            tool_button("Eraser".into(), Box::new(BrushPending::<Eraser>::None))
+        ])
+            .spacing(5.0)
+            .padding(10.0)
+            .into();
+
+        let layers_section :Element<Message, Theme, Renderer>= Row::with_children((|layers: usize| {
+            let mut buttons = vec![];
+            for layer in 0..layers.clone() {
+                buttons.push(
+                    Button::new(Text::new(format!("Layer {}", layer + 1)))
+                        .on_press(Message::DoAction(Box::new(
+                            DrawingAction::CanvasAction(CanvasAction::ActivateLayer(
+                                layer,
+                            )),
+                        )))
+                        .into(),
+                );
+            }
+
+            buttons
+        })(self.canvas.get_layer_count()))
+            .into();
+
+        let buttons_section :Element<Message, Theme, Renderer>= Row::with_children(vec![
+            Button::new(Text::new("Back"))
+                .on_press(Message::ChangeScene(Scenes::Main(None)))
+                .into(),
+            if globals.get_db().is_some() && globals.get_user().is_some() {
+                Button::new(Text::new("Post"))
+                    .on_press(Message::DoAction(Box::new(DrawingAction::PostDrawing)))
+            } else {
+                Button::new(Text::new("Post"))
+            }
+                .into(),
+            Button::new(Text::new("Save"))
+                .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Save))))
+                .into(),
+            Button::new(Text::new("Add layer"))
+                .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::AddLayer))))
+                .into(),
+            layers_section,
+        ])
+            .spacing(8.0)
+            .into();
+
+        Row::with_children(
+            vec![
+                Tabs::new(
+                    vec![
+                        Tab::new(
+                            TabIds::Tools,
+                            Text::new("Tools"),
+                            Column::<Message, Theme, Renderer>::with_children(
+                                vec![
+                                    Text::new("Geometry")
+                                        .horizontal_alignment(Horizontal::Center)
+                                        .size(20.0)
+                                        .into(),
+                                    geometry_section,
+                                    Text::new("Brushes")
+                                        .horizontal_alignment(Horizontal::Center)
+                                        .size(20.0)
+                                        .into(),
+                                    brushes_section,
+                                    Text::new("Eraser")
+                                        .horizontal_alignment(Horizontal::Center)
+                                        .size(20.0)
+                                        .into(),
+                                    eraser_section,
+                                ]
+                            )
+                                .spacing(15.0)
+                                .height(Length::Fill)
+                                .width(Length::Fixed(250.0))
+                        ),
+                        Tab::new(
+                            TabIds::Style,
+                            Text::new("Style"),
+                            self.canvas
+                                .style
+                                .view()
+                                .map(|update| Message::DoAction(Box::new(
+                                    DrawingAction::CanvasAction(CanvasAction::UpdateStyle(update))
+                                )))
+                        )
+                    ],
+                    |tab_id| Message::DoAction(Box::new(DrawingAction::TabSelection(*tab_id)))
+                )
+                    .width(Length::Fixed(250.0))
+                    .height(Length::Fill)
+                    .active_tab(self.active_tab)
+                    .into(),
+                Column::with_children(vec![
+                    Text::new(format!("{}", self.get_title()))
+                        .width(Length::Shrink)
+                        .size(50)
+                        .into(),
+                    Container::new::<&Canvas>(&self.canvas)
+                        .width(Length::Fill)
+>>>>>>> Stashed changes
                         .height(Length::Fill)
                         .width(Length::Fixed(250.0))
                         .into()
@@ -306,8 +444,9 @@ impl Scene for Box<Drawing> {
 /// The tabs in the selection section:
 /// - [Tools](TabIds::Tools), for selecting the used [Tool](crate::canvas::tool::Tool);
 /// - [Style](TabIds::Style), for modifying the tools [Style](crate::canvas::style::Style).
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 pub enum TabIds {
+    #[default]
     Tools,
     Style,
 }

@@ -15,6 +15,19 @@ use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::scenes::scenes::Scenes;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
+<<<<<<< Updated upstream
+=======
+use iced::widget::{button, column, container, row, Space, text, text_input, Text};
+use iced::{Element, Length, Renderer};
+use iced_runtime::Command;
+use lettre::message::MultiPart;
+use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
+use rand::{Rng};
+use regex::Regex;
+use std::any::Any;
+use crate::mongo;
+use crate::widgets::tabs::{Tab, Tabs};
+>>>>>>> Stashed changes
 
 /// User account registration fields; possible values are:
 /// - [Email(String)](RegisterField::Email);
@@ -507,6 +520,7 @@ impl Scene for Auth {
         Command::none()
     }
 
+<<<<<<< Updated upstream
     fn view(&self) -> Element<'_, Message, Theme, Renderer> {
         /*let register_error_text = text(
             if let Some(error) = self.register_form.error.clone() {
@@ -555,6 +569,120 @@ impl Scene for Auth {
                                         button("Validate").on_press(Message::DoAction(Box::new(AuthAction::ValidateEmail)))
                                     ]
                                         .into()
+=======
+    fn view(&self, globals: &Globals) -> Element<'_, Message, Theme, Renderer> {
+        let register_error_text :Text<Theme, Renderer>= text(if let Some(error) = self.register_form.error.clone() {
+            error.to_string()
+        } else {
+            String::from("")
+        });
+
+        let log_in_error_text :Text<Theme, Renderer>= text(if let Some(error) = self.log_in_form.error.clone() {
+            error.to_string()
+        } else {
+            String::from("")
+        });
+
+        let code_error_text :Text<Theme, Renderer>= text(if let Some(error) = self.code_error.clone() {
+            error.to_string()
+        } else {
+            String::from("")
+        });
+
+        container(column![
+            Space::with_height(Length::FillPortion(1)),
+            row![
+                Space::with_width(Length::FillPortion(1)),
+                Tabs::new(
+                    vec![
+                        Tab::new(
+                            AuthTabIds::Register,
+                            Text::new("Register"),
+                            if let Some(code) = &self.register_code {
+                                column![
+                                    text("A code has been sent to your email address:"),
+                                    code_error_text,
+                                    text_input("Input register code...", code).on_input(|value| {
+                                        Message::DoAction(Box::new(
+                                            AuthAction::RegisterTextFieldUpdate(
+                                                RegisterField::Code(value),
+                                            ),
+                                        ))
+                                    }),
+                                    button("Validate").on_press(Message::DoAction(Box::new(
+                                        AuthAction::ValidateEmail
+                                    )))
+                                ]
+                            } else {
+                                column![
+                                    register_error_text,
+                                    text("Email:"),
+                                    text_input("Input email...", &*self.register_form.email)
+                                        .on_input(|value| {
+                                            Message::DoAction(Box::new(
+                                                AuthAction::RegisterTextFieldUpdate(
+                                                    RegisterField::Email(value),
+                                                ),
+                                            ))
+                                        }),
+                                    text("Username:"),
+                                    text_input("Input username...", &*self.register_form.username)
+                                        .on_input(|value| {
+                                            Message::DoAction(Box::new(
+                                                AuthAction::RegisterTextFieldUpdate(
+                                                    RegisterField::Username(value),
+                                                ),
+                                            ))
+                                        }),
+                                    text("Password:"),
+                                    text_input("Input password...", &*self.register_form.password)
+                                        .on_input(|value| {
+                                            Message::DoAction(Box::new(
+                                                AuthAction::RegisterTextFieldUpdate(
+                                                    RegisterField::Password(value),
+                                                ),
+                                            ))
+                                        })
+                                        .secure(true),
+                                    if globals.get_db().is_some() {
+                                        button("Register").on_press(Message::DoAction(Box::new(
+                                            AuthAction::SendRegister(false)
+                                        )))
+                                    } else {
+                                        button("Register")
+                                    }
+                                ]
+                            }
+                        ),
+                        Tab::new(
+                            AuthTabIds::LogIn,
+                            Text::new("Login"),
+                            column![
+                                log_in_error_text,
+                                text("Email:"),
+                                text_input("Input email...", &*self.log_in_form.email).on_input(
+                                    |value| {
+                                        Message::DoAction(Box::new(
+                                            AuthAction::LogInTextFieldUpdate(LogInField::Email(
+                                                value,
+                                            )),
+                                        ))
+                                    }
+                                ),
+                                text("Password:"),
+                                text_input("Input password...", &*self.log_in_form.password)
+                                    .on_input(|value| {
+                                        Message::DoAction(Box::new(
+                                            AuthAction::LogInTextFieldUpdate(LogInField::Password(
+                                                value,
+                                            )),
+                                        ))
+                                    })
+                                    .secure(true),
+                                if globals.get_db().is_some() {
+                                    button("Log In")
+                                        .on_press(Message::DoAction(Box::new(AuthAction::SendLogIn)))
+>>>>>>> Stashed changes
                                 } else {
                                     column![
                                         register_error_text,
@@ -578,6 +706,7 @@ impl Scene for Auth {
                                     ]
                                         .into()
                                 }
+<<<<<<< Updated upstream
 
                             ),
                             (
@@ -614,6 +743,23 @@ impl Scene for Auth {
             .center_x()
             .center_y()
             .into()*/
+=======
+                            ]
+                        )
+                    ],
+                    |tab_id| Message::DoAction(Box::new(AuthAction::TabSelection(*tab_id)))
+                )
+                    .width(Length::FillPortion(2))
+                    .active_tab(self.active_tab),
+                Space::with_width(Length::FillPortion(1))
+            ]
+            .height(Length::FillPortion(2)),
+            Space::with_height(Length::FillPortion(1))
+        ])
+        .center_x()
+        .center_y()
+        .into()
+>>>>>>> Stashed changes
     }
 
     fn get_error_handler(&self, error: Error) -> Box<dyn Action> { Box::new(AuthAction::HandleError(error)) }
@@ -623,8 +769,14 @@ impl Scene for Auth {
     fn clear(&self) { }
 }
 
+<<<<<<< Updated upstream
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum TabIds {
+=======
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
+pub enum AuthTabIds {
+    #[default]
+>>>>>>> Stashed changes
     Register,
     LogIn,
 }

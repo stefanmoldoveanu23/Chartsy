@@ -3,11 +3,20 @@ use iced::{Color, event, keyboard, Point, Rectangle, Renderer};
 use iced::advanced::mouse;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{self, fill::Rule};
+<<<<<<< Updated upstream
 use mongodb::bson::Document;
 use mongodb::results::InsertManyResult;
 use crate::canvas::style::{Style, StyleUpdate};
 use crate::theme::Theme;
 use crate::canvas::tool::{Pending, Tool};
+=======
+use iced::{event, keyboard, Color, Point, Rectangle, Renderer};
+use json::JsonValue;
+use std::sync::Arc;
+use std::str::FromStr;
+use iced::keyboard::Key;
+use iced_style::core::SmolStr;
+>>>>>>> Stashed changes
 
 pub struct Layer<'a> {
     pub(crate) state: Option<&'a canvas::Cache>,
@@ -17,8 +26,12 @@ pub struct Layer<'a> {
     pub active: bool,
 }
 
+<<<<<<< Updated upstream
 impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for Layer<'a>
 {
+=======
+impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for Layer<'a> {
+>>>>>>> Stashed changes
     type State = Option<Box<dyn Pending>>;
 
     fn update(
@@ -32,6 +45,7 @@ impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for Layer<'a>
             return (event::Status::Ignored, None);
         }
 
+<<<<<<< Updated upstream
         if let canvas::Event::Keyboard(ref event) = event {
             match event {
                 keyboard::Event::KeyPressed {key, modifiers, ..} => {
@@ -41,6 +55,25 @@ impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for Layer<'a>
                         return (event::Status::Captured, Some(CanvasAction::Save))
                     } else if *key == keyboard::Key::Character("Y".into()) && *modifiers == keyboard::Modifiers::CTRL {
                         return (event::Status::Captured, Some(CanvasAction::Redo))
+=======
+        if let canvas::Event::Keyboard(event) = event.clone() {
+            match event {
+                keyboard::Event::KeyPressed {
+                    key: Key::Character(char),
+                    modifiers,
+                    ..
+                } => {
+                    if char == SmolStr::from_str("Z").unwrap() && modifiers == keyboard::Modifiers::CTRL {
+                        return (event::Status::Captured, Some(CanvasAction::Undo));
+                    } else if char == SmolStr::from_str("S").unwrap()
+                        && modifiers == keyboard::Modifiers::CTRL
+                    {
+                        return (event::Status::Captured, Some(CanvasAction::Save));
+                    } else if char == SmolStr::from_str("Y").unwrap()
+                        && modifiers == keyboard::Modifiers::CTRL
+                    {
+                        return (event::Status::Captured, Some(CanvasAction::Redo));
+>>>>>>> Stashed changes
                     }
                 }
                 _ => {}

@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 use std::fmt::{Debug};
 use std::sync::Arc;
 use iced::{mouse, Point, Rectangle, Renderer, keyboard, Color};
@@ -9,6 +10,23 @@ use mongodb::bson::{Bson, doc, Document};
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
+=======
+use crate::canvas::layer::CanvasAction;
+use crate::canvas::style::Style;
+use crate::serde::{Deserialize, Serialize};
+use iced::event::Status;
+use iced::mouse::Cursor;
+use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
+use iced::{keyboard, mouse, Color, Point, Rectangle, Renderer};
+use json::object::Object;
+use json::JsonValue;
+use mongodb::bson::{doc, Bson, Document};
+use std::fmt::Debug;
+use std::sync::Arc;
+use std::str::FromStr;
+use iced_style::core::SmolStr;
+use svg::node::element::Group;
+>>>>>>> Stashed changes
 
 use crate::canvas::tool::{Pending, Tool};
 
@@ -49,6 +67,7 @@ impl Pending for CirclePending {
 
                 (Status::Captured, message)
             }
+<<<<<<< Updated upstream
             Event::Keyboard(key_event) => {
                 match key_event {
                     keyboard::Event::KeyPressed { key: keyboard::Key::Character(str), .. } => {
@@ -61,6 +80,20 @@ impl Pending for CirclePending {
                         }
                     }
                     _ => (Status::Ignored, None)
+=======
+            Event::Keyboard(key_event) => match key_event {
+                keyboard::Event::KeyPressed {
+                    key: keyboard::Key::Character(char),
+                    ..
+                } => {
+                    if char == SmolStr::from_str("S").unwrap() {
+                        *self = CirclePending::None;
+
+                        (Status::Captured, None)
+                    } else {
+                        (Status::Ignored, None)
+                    }
+>>>>>>> Stashed changes
                 }
             }
             _ => (Status::Ignored, None)

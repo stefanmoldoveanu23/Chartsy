@@ -1,10 +1,20 @@
 use std::any::Any;
 
+<<<<<<< Updated upstream
 use iced::{Alignment, Command, Element, Length, Renderer};
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{button, text, column, row, Container, Column, Scrollable, horizontal_space};
 use mongodb::bson::{Uuid, doc, Document, Bson, UuidRepresentation};
 use crate::errors::error::Error;
+=======
+use crate::errors::error::Error;
+use iced::alignment::{Horizontal, Vertical};
+use iced::widget::{button, column, row, text, Column, Container, Scrollable, Space};
+use iced::{Alignment, Command, Element, Length, Renderer};
+use iced::advanced::widget::Text;
+use mongodb::bson::{doc, Bson, Uuid, UuidRepresentation};
+use crate::widgets::modal_stack::ModalStack;
+>>>>>>> Stashed changes
 
 use crate::scene::{Scene, Action, Message, SceneOptions, Globals};
 use crate::scenes::auth::{AuthOptions, TabIds};
@@ -14,7 +24,18 @@ use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 use crate::scenes::drawing::DrawingOptions;
 use crate::theme::Theme;
 use crate::widgets::card::Card;
+<<<<<<< Updated upstream
 use crate::widgets::modal::Modal;
+=======
+use crate::widgets::closeable::Closeable;
+use crate::widgets::tabs::{Tab, Tabs};
+
+#[derive(Clone, Eq, PartialEq)]
+enum ModalType {
+    ShowingDrawings,
+    SelectingSaveMode,
+}
+>>>>>>> Stashed changes
 
 /// The [Messages](Action) of the main [Scene]:
 /// - [None](MainAction::None) for when no action is required;
@@ -156,6 +177,7 @@ impl Scene for Main {
         Command::none()
     }
 
+<<<<<<< Updated upstream
     fn view(&self) -> Element<Message, Theme, Renderer> {
         let container_auth :Element<Message, Theme, Renderer>= if let Some(user) = self.globals.get_user() {
             row![
@@ -164,6 +186,20 @@ impl Scene for Main {
                     text(format!("Welcome, {}!", user.get_username())).vertical_alignment(Vertical::Bottom),
                     button("Log Out").padding(8).on_press(Message::DoAction(Box::new(MainAction::LogOut))),
                 ]
+=======
+    fn view<'a>(&self, globals: &Globals) -> Element<Message, Theme, Renderer> {
+        let container_auth: Element<Message, Theme, Renderer> =
+            if let Some(user) = globals.get_user() {
+                row![
+                    Space::with_width(Length::Fill),
+                    row![
+                        text(format!("Welcome, {}!", user.get_username()))
+                            .vertical_alignment(Vertical::Bottom),
+                        button("Log Out")
+                            .padding(8)
+                            .on_press(Message::DoAction(Box::new(MainAction::LogOut))),
+                    ]
+>>>>>>> Stashed changes
                     .align_items(Alignment::Center)
                     .width(Length::Shrink)
                     .spacing(20)
@@ -172,8 +208,26 @@ impl Scene for Main {
             row![
                 horizontal_space(),
                 row![
+<<<<<<< Updated upstream
                     button("Register").padding(8).on_press(Message::ChangeScene(Scenes::Auth(Some(Box::new(AuthOptions::new(TabIds::Register)))))),
                     button("Log In").padding(8).on_press(Message::ChangeScene(Scenes::Auth(Some(Box::new(AuthOptions::new(TabIds::LogIn)))))),
+=======
+                    Space::with_width(Length::Fill),
+                    row![
+                        button("Register")
+                            .padding(8)
+                            .on_press(Message::ChangeScene(Scenes::Auth(Some(Box::new(
+                                AuthOptions::new(AuthTabIds::Register)
+                            ))))),
+                        button("Log In")
+                            .padding(8)
+                            .on_press(Message::ChangeScene(Scenes::Auth(Some(Box::new(
+                                AuthOptions::new(AuthTabIds::LogIn)
+                            ))))),
+                    ]
+                    .width(Length::Shrink)
+                    .spacing(10),
+>>>>>>> Stashed changes
                 ]
                     .width(Length::Shrink)
                     .spacing(10)
@@ -181,8 +235,12 @@ impl Scene for Main {
             ].into()
         };
 
+<<<<<<< Updated upstream
         let container_entrance :Container<Message, Theme, Renderer> = Container::new(column![
             container_auth,
+=======
+        let container_entrance: Container<Message, Theme, Renderer> = Container::new(
+>>>>>>> Stashed changes
             column![
                 text("Chartsy").width(Length::Shrink).size(50)
                 ]
@@ -198,13 +256,40 @@ impl Scene for Main {
                     .height(Length::FillPortion(3))
                     .width(Length::Fill)
                     .align_items(Alignment::Center),
+<<<<<<< Updated upstream
         ]
+=======
+                column![
+                    button("Start new Drawing")
+                        .padding(8)
+                        .on_press(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::SelectingSaveMode)))),
+                    button("Continue drawing")
+                        .padding(8)
+                        .on_press(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::ShowingDrawings)))),
+                    if globals.get_db().is_some() && globals.get_user().is_some() {
+                        Element::<Message, Theme, Renderer>::from(
+                            button("Browse posts")
+                                .padding(8)
+                                .on_press(Message::ChangeScene(Scenes::Posts(None)))
+                        )
+                    } else {
+                        Space::with_height(Length::Shrink)
+                            .into()
+                    }
+                ]
+                .spacing(20)
+                .height(Length::FillPortion(3))
+                .width(Length::Fill)
+                .align_items(Alignment::Center),
+            ]
+>>>>>>> Stashed changes
             .spacing(20)
             .padding(20)
             .width(Length::Fill)
             .height(Length::Fill)
             .align_items(Alignment::Center));
 
+<<<<<<< Updated upstream
         let container_drawings =
         Container::<Message, Theme, Renderer>::new(
             Card::new(
@@ -242,6 +327,126 @@ impl Scene for Main {
             container_entrance,
             if self.showing_drawings {Some(container_drawings)} else {None}
         ).into()
+=======
+        let modal_generator = |modal_type: ModalType| -> Element<Message, Theme, Renderer> {
+            match modal_type {
+                ModalType::ShowingDrawings => {
+                    let online_tab = Container::new(Scrollable::new(Column::<Message, Theme, Renderer>::with_children(
+                        if let Some(drawings) = self.drawings_online.clone() {
+                            drawings
+                                .clone()
+                                .iter()
+                                .map(|uuid| {
+                                    Element::from(button(text(uuid)).on_press(Message::ChangeScene(
+                                        Scenes::Drawing(Some(Box::new(DrawingOptions::new(
+                                            Some(uuid.clone()),
+                                            Some(SaveMode::Online),
+                                        )))),
+                                    )))
+                                })
+                                .collect()
+                        } else {
+                            vec![]
+                        },
+                    )))
+                        .width(Length::Fixed(500.0))
+                        .height(Length::Fixed(300.0))
+                        .align_x(Horizontal::Center)
+                        .align_y(Vertical::Top);
+
+                    let offline_tab = Container::new(Scrollable::new(Column::<Message, Theme, Renderer>::with_children(
+                        if let Some(drawings) = self.drawings_offline.clone() {
+                            drawings
+                                .clone()
+                                .iter()
+                                .map(|uuid| {
+                                    Element::from(button(text(uuid)).on_press(Message::ChangeScene(
+                                        Scenes::Drawing(Some(Box::new(DrawingOptions::new(
+                                            Some(uuid.clone()),
+                                            Some(SaveMode::Offline),
+                                        )))),
+                                    )))
+                                })
+                                .collect()
+                        } else {
+                            vec![]
+                        },
+                    )))
+                        .width(Length::Fixed(500.0))
+                        .height(Length::Fixed(300.0))
+                        .align_x(Horizontal::Center)
+                        .align_y(Vertical::Top);
+
+                    Container::<Message, Theme, Renderer>::new(
+                        Closeable::new(
+                            Card::new(
+                                Text::new("Your drawings")
+                                    .horizontal_alignment(Horizontal::Center)
+                                    .size(25),
+                                Tabs::new(
+                                    vec![
+                                        Tab::new(
+                                            MainTabIds::Offline,
+                                            Text::new("Offline"),
+                                            offline_tab
+                                        ),
+                                        Tab::new(
+                                            MainTabIds::Online,
+                                            Text::new("Online"),
+                                            online_tab
+                                        )
+                                    ],
+                                    |tab| Message::DoAction(Box::new(MainAction::SelectTab(*tab)))
+                                )
+                                    .active_tab(self.active_tab)
+                                    .width(Length::Fill)
+                                    .height(Length::Fixed(300.0)),
+                            )
+                                .width(Length::Fixed(500.0))
+                                .height(Length::Fixed(300.0)),
+                        )
+                            .on_close(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::ShowingDrawings)))),
+                    )
+                        .padding(10)
+                        .height(Length::Fill)
+                        .align_x(Horizontal::Center)
+                        .align_y(Vertical::Center)
+                        .into()
+                }
+                ModalType::SelectingSaveMode => {
+                    Closeable::new(
+                        Card::new(
+                            text("Create new drawing"),
+                            column![
+                                Space::with_height(Length::Fill),
+                                row![
+                                    button("Offline")
+                                        .padding(8)
+                                        .width(Length::FillPortion(1))
+                                        .on_press(Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(None, Some(SaveMode::Offline))))))),
+                                    Space::with_width(Length::FillPortion(2)),
+                                    if globals.get_db().is_some() && globals.get_user().is_some() {
+                                        button("Online")
+                                            .padding(8)
+                                            .width(Length::FillPortion(1))
+                                            .on_press(Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(None, Some(SaveMode::Online)))))))
+                                    } else {
+                                        button("Online")
+                                            .padding(8)
+                                            .width(Length::FillPortion(1))
+                                    },
+                                ]
+                            ]
+                                .height(Length::Fixed(150.0))
+                        )
+                            .width(Length::Fixed(300.0))
+                    )
+                        .on_close(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::SelectingSaveMode))))
+                        .into()
+                }
+            }
+        };
+>>>>>>> Stashed changes
 
     }
 
@@ -249,5 +454,17 @@ impl Scene for Main {
 
     fn update_globals(&mut self, globals: Globals) { self.globals = globals; }
 
+<<<<<<< Updated upstream
     fn clear(&self) { }
 }
+=======
+/// The tabs for the drawing list overlay:
+/// - [Offline](MainTabIds::Offline), for drawings stored locally;
+/// - [Online](MainTabIds::Online), for drawings stored remotely in the mongo database.
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
+pub enum MainTabIds {
+    #[default]
+    Offline,
+    Online,
+}
+>>>>>>> Stashed changes
