@@ -9,6 +9,7 @@ use std::fs::File;
 use std::io::Write;
 use directories::ProjectDirs;
 use mongodb::bson::spec::BinarySubtype;
+use mongodb::options::{DeleteOptions, FindOptions, InsertManyOptions, UpdateOptions};
 use rand::random;
 use sha2::{Digest, Sha256};
 
@@ -57,7 +58,7 @@ pub async fn get_user_from_token(database: Database) -> Result<User, Message>
             vec![
                 MongoRequest::new(
                     "users".into(),
-                    MongoRequestType::Get(doc!{"code": bin})
+                    MongoRequestType::Get{filter: doc!{"code": bin}, options: None},
                 )
             ]
         ).await;
@@ -92,12 +93,13 @@ pub async fn update_user_token(database: Database, user_id: Uuid)
         vec![
             MongoRequest::new(
                 "users".into(),
-                MongoRequestType::Update(
-                    doc! { "id": user_id },
-                    doc! { "$set": {
-                        "code": bin
-                    } }
-                )
+                MongoRequestType::Update {
+                    filter: doc! { "id": user_id },
+                    update: doc! { "$set": {
+                    "code": bin
+                    } },
+                    options: None,
+                }
             )
         ]
     ).await;
@@ -120,12 +122,12 @@ pub async fn update_user_token(database: Database, user_id: Uuid)
 /// the initial [MongoRequestType], and the second is a vector of pairs of a [Document], and a function that takes
 /// the [MongoResponse] of the previous request and the document, and returns the next request; if an
 /// error took place, the chain can also be halted by setting the next request as [Err].
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum MongoRequestType {
-    Get(Document),
-    Insert(Vec<Document>),
-    Update(Document, Document),
-    Delete(Document),
+    Get{ filter: Document, options: Option<FindOptions> },
+    Insert{ documents: Vec<Document>, options: Option<InsertManyOptions> },
+    Update{ filter: Document, update: Document, options: Option<UpdateOptions> },
+    Delete{ filter: Document, options: Option<DeleteOptions> },
     Chain(
         Box<Self>,
         Vec<(
@@ -138,7 +140,7 @@ pub enum MongoRequestType {
 /// A request to be sent to a mongo [Database].
 ///
 /// Contains the name of the altered [Collection], and the [request type](MongoRequestType).
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct MongoRequest {
     collection_name: String,
     request_type: MongoRequestType,
@@ -159,10 +161,11 @@ impl MongoRequest {
         database: &Database,
         collection_name: &String,
         filter: Document,
+        options: Option<FindOptions>
     ) -> Result<Vec<Document>, Error> {
         let collection: Collection<Result<Document, mongodb::error::Error>> =
             database.collection(&*collection_name);
-        let cursor = collection.find(Some(filter), None).await;
+        let cursor = collection.find(Some(filter), options).await;
 
         match cursor {
             Ok(mut cursor) => {
@@ -207,10 +210,11 @@ impl MongoRequest {
         database: &Database,
         collection_name: &String,
         documents: Vec<Document>,
+        options: Option<InsertManyOptions>
     ) -> Result<InsertManyResult, Error> {
         let collection: Collection<Document> = database.collection(&*collection_name);
         collection
-            .insert_many(documents, None)
+            .insert_many(documents, options)
             .await
             .map_err(|error| Error::from(error))
     }
@@ -222,10 +226,11 @@ impl MongoRequest {
         collection_name: &String,
         filter: Document,
         update: Document,
+        options: Option<UpdateOptions>
     ) -> Result<UpdateResult, Error> {
         let collection: Collection<Document> = database.collection(&*collection_name);
         collection
-            .update_many(filter.clone(), update.clone(), None)
+            .update_many(filter.clone(), update.clone(), options)
             .await
             .map_err(|error| Error::from(error))
     }
@@ -236,10 +241,11 @@ impl MongoRequest {
         database: &Database,
         collection_name: &String,
         filter: Document,
+        options: Option<DeleteOptions>
     ) -> Result<DeleteResult, Error> {
         let collection: Collection<Document> = database.collection(&*collection_name);
         collection
-            .delete_many(filter.clone(), None)
+            .delete_many(filter.clone(), options)
             .await
             .map_err(|error| Error::from(error))
     }
@@ -291,26 +297,27 @@ impl MongoRequest {
         let collection_name = &mongo_request.collection_name;
 
         match mongo_request.request_type {
-            MongoRequestType::Get(filter) => {
-                MongoRequest::handle_get(database, collection_name, filter.clone())
+            MongoRequestType::Get{ filter, options } => {
+                MongoRequest::handle_get(database, collection_name, filter.clone(), options)
                     .await
                     .map(|documents| MongoResponse::Get(documents))
             }
-            MongoRequestType::Insert(documents) => {
-                MongoRequest::handle_insert(database, collection_name, documents.clone())
+            MongoRequestType::Insert{ documents, options } => {
+                MongoRequest::handle_insert(database, collection_name, documents.clone(), options)
                     .await
                     .map(|result| MongoResponse::Insert(result))
             }
-            MongoRequestType::Update(filter, update) => MongoRequest::handle_update(
+            MongoRequestType::Update{ filter, update, options } => MongoRequest::handle_update(
                 database,
                 collection_name,
                 filter.clone(),
                 update.clone(),
+                options
             )
             .await
             .map(|result| MongoResponse::Update(result)),
-            MongoRequestType::Delete(filter) => {
-                MongoRequest::handle_delete(database, collection_name, filter.clone())
+            MongoRequestType::Delete{ filter, options } => {
+                MongoRequest::handle_delete(database, collection_name, filter.clone(), options)
                     .await
                     .map(|result| MongoResponse::Delete(result))
             }
@@ -318,7 +325,7 @@ impl MongoRequest {
                 MongoRequest::handle_chain(
                     database,
                     collection_name,
-                    initial_request.clone(),
+                    initial_request,
                     chain,
                 )
                 .await

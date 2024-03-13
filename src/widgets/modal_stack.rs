@@ -1,4 +1,4 @@
-use iced::{Alignment, Background, Color, Element, Event, Length, Point, Rectangle, Renderer, Size};
+use iced::{Alignment, Background, Color, Element, Event, Length, Rectangle, Renderer, Size, Vector};
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::{Quad, Style};
 use iced::advanced::{Clipboard, Layout, overlay, Overlay, Shell, Widget};
@@ -14,6 +14,7 @@ use crate::theme::Theme;
 #[derive(Clone)]
 pub struct ModalStack<ModalTypes: Clone + Eq + PartialEq>
 {
+    /// The stack of modals.
     stack: Vec<ModalTypes>
 }
 
@@ -45,9 +46,9 @@ where
     }
 
     /// Returns an element with the modals overlaid on top of each other.
-    pub fn get_modal<'a, F>(&self, underlay: Element<'a, Message, Renderer<Theme>>, into_element: F)
-        -> Element<'a, Message, Renderer<Theme>>
-    where F: Fn(ModalTypes) -> Element<'a, Message, Renderer<Theme>>
+    pub fn get_modal<'a, F>(&self, underlay: Element<'a, Message, Theme, Renderer>, into_element: F)
+        -> Element<'a, Message, Theme, Renderer>
+    where F: Fn(ModalTypes) -> Element<'a, Message, Theme, Renderer>
     {
         let modals = self.stack.clone();
 
@@ -59,24 +60,30 @@ where
     }
 }
 
-struct Modal<'a, Message, Renderer>
+/// Widget that can handle stacked modals.
+struct Modal<'a, Message, Theme, Renderer>
 where
-    Message: 'a+Clone,
-    Renderer: 'a+iced::advanced::Renderer,
-    Renderer::Theme: modal::StyleSheet
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer,
+    Theme: 'a + modal::StyleSheet
 {
-    underlay: Element<'a, Message, Renderer>,
-    overlays: Vec<Element<'a, Message, Renderer>>,
+    /// The underlay of the modal.
+    underlay: Element<'a, Message, Theme, Renderer>,
+    /// A list of the overlays, stacked from first to last.
+    overlays: Vec<Element<'a, Message, Theme, Renderer>>,
 }
 
-impl<'a, Message, Renderer> Modal<'a, Message, Renderer>
+impl<'a, Message, Theme, Renderer> Modal<'a, Message, Theme, Renderer>
 where
-    Message: 'a+Clone,
-    Renderer: 'a+iced::advanced::Renderer,
-    Renderer::Theme: modal::StyleSheet
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer,
+    Theme: 'a + modal::StyleSheet
 {
-    fn new(underlay: impl Into<Element<'a, Message, Renderer>>, overlays: Vec<impl Into<Element<'a, Message, Renderer>>>) -> Self
-    {
+    /// Creates a new [Modal] given the underlay and the overlays.
+    fn new(
+        underlay: impl Into<Element<'a, Message, Theme, Renderer>>,
+        overlays: Vec<impl Into<Element<'a, Message, Theme, Renderer>>>
+    ) -> Self {
         let mut overs = vec![];
         for overlay in overlays {
             overs.push(overlay.into());
@@ -89,29 +96,25 @@ where
     }
 }
 
-impl<'a, Message, Renderer> Widget<Message, Renderer> for Modal<'a, Message, Renderer>
+impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Modal<'a, Message, Theme, Renderer>
 where
-    Message: 'a+Clone,
-    Renderer: 'a+iced::advanced::Renderer,
-    Renderer::Theme: modal::StyleSheet
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer,
+    Theme: 'a + modal::StyleSheet
 {
-    fn width(&self) -> Length {
-        self.underlay.as_widget().width()
+    fn size(&self) -> Size<Length> {
+        self.underlay.as_widget().size()
     }
 
-    fn height(&self) -> Length {
-        self.underlay.as_widget().height()
-    }
-
-    fn layout(&self, renderer: &Renderer, limits: &Limits) -> Node {
-        self.underlay.as_widget().layout(renderer, limits)
+    fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
+        self.underlay.as_widget().layout(&mut tree.children[0], renderer, limits)
     }
 
     fn draw(
         &self,
         state: &Tree,
         renderer: &mut Renderer,
-        theme: &Renderer::Theme,
+        theme: &Theme,
         style: &Style,
         layout: Layout<'_>,
         cursor: Cursor,
@@ -224,79 +227,91 @@ where
         &'b mut self,
         state: &'b mut Tree,
         layout: Layout<'_>,
-        renderer: &Renderer
-    ) -> Option<overlay::Element<'b, Message, Renderer>> {
+        renderer: &Renderer,
+        translation: Vector,
+    ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
         if !self.overlays.is_empty() {
-            let bounds = layout.bounds();
-            let position = Point::new(bounds.x, bounds.y);
             self.overlays[0].as_widget().diff(&mut state.children[1]);
 
             Some(overlay::Element::new(
-                position,
                 Box::new(ModalOverlay::new(
                     state,
                     &mut self.overlays,
-                    0usize
+                    0usize,
+                    translation
                 ))
             ))
         } else {
-            self.underlay.as_widget_mut().overlay(&mut state.children[0], layout, renderer)
+            self.underlay.as_widget_mut().overlay(&mut state.children[0], layout, renderer, translation)
         }
     }
 }
 
-impl<'a, Message, Renderer> From<Modal<'a, Message, Renderer>> for Element<'a, Message, Renderer>
+impl<'a, Message, Theme, Renderer> From<Modal<'a, Message, Theme, Renderer>> for Element<'a, Message, Theme, Renderer>
 where
-    Message: 'a+Clone,
-    Renderer: 'a+iced::advanced::Renderer,
-    Renderer::Theme: modal::StyleSheet
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer,
+    Theme: 'a + modal::StyleSheet
 {
-    fn from(value: Modal<'a, Message, Renderer>) -> Self {
+    fn from(value: Modal<'a, Message, Theme, Renderer>) -> Self {
         Element::new(value)
     }
 }
 
 /// A structure used to propagate [overlays](Overlay) over a [Modal].
-struct ModalOverlay<'a, 'b, Message, Renderer>
+struct ModalOverlay<'a, 'b, Message, Theme, Renderer>
 where
-    Message: 'a+Clone,
-    Renderer: 'a+iced::advanced::Renderer,
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer,
+    Theme: 'a + modal::StyleSheet,
 {
     /// A reference to the [state](Tree) of the original [Modal]. Holds the underlay and all overlays.
     state: &'b mut Tree,
     /// A reference to the vector of overlays.
-    overlays: &'b mut Vec<Element<'a, Message, Renderer>>,
+    overlays: &'b mut Vec<Element<'a, Message, Theme, Renderer>>,
     /// The index of the current overlay. Is incremented when instantiating its own overlay.
     depth: usize,
+    /// The translation of the overlay.
+    translation: Vector,
 }
 
-impl<'a, 'b, Message, Renderer> ModalOverlay<'a, 'b, Message, Renderer>
+impl<'a, 'b, Message, Theme, Renderer> ModalOverlay<'a, 'b, Message, Theme, Renderer>
 where
-    Message: 'a+Clone,
-    Renderer: 'a+iced::advanced::Renderer
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer,
+    Theme: 'a + modal::StyleSheet
 {
     /// Creates a new [ModalOverlay] given the data from the [Modal].
-    fn new(state: &'b mut Tree, overlays: &'b mut Vec<Element<'a, Message, Renderer>>, depth: impl Into<usize>) -> Self
-    {
+    fn new(
+        state: &'b mut Tree,
+        overlays: &'b mut Vec<Element<'a, Message, Theme, Renderer>>,
+        depth: impl Into<usize>,
+        translation: impl Into<Vector>
+    ) -> Self {
         ModalOverlay {
             state,
             overlays,
-            depth: depth.into()
+            depth: depth.into(),
+            translation: translation.into()
         }
     }
 }
 
-impl<'a, 'b, Message, Renderer> Overlay<Message, Renderer> for ModalOverlay<'a, 'b, Message, Renderer>
+impl<'a, 'b, Message, Theme, Renderer> Overlay<Message, Theme, Renderer> for ModalOverlay<'a, 'b, Message, Theme, Renderer>
 where
-    Message: 'a+Clone,
-    Renderer: 'a+iced::advanced::Renderer
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer,
+    Theme: 'a + modal::StyleSheet
 {
-    fn layout(&self, renderer: &Renderer, bounds: Size, _position: Point) -> Node {
+    fn layout(&mut self, renderer: &Renderer, bounds: Size) -> Node {
         let limits = Limits::new(Size::ZERO, bounds);
-        let mut underlay = self.overlays.get(self.depth).expect("Wrong depth.").as_widget().layout(renderer, &limits);
+        let mut underlay = self.overlays
+            .get(self.depth)
+            .expect("Wrong depth.")
+            .as_widget().layout(&mut self.state.children[self.depth], renderer, &limits);
         let max_size = limits.max();
 
-        underlay.align(Alignment::Center, Alignment::Center, max_size);
+        underlay.align_mut(Alignment::Center, Alignment::Center, max_size);
 
         Node::with_children(max_size, vec![underlay])
     }
@@ -304,7 +319,7 @@ where
     fn draw(
         &self,
         renderer: &mut Renderer,
-        theme: &Renderer::Theme,
+        theme: &Theme,
         style: &Style,
         layout: Layout<'_>,
         cursor: Cursor
@@ -314,9 +329,8 @@ where
         renderer.fill_quad(
             Quad {
                 bounds,
-                border_radius: Default::default(),
-                border_width: 0.0,
-                border_color: Default::default(),
+                border: Default::default(),
+                shadow: Default::default(),
             },
             Background::Color(Color::from_rgba(0.8, 0.8, 0.8, 0.5))
         );
@@ -377,25 +391,28 @@ where
         &'c mut self,
         layout: Layout<'_>,
         renderer: &Renderer
-    ) -> Option<overlay::Element<'c, Message, Renderer>> {
+    ) -> Option<overlay::Element<'c, Message, Theme, Renderer>> {
         let overlay = self.overlays.get_mut(self.depth + 1);
 
         if let Some(overlay) = overlay {
-            let bounds = layout.bounds();
-            let position = Point::new(bounds.x, bounds.y);
             overlay.as_widget().diff(&mut self.state.children[self.depth + 2]);
 
             Some(overlay::Element::new(
-                position,
                 Box::new(ModalOverlay::new(
                     &mut self.state,
                     self.overlays,
-                    self.depth + 1
+                    self.depth + 1,
+                    self.translation
                 ))
             ))
         } else {
             let underlay = self.overlays.get_mut(self.depth).expect("Wrong depth.");
-            underlay.as_widget_mut().overlay(&mut self.state.children[self.depth + 1], layout, renderer)
+            underlay.as_widget_mut().overlay(
+                &mut self.state.children[self.depth + 1],
+                layout,
+                renderer,
+                self.translation
+            )
         }
     }
 }

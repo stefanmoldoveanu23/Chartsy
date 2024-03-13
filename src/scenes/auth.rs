@@ -7,12 +7,9 @@ use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::scenes::scenes::Scenes;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
-use iced::widget::{
-    button, column, container, horizontal_space, row, text, text_input, vertical_space,
-};
-use iced::{Element, Length, Renderer};
+use iced::widget::{button, column, container, row, Space, text, text_input};
+use iced::{Element, Length, Renderer, Command};
 use iced_aw::{TabLabel, Tabs};
-use iced_runtime::Command;
 use lettre::message::MultiPart;
 use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
 use rand::{Rng};
@@ -244,7 +241,10 @@ impl Auth {
                 } else {
                     Ok(MongoRequest::new(
                         "users".into(),
-                        MongoRequestType::Insert(vec![document]),
+                        MongoRequestType::Insert{
+                            documents: vec![document],
+                            options: None
+                        },
                     ))
                 }
             }
@@ -268,16 +268,17 @@ impl Auth {
                 if res.len() > 0 {
                     Ok(MongoRequest::new(
                         "users".into(),
-                        MongoRequestType::Update(
-                            doc! {
+                        MongoRequestType::Update {
+                            filter: doc! {
                                 "email": email.unwrap(),
                             },
-                            doc! {
+                            update: doc! {
                                 "$set": {
-                                    "validated": true,
+                                "validated": true,
                                 },
                             },
-                        ),
+                            options: None,
+                        },
                     ))
                 } else {
                     Err(Error::AuthError(AuthError::RegisterBadCode))
@@ -421,10 +422,12 @@ impl Scene for Auth {
                                         vec![MongoRequest::new(
                                             "users".into(),
                                             MongoRequestType::Chain(
-                                                Box::new(MongoRequestType::Get(
-                                                    doc! {
+                                                Box::new(MongoRequestType::Get{
+                                                    filter: doc! {
                                                         "email": register_form.email.clone(),
-                                                })),
+                                                    },
+                                                    options: None
+                                                }),
                                                 vec![(register_form.serialize(), Auth::check_user_exists)],
                                             ),
                                         )]
@@ -464,10 +467,13 @@ impl Scene for Auth {
                                 vec![MongoRequest::new(
                                     "users".into(),
                                     MongoRequestType::Chain(
-                                        Box::new(MongoRequestType::Get(doc! {
-                                    "email": register_form.email.clone(),
-                                    "code": register_code,
-                                })),
+                                        Box::new(MongoRequestType::Get{
+                                            filter: doc! {
+                                                "email": register_form.email.clone(),
+                                                "code": register_code,
+                                            },
+                                            options: None
+                                        }),
                                         vec![(
                                             doc! {"email": register_form.email},
                                             Auth::set_email_validated,
@@ -508,7 +514,10 @@ impl Scene for Auth {
                                 db,
                                 vec![MongoRequest::new(
                                     "users".into(),
-                                    MongoRequestType::Get(log_in_form.serialize()),
+                                    MongoRequestType::Get{
+                                        filter: log_in_form.serialize(),
+                                        options: None
+                                    },
                                 )]
                             ).await
                         },
@@ -580,7 +589,7 @@ impl Scene for Auth {
         Command::none()
     }
 
-    fn view(&self, globals: &Globals) -> Element<'_, Message, Renderer<Theme>> {
+    fn view(&self, globals: &Globals) -> Element<'_, Message, Theme, Renderer> {
         let register_error_text = text(if let Some(error) = self.register_form.error.clone() {
             error.to_string()
         } else {
@@ -600,10 +609,10 @@ impl Scene for Auth {
         });
 
         container(column![
-            vertical_space(Length::FillPortion(1)),
+            Space::with_height(Length::FillPortion(1)),
             row![
-                horizontal_space(Length::FillPortion(1)),
-                Tabs::with_tabs(
+                Space::with_width(Length::FillPortion(1)),
+                Tabs::new_with_tabs(
                     vec![
                         (
                             AuthTabIds::Register,
@@ -654,7 +663,7 @@ impl Scene for Auth {
                                                 ),
                                             ))
                                         })
-                                        .password(),
+                                        .secure(true),
                                     if globals.get_db().is_some() {
                                         button("Register").on_press(Message::DoAction(Box::new(
                                             AuthAction::SendRegister(false)
@@ -690,7 +699,7 @@ impl Scene for Auth {
                                             )),
                                         ))
                                     })
-                                    .password(),
+                                    .secure(true),
                                 if globals.get_db().is_some() {
                                     button("Log In")
                                         .on_press(Message::DoAction(Box::new(AuthAction::SendLogIn)))
@@ -705,10 +714,10 @@ impl Scene for Auth {
                 )
                 .width(Length::FillPortion(2))
                 .set_active_tab(&self.active_tab),
-                horizontal_space(Length::FillPortion(1))
+                Space::with_width(Length::FillPortion(1))
             ]
             .height(Length::FillPortion(2)),
-            vertical_space(Length::FillPortion(1))
+            Space::with_height(Length::FillPortion(1))
         ])
         .center_x()
         .center_y()

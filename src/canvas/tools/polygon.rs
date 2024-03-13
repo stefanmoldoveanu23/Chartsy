@@ -1,7 +1,6 @@
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
-use crate::theme::Theme;
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
@@ -12,6 +11,7 @@ use mongodb::bson::{doc, Bson, Document};
 use std::fmt::Debug;
 use std::ops::{Add, Sub};
 use std::sync::Arc;
+use iced::keyboard::Key;
 use svg::node::element::Group;
 
 use crate::canvas::tool::{Pending, Tool};
@@ -78,12 +78,17 @@ impl Pending for PolygonPending {
             }
             Event::Keyboard(key_event) => match key_event {
                 keyboard::Event::KeyPressed {
-                    key_code: keyboard::KeyCode::S,
+                    key: Key::Character(key),
                     ..
                 } => {
-                    *self = PolygonPending::None;
+                    let value = key.as_str();
+                    if value == "S" {
+                        *self = PolygonPending::None;
 
-                    (Status::Captured, None)
+                        (Status::Captured, None)
+                    } else {
+                        (Status::Ignored, None)
+                    }
                 }
                 _ => (Status::Ignored, None),
             },
@@ -93,7 +98,7 @@ impl Pending for PolygonPending {
 
     fn draw(
         &self,
-        renderer: &Renderer<Theme>,
+        renderer: &Renderer,
         bounds: Rectangle,
         cursor: Cursor,
         style: Style,

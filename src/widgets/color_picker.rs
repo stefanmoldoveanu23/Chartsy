@@ -1,31 +1,39 @@
-use crate::theme::Theme;
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::{Quad, Style};
 use iced::advanced::widget::{tree, Tree};
-use iced::advanced::{Clipboard, Layout, Renderer, Shell, Widget};
+use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::mouse::{Button, Cursor, Interaction};
 use iced::widget::Slider;
-use iced::{
-    event, mouse, Background, BorderRadius, Element, Event, Length, Rectangle, Size, Vector,
-};
+use iced::{event, mouse, Background, Element, Event, Length, Rectangle, Size, Vector, Border};
 use std::fmt::{self, Display, Formatter};
 use std::ops::Sub;
 
 /// A basic color picker widget.
 ///
 /// Features a section of [colors](Color) to pick from, and a [slider](Slider) for transparency.
-pub struct ColorPicker<'a, Message> {
+pub struct ColorPicker<'a, Message, Theme>
+where
+    Message: 'a + Clone,
+    Theme: 'a + iced::widget::slider::StyleSheet
+{
+    /// Holds the option that is currently being hovered over.
     hovering: Option<iced::Color>,
+    /// The message that is triggered when an option is selected.
     on_submit: fn(iced::Color) -> Message,
-    slider: Slider<'a, f32, Message, iced::Renderer<Theme>>,
+    /// The slider object for the opacity.
+    slider: Slider<'a, f32, Message, Theme>,
+    /// The opacity of the [ColorPicker].
     alpha: f32,
+    /// The width of the [ColorPicker].
     width: f32,
+    /// The height of the [ColorPicker].
     height: f32,
 }
 
-impl<'a, Message> ColorPicker<'a, Message>
+impl<'a, Message, Theme> ColorPicker<'a, Message, Theme>
 where
     Message: Clone + 'a,
+    Theme: 'a + iced::widget::slider::StyleSheet
 {
     /// Computes the grid dimensions for the [ColorPicker], and initializes a new instance
     /// given the submit function.
@@ -38,7 +46,7 @@ where
             hovering: None,
             on_submit,
             slider: Slider::new(0.0..=255.0, 255.0, move |val| {
-                (on_submit)(iced::Color::new(0.0, 0.0, 0.0, val / 255.0))
+                on_submit(iced::Color::new(0.0, 0.0, 0.0, val / 255.0))
             }),
             alpha: 1.0,
             height,
@@ -68,26 +76,27 @@ where
     }
 }
 
-impl<'a, Message> Widget<Message, iced::Renderer<Theme>> for ColorPicker<'a, Message>
+impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for ColorPicker<'a, Message, Theme>
 where
     Message: Clone + 'a,
+    Renderer: iced::advanced::Renderer,
+    Theme: iced::widget::slider::StyleSheet
 {
-    fn width(&self) -> Length {
-        Length::Fixed(self.width)
+    fn size(&self) -> Size<Length> {
+        Size::new(
+            Length::Fixed(self.width),
+            Length::Fixed(self.height + 20.0)
+        )
     }
 
-    fn height(&self) -> Length {
-        Length::Fixed(self.height + 20.0)
-    }
-
-    fn layout(&self, _renderer: &iced::Renderer<Theme>, _limits: &Limits) -> Node {
+    fn layout(&self, _state: &mut Tree, _renderer: &Renderer, _limits: &Limits) -> Node {
         Node::new(Size::new(self.width, self.height + 20.0))
     }
 
     fn draw(
         &self,
         state: &Tree,
-        renderer: &mut iced::Renderer<Theme>,
+        renderer: &mut Renderer,
         theme: &Theme,
         style: &Style,
         layout: Layout<'_>,
@@ -110,9 +119,12 @@ where
                         width: 30.0,
                         height: 30.0,
                     },
-                    border_radius: BorderRadius::from(0.0),
-                    border_width: 2.0,
-                    border_color: iced::Color::from_rgb8(192, 192, 192),
+                    border: Border {
+                        color: iced::Color::from_rgb8(192, 192, 192),
+                        width: 2.0,
+                        radius: Default::default(),
+                    },
+                    shadow: Default::default(),
                 },
                 Background::Color(color.to_color()),
             );
@@ -153,7 +165,7 @@ where
         event: Event,
         layout: Layout<'_>,
         cursor: Cursor,
-        renderer: &iced::Renderer<Theme>,
+        renderer: &Renderer,
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
@@ -209,7 +221,7 @@ where
                         let on_submit = self.on_submit.clone();
 
                         self.slider = Slider::new(0.0..=255.0, self.alpha * 255.0, move |val| {
-                            (on_submit)(iced::Color::new(color.r, color.g, color.b, val / 255.0))
+                            on_submit(iced::Color::new(color.r, color.g, color.b, val / 255.0))
                         });
                         event::Status::Captured
                     } else {
@@ -218,7 +230,7 @@ where
                 }
                 _ => event::Status::Ignored,
             },
-            Event::Window(_) => event::Status::Ignored,
+            Event::Window(..) => event::Status::Ignored,
             Event::Touch(_) => event::Status::Ignored,
         }
     }
@@ -229,7 +241,7 @@ where
         layout: Layout<'_>,
         cursor: Cursor,
         viewport: &Rectangle,
-        renderer: &iced::Renderer<Theme>,
+        renderer: &Renderer,
     ) -> Interaction {
         if self.hovering.is_some() {
             Interaction::Pointer
@@ -248,11 +260,13 @@ where
     }
 }
 
-impl<'a, Message: 'a> From<ColorPicker<'a, Message>> for Element<'a, Message, iced::Renderer<Theme>>
+impl<'a, Message, Theme, Renderer> From<ColorPicker<'a, Message, Theme>> for Element<'a, Message, Theme, Renderer>
 where
-    Message: Clone,
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer,
+    Theme: 'a + iced::widget::slider::StyleSheet
 {
-    fn from(value: ColorPicker<'a, Message>) -> Self {
+    fn from(value: ColorPicker<'a, Message, Theme>) -> Self {
         Self::new(value)
     }
 }
@@ -299,7 +313,7 @@ impl Color {
         }
     }
 
-    /// Returns a list of all of the [Color] options.
+    /// Returns a list of all the [Color] options.
     fn values() -> Vec<Self> {
         vec![
             Color::BLACK,

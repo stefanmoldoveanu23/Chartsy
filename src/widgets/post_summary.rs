@@ -1,4 +1,4 @@
-use iced::{Alignment, Background, Color, Element, Event, Length, mouse, Padding, Point, Rectangle};
+use iced::{Alignment, Background, Border, Color, Element, Event, Length, mouse, Padding, Point, Rectangle, Size};
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::{Quad, Style};
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
@@ -10,39 +10,39 @@ use iced::mouse::{Cursor, Interaction};
 const DEFAULT_PADDING :f32= 8.0;
 
 /// A widget which represents the summary of the post. Will present the image and basic data.
-pub struct PostSummary<'a, Message, Renderer>
+pub struct PostSummary<'a, Message, Theme, Renderer>
 where
-    Message: Clone,
-    Renderer: iced::advanced::Renderer,
-    Renderer::Theme: StyleSheet,
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer,
+    Theme: 'a + StyleSheet,
 {
     /// The padding of the image associated to the post.
     padding: Padding,
     /// The image associated to the post.
-    image: Element<'a, Message, Renderer>,
+    image: Element<'a, Message, Theme, Renderer>,
     /// Optional message triggered when pressing on the post.
     on_click_data: Option<Message>,
     /// Optional message triggered when pressing on the image.
     on_click_image: Option<Message>,
     /// The style of the [post summary](PostSummary).
-    style: <Renderer::Theme as StyleSheet>::Style,
+    style: <Theme as StyleSheet>::Style,
 }
 
-impl<'a, Message, Renderer> PostSummary<'a, Message, Renderer>
+impl<'a, Message, Theme, Renderer> PostSummary<'a, Message, Theme, Renderer>
 where
-    Message: Clone,
-    Renderer: iced::advanced::Renderer,
-    Renderer::Theme: StyleSheet,
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer,
+    Theme: 'a + StyleSheet,
 {
     /// Creates a new [post summary](PostSummary), given the posts image.
-    pub fn new(image: impl Into<Element<'a, Message, Renderer>>) -> Self
+    pub fn new(image: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self
     {
         PostSummary {
             padding: DEFAULT_PADDING.into(),
             image: image.into(),
             on_click_data: None,
             on_click_image: None,
-            style: <Renderer::Theme as StyleSheet>::Style::default(),
+            style: <Theme as StyleSheet>::Style::default(),
         }
     }
 
@@ -71,44 +71,43 @@ where
     }
 
     /// Sets the style of the [post summary](PostSummary).
-    pub fn style(mut self, style: impl Into<<Renderer::Theme as StyleSheet>::Style>) -> Self {
+    pub fn style(mut self, style: impl Into<<Theme as StyleSheet>::Style>) -> Self {
         self.style = style.into();
 
         self
     }
 }
 
-impl<'a, Message, Renderer> Widget<Message, Renderer> for PostSummary<'a, Message, Renderer>
+impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for PostSummary<'a, Message, Theme, Renderer>
 where
-    Message: Clone,
-    Renderer: iced::advanced::Renderer,
-    Renderer::Theme: StyleSheet,
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer,
+    Theme: 'a + StyleSheet,
 {
-    fn width(&self) -> Length {
-        Length::Shrink
+    fn size(&self) -> Size<Length> {
+        Size::new(
+            Length::Shrink,
+            Length::Shrink
+        )
     }
 
-    fn height(&self) -> Length {
-        Length::Shrink
-    }
-
-    fn layout(&self, renderer: &Renderer, limits: &Limits) -> Node {
+    fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
         let padding = self.padding;
 
         let limits = limits
             .loose()
-            .width(self.image.as_widget().width())
-            .height(self.image.as_widget().height())
-            .pad(padding);
+            .width(self.image.as_widget().size().width)
+            .height(self.image.as_widget().size().height)
+            .shrink(padding);
 
-        let mut image = self.image.as_widget().layout(renderer, &limits);
-        let size = limits.resolve(image.size());
+        let mut image = self.image.as_widget().layout(&mut tree.children[0], renderer, &limits);
+        let size = image.size();
 
-        image.move_to(Point::new(padding.left, padding.top));
-        image.align(Alignment::Center, Alignment::Center, image.size());
+        image.move_to_mut(Point::new(padding.left, padding.top));
+        image.align_mut(Alignment::Center, Alignment::Center, image.size());
 
         Node::with_children(
-            size.pad(padding),
+            size.expand(padding),
             vec![image],
         )
     }
@@ -117,7 +116,7 @@ where
         &self,
         state: &Tree,
         renderer: &mut Renderer,
-        theme: &Renderer::Theme,
+        theme: &Theme,
         style: &Style,
         layout: Layout<'_>,
         cursor: Cursor,
@@ -134,9 +133,12 @@ where
         renderer.fill_quad(
             Quad {
                 bounds,
-                border_radius: 10.0.into(),
-                border_width: 2.0.into(),
-                border_color: appearance.border_color,
+                border: Border {
+                    color: appearance.border_color,
+                    width: 2.0,
+                    radius: 10.0.into()
+                },
+                shadow: Default::default(),
             },
             appearance.background_color,
         );
@@ -232,13 +234,13 @@ where
     }
 }
 
-impl<'a, Message, Renderer> From<PostSummary<'a, Message, Renderer>> for Element<'a, Message, Renderer>
+impl<'a, Message, Theme, Renderer> From<PostSummary<'a, Message, Theme, Renderer>> for Element<'a, Message, Theme, Renderer>
 where
-    Message: Clone+'a,
-    Renderer: iced::advanced::Renderer+'a,
-    Renderer::Theme: StyleSheet
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer,
+    Theme: 'a + StyleSheet
 {
-    fn from(value: PostSummary<'a, Message, Renderer>) -> Self {
+    fn from(value: PostSummary<'a, Message, Theme, Renderer>) -> Self {
         Element::new(value)
     }
 }

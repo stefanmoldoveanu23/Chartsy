@@ -2,7 +2,7 @@ use crate::errors::error::Error;
 use crate::scenes::auth::User;
 use crate::scenes::scenes::Scenes;
 use crate::theme::Theme;
-use iced::{Command, Element, Event, Renderer, Size};
+use iced::{Command, Element, Renderer, Size};
 use mongodb::Database;
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
@@ -24,7 +24,7 @@ pub trait Scene: Send + Sync {
     fn update(&mut self, globals: &mut Globals, message: Box<dyn Action>) -> Command<Message>;
     /// Returns a view of the [Scene]; to be called in the [view](iced::Application::view)
     /// function of the [Application](crate::Chartsy).
-    fn view(&self, globals: &Globals) -> Element<'_, Message, Renderer<Theme>>;
+    fn view(&self, globals: &Globals) -> Element<'_, Message, Theme, Renderer>;
     /// Returns the [scenes](Scene) own error handler action.
     fn get_error_handler(&self, error: Error) -> Box<dyn Action>;
     /// Handles closing the [Scene].
@@ -81,8 +81,7 @@ impl Debug for dyn Action {
 /// - [DoneDatabaseInit](Message::DoneDatabaseInit), which signals that the mongo [Database]
 /// connection was completed successfully;
 /// - [AutoLoggedIn](Message::AutoLoggedIn), for when the user had previously logged in;
-/// - [SendSmtpMail](Message::SendSmtpMail), to send an e-mail using the official email address;
-/// - [Event](Message::Event), for handling [Events](Event).
+/// - [SendSmtpMail](Message::SendSmtpMail), to send an e-mail using the official email address.
 #[derive(Debug, Clone)]
 pub enum Message {
     None,
@@ -92,7 +91,6 @@ pub enum Message {
     DoneDatabaseInit(Result<Database, Error>),
     AutoLoggedIn(User),
     SendSmtpMail(lettre::Message),
-    Event(Event),
 }
 
 /// The [Applications](crate::Chartsy) global values.
@@ -113,9 +111,11 @@ impl Globals {
     pub(crate) fn get_user(&self) -> Option<User> {
         self.user.clone()
     }
-    
+
+    /// Updates the database object.
     pub(crate) fn set_db(&mut self, db: Database) { self.mongo_db = Some(db); }
-    
+
+    /// Returns the database object.
     pub(crate) fn get_db(&self) -> Option<Database> { self.mongo_db.clone() }
 
     /// Updates the value of the window_size.

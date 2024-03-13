@@ -5,7 +5,6 @@ use crate::canvas::tools::{
     circle::Circle, ellipse::Ellipse, line::Line, polygon::Polygon, rect::Rect, triangle::Triangle,
 };
 use crate::serde::{Deserialize, Serialize};
-use crate::theme::Theme;
 use iced::widget::canvas::{event, Event, Frame, Geometry};
 use iced::{mouse, Point, Rectangle, Renderer};
 use json::object::Object;
@@ -124,7 +123,7 @@ pub trait Pending: Send + Sync {
     /// used in the Programs' [draw function](iced::widget::canvas::Program::draw).
     fn draw(
         &self,
-        renderer: &Renderer<Theme>,
+        renderer: &Renderer,
         bounds: Rectangle,
         cursor: mouse::Cursor,
         style: Style,

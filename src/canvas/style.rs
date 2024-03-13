@@ -2,7 +2,7 @@ use crate::widgets::color_picker::ColorPicker;
 use crate::scene::Message;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
-use iced::widget::{Button, Column, Slider};
+use iced::widget::{Button, Column, Slider, Text};
 use iced::{Color, Command, Element, Length, Renderer};
 use json::object::Object;
 use json::JsonValue;
@@ -132,12 +132,12 @@ impl Style {
     }
 
     /// Returns an interactable settings section for the [Style].
-    pub(crate) fn view<'a>(&self) -> Element<'a, StyleUpdate, Renderer<Theme>> {
-        let mut column: Vec<Element<'a, StyleUpdate, Renderer<Theme>>> = vec![];
+    pub(crate) fn view<'a>(&self) -> Element<'a, StyleUpdate, Theme, Renderer> {
+        let mut column: Vec<Element<'a, StyleUpdate, Theme, Renderer>> = vec![];
 
         if let Some((width, color, visibility_width, visibility_color)) = self.stroke {
             column.push(
-                Button::new("Stroke width")
+                Button::new(Text::new("Stroke width"))
                     .on_press(StyleUpdate::ToggleStrokeWidth)
                     .into(),
             );
@@ -146,7 +146,7 @@ impl Style {
             }
 
             column.push(
-                Button::new("Stroke color")
+                Button::new(Text::new("Stroke color"))
                     .on_press(StyleUpdate::ToggleStrokeColor)
                     .into(),
             );
@@ -157,7 +157,7 @@ impl Style {
         }
 
         if let Some((color, visibility)) = self.fill {
-            column.push(Button::new("Fill").on_press(StyleUpdate::ToggleFill).into());
+            column.push(Button::new(Text::new("Fill")).on_press(StyleUpdate::ToggleFill).into());
             if visibility {
                 let picker = ColorPicker::new(StyleUpdate::Fill).color(color);
                 column.push(picker.into());

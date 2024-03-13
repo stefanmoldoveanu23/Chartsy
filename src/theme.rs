@@ -1,5 +1,5 @@
 use iced::application::{Appearance, StyleSheet};
-use iced_style::theme::Application;
+use iced::theme::Application;
 
 /// Custom theme created for the drawing [Application].
 #[derive(Default, Debug, Clone, Copy)]
@@ -17,7 +17,7 @@ impl StyleSheet for Theme {
 pub(crate) mod text {
     use crate::theme::Theme;
     use iced::widget::text::{Appearance, StyleSheet};
-    use iced_style::theme::Text;
+    use iced::theme::Text;
 
     impl StyleSheet for Theme {
         type Style = Text;
@@ -34,7 +34,7 @@ pub(crate) mod text_input {
     use crate::theme::Theme;
     use iced::widget::text_input::{Appearance, StyleSheet};
     use iced::Color;
-    use iced_style::theme::TextInput;
+    use iced::theme::TextInput;
 
     impl StyleSheet for Theme {
         type Style = TextInput;
@@ -73,7 +73,7 @@ pub(crate) mod text_input {
 pub(crate) mod button {
     use crate::theme::Theme;
     use iced::widget::button::{Appearance, StyleSheet};
-    use iced_style::theme::Button;
+    use iced::theme::Button;
 
     impl StyleSheet for Theme {
         type Style = ();
@@ -88,8 +88,7 @@ pub(crate) mod button {
 /// for the custom [Theme].
 pub(crate) mod container {
     use iced::widget::container::{Appearance, StyleSheet};
-    use iced::Color;
-    use iced_runtime::core::Background;
+    use iced::{Background, Color};
 
     #[derive(Default)]
     pub enum Container {
@@ -103,7 +102,7 @@ pub(crate) mod container {
         fn appearance(&self, style: &Self::Style) -> Appearance {
             match style {
                 Container::Default => {
-                    iced::Theme::Light.appearance(&iced_style::theme::Container::Transparent)
+                    iced::Theme::Light.appearance(&iced::theme::Container::Transparent)
                 }
                 Container::Canvas => Appearance {
                     background: Some(Background::Color(Color::BLACK)),
@@ -118,17 +117,17 @@ pub(crate) mod container {
 /// for the custom [Theme].
 pub(crate) mod scrollable {
     use crate::theme::Theme;
-    use iced::widget::scrollable::{Scrollbar, StyleSheet};
-    use iced_style::theme::Scrollable;
+    use iced::widget::scrollable::{Appearance, StyleSheet};
+    use iced::theme::Scrollable;
 
     impl StyleSheet for Theme {
         type Style = Scrollable;
 
-        fn active(&self, style: &Self::Style) -> Scrollbar {
+        fn active(&self, style: &Self::Style) -> Appearance {
             iced::Theme::Light.active(style)
         }
 
-        fn hovered(&self, style: &Self::Style, is_mouse_over_scrollbar: bool) -> Scrollbar {
+        fn hovered(&self, style: &Self::Style, is_mouse_over_scrollbar: bool) -> Appearance {
             iced::Theme::Light.hovered(style, is_mouse_over_scrollbar)
         }
     }
@@ -139,7 +138,7 @@ pub(crate) mod scrollable {
 pub(crate) mod slider {
     use crate::theme::Theme;
     use iced::widget::slider::{Appearance, StyleSheet};
-    use iced_style::theme::Slider;
+    use iced::theme::Slider;
 
     impl StyleSheet for Theme {
         type Style = Slider;
@@ -162,7 +161,7 @@ pub(crate) mod slider {
 pub(crate) mod svg {
     use crate::theme::Theme;
     use iced::widget::svg::{Appearance, StyleSheet};
-    use iced_style::theme::Svg;
+    use iced::theme::Svg;
 
     impl StyleSheet for Theme {
         type Style = Svg;
@@ -190,14 +189,29 @@ pub(crate) mod modal {
 
 /// Module that implements the [card](iced_aw::card::Card) [StyleSheet] for the custom [Theme].
 pub(crate) mod card {
+    use iced::{Background, Color};
     use crate::theme::Theme;
-    use iced_aw::card::{Appearance, StyleSheet};
+    use crate::widgets::card::{Appearance, StyleSheet};
+    
+    #[derive(Default)]
+    pub enum Card {
+        #[default]
+        Default
+    }
 
     impl StyleSheet for Theme {
-        type Style = ();
+        type Style = Card;
 
-        fn active(&self, _style: &Self::Style) -> Appearance {
-            Appearance::default()
+        fn active(&self, style: &Self::Style) -> Appearance {
+            match style {
+                Card::Default => {
+                    Appearance {
+                        background: Background::Color(Color::WHITE),
+                        header_background: Background::Color(Color::from_rgb(0.0, 0.2, 1.0)),
+                        border_color: Color::from_rgb(0.0, 0.2, 1.0),
+                    }
+                }
+            }
         }
     }
 }
@@ -253,8 +267,7 @@ pub(crate) mod post {
 /// Module that implements the [closeable](crate::widgets::closeable::Closeable) [StyleSheet]
 /// for the custom [Theme].
 pub(crate) mod closeable {
-    use iced::Color;
-    use iced_runtime::core::Background;
+    use iced::{Background, Color};
     use crate::theme::Theme;
     use crate::widgets::closeable::{Appearance, StyleSheet};
 

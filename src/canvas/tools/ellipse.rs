@@ -1,7 +1,6 @@
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
-use crate::theme::Theme;
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::path::arc::Elliptical;
@@ -96,7 +95,7 @@ impl Pending for EllipsePending {
 
     fn draw(
         &self,
-        renderer: &Renderer<Theme>,
+        renderer: &Renderer,
         bounds: Rectangle,
         cursor: Cursor,
         style: Style,
@@ -131,9 +130,9 @@ impl Pending for EllipsePending {
                             p.ellipse(Elliptical {
                                 center,
                                 radii,
-                                rotation,
-                                start_angle: 0.0,
-                                end_angle: 360.0,
+                                rotation: rotation.into(),
+                                start_angle: 0.0.into(),
+                                end_angle: 360.0.into(),
                             });
                         }
                     });
@@ -332,9 +331,9 @@ impl Tool for Ellipse {
                 builder.ellipse(Elliptical {
                     center: self.center,
                     radii: self.radii.clone(),
-                    rotation: self.rotation.clone(),
-                    start_angle: 0.0,
-                    end_angle: 360.0,
+                    rotation: self.rotation.clone().into(),
+                    start_angle: 0.0.into(),
+                    end_angle: 360.0.into(),
                 });
             }
         });

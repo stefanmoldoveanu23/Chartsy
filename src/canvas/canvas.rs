@@ -195,10 +195,11 @@ impl Canvas {
                                     vec![
                                         MongoRequest::new(
                                             "canvases".into(),
-                                            MongoRequestType::Update(
-                                                doc! { "id": id },
-                                                doc! { "$set": { "layers": layers as u32 } }
-                                            )
+                                            MongoRequestType::Update {
+                                                filter: doc! { "id": id },
+                                                update: doc! { "$set": { "layers": layers as u32 } },
+                                                options: None
+                                            }
                                         )
                                     ]
                                 ).await
@@ -282,17 +283,23 @@ impl Canvas {
                                 vec![
                                     MongoRequest::new(
                                         "tools".into(),
-                                        MongoRequestType::Delete(doc! {
-                                            "canvas_id": canvas_id,
-                                            "order": {
-                                                "$gte": delete_lower_bound as u32,
-                                                "$lte": delete_upper_bound as u32,
-                                            }
-                                        }),
+                                        MongoRequestType::Delete{
+                                            filter: doc! {
+                                                "canvas_id": canvas_id,
+                                                "order": {
+                                                    "$gte": delete_lower_bound as u32,
+                                                    "$lte": delete_upper_bound as u32,
+                                                }
+                                            },
+                                            options: None
+                                        },
                                     ),
                                     MongoRequest::new(
                                         "tools".into(),
-                                        MongoRequestType::Insert(tools_mongo),
+                                        MongoRequestType::Insert{
+                                            documents: tools_mongo,
+                                            options: None,
+                                        },
                                     ),
                                 ]
                             ).await
@@ -371,7 +378,7 @@ impl Canvas {
     }
 }
 
-impl<'a> From<&'a Canvas> for Element<'a, Message, Renderer<Theme>> {
+impl<'a> From<&'a Canvas> for Element<'a, Message, Theme, Renderer> {
     fn from(value: &'a Canvas) -> Self {
         Element::new(CanvasVessel::new(value))
             .map(|action| Message::DoAction(Box::new(DrawingAction::CanvasAction(action))))
@@ -379,15 +386,17 @@ impl<'a> From<&'a Canvas> for Element<'a, Message, Renderer<Theme>> {
 }
 
 /// A struct that holds the [canvas](canvas::Canvas) objects for each layer, and handles the interaction.
-struct CanvasVessel<'a> {
+struct CanvasVessel<'a>
+{
     width: Length,
     height: Length,
     states: &'a [State],
-    layers: Box<Vec<canvas::Canvas<Layer<'a>, CanvasAction, Renderer<Theme>>>>,
+    layers: Box<Vec<canvas::Canvas<Layer<'a>, CanvasAction, Theme, Renderer>>>,
     current_layer: usize,
 }
 
-impl<'a> CanvasVessel<'a> {
+impl<'a> CanvasVessel<'a>
+{
     fn new(canvas: &'a Canvas) -> Self {
         let mut vessel = CanvasVessel {
             width: canvas.width,
@@ -418,46 +427,64 @@ impl<'a> CanvasVessel<'a> {
     }
 }
 
-impl<'a> Widget<CanvasAction, Renderer<Theme>> for CanvasVessel<'a> {
-    fn width(&self) -> Length {
-        self.width
+impl<'a> Widget<CanvasAction, Theme, Renderer> for CanvasVessel<'a>
+{
+    fn size(&self) -> Size<Length> {
+        Size::new(
+            self.width,
+            self.height
+        )
     }
 
-    fn height(&self) -> Length {
-        self.height
-    }
+    fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
+        let limits = limits.loose().width(self.width).height(self.height);
+        let mut nodes = vec![];
 
-    fn layout(&self, _renderer: &Renderer<Theme>, limits: &Limits) -> Node {
-        let limits = limits.width(self.width).height(self.height);
-        let size = limits.resolve(Size::ZERO);
+        for (index, layer) in (0..self.layers.len()).zip(self.layers.deref()) {
+            nodes.push(layer.layout(&mut tree.children[index], renderer, &limits));
+        }
 
-        Node::new(size)
+        Node::with_children(
+            nodes[0].size(),
+            nodes
+        )
     }
 
     fn draw(
         &self,
         state: &Tree,
-        renderer: &mut Renderer<Theme>,
+        renderer: &mut Renderer,
         theme: &Theme,
         style: &iced::advanced::renderer::Style,
         layout: Layout<'_>,
         cursor: Cursor,
         viewport: &Rectangle,
     ) {
-        for layer in self.layers.iter() {
-            layer.draw(state, renderer, theme, style, layout, cursor, viewport);
+        let mut children = layout.children();
+
+        for (layer, index) in self.layers.iter().zip(0..self.layers.len()) {
+            layer.draw(
+                &state.children[index],
+                renderer,
+                theme,
+                style,
+                children.next().expect(&*format!("Canvas needs to have at least {} layers.", index)),
+                cursor,
+                viewport
+            );
         }
     }
 
     fn tag(&self) -> tree::Tag {
         struct Tag<T>(T);
-        tree::Tag::of::<Tag<<Layer<'_> as canvas::Program<CanvasAction, Renderer<Theme>>>::State>>()
+        tree::Tag::of::<Tag<<Layer<'_> as canvas::Program<CanvasAction, Theme, Renderer>>::State>>()
     }
 
     fn state(&self) -> tree::State {
         tree::State::new(<Layer<'_> as canvas::Program<
             CanvasAction,
-            Renderer<Theme>,
+            Theme,
+            Renderer,
         >>::State::default())
     }
 
@@ -467,14 +494,29 @@ impl<'a> Widget<CanvasAction, Renderer<Theme>> for CanvasVessel<'a> {
         event: Event,
         layout: Layout<'_>,
         cursor: Cursor,
-        renderer: &Renderer<Theme>,
+        renderer: &Renderer,
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, CanvasAction>,
         viewport: &Rectangle,
     ) -> Status {
         let layer = &mut self.layers[self.current_layer];
+        let mut children = layout.children();
+        let binding = Node::default();
+        let mut layout = Layout::new(&binding);
+
+        for _ in 0..self.current_layer {
+            layout = children.next().expect(&*format!("Canvas needs to have at least {} children.", self.current_layer));
+        }
+
         layer.on_event(
-            state, event, layout, cursor, renderer, clipboard, shell, viewport,
+            &mut state.children[self.current_layer],
+            event,
+            layout,
+            cursor,
+            renderer,
+            clipboard,
+            shell,
+            viewport,
         )
     }
 
@@ -484,8 +526,15 @@ impl<'a> Widget<CanvasAction, Renderer<Theme>> for CanvasVessel<'a> {
         layout: Layout<'_>,
         cursor: Cursor,
         viewport: &Rectangle,
-        renderer: &Renderer<Theme>,
+        renderer: &Renderer,
     ) -> Interaction {
+        let mut children = layout.children();
+        let binding = Node::default();
+        let mut layout = Layout::new(&binding);
+        for _ in 0..self.current_layer {
+            layout = children.next().expect(&*format!("Canvas needs to have at least {} children.", self.current_layer));
+        }
+        
         self.layers[self.current_layer].mouse_interaction(state, layout, cursor, viewport, renderer)
     }
 }

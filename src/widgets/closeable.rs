@@ -1,4 +1,4 @@
-use iced::{Alignment, Background, Color, Element, Event, Length, mouse, Padding, Point, Rectangle};
+use iced::{Alignment, Background, Color, Element, Event, Length, mouse, Padding, Point, Rectangle, Size};
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::{Quad, Style};
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
@@ -12,36 +12,36 @@ use crate::widgets::close::Close;
 const DEFAULT_PADDING :f32= 10.0;
 
 /// A [Widget] for a container which can be closed.
-pub struct Closeable<'a, Message, Renderer>
+pub struct Closeable<'a, Message, Theme, Renderer>
 where
-    Message: 'a+Clone,
-    Renderer: 'a+iced::advanced::Renderer+iced::advanced::image::Renderer<Handle=Handle>,
-    Renderer::Theme: StyleSheet
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer+iced::advanced::image::Renderer<Handle=Handle>,
+    Theme: 'a + StyleSheet
 {
     /// The width of the [Closeable].
     width: Length,
     /// The height of the [Closeable].
     height: Length,
     /// The content stored in the [Closeable].
-    content: Element<'a, Message, Renderer>,
+    content: Element<'a, Message, Theme, Renderer>,
     /// Optional message triggered when clicking the content.
     on_click: Option<Message>,
     /// The padding of the [close button](Close).
     close_padding: Padding,
     /// Optional [close button](Close).
-    close_button: Option<Element<'a, Message, Renderer>>,
+    close_button: Option<Element<'a, Message, Theme, Renderer>>,
     /// The [style](StyleSheet::Style) of the [Closeable].
-    style: <Renderer::Theme as StyleSheet>::Style
+    style: <Theme as StyleSheet>::Style
 }
 
-impl<'a, Message, Renderer> Closeable<'a, Message, Renderer>
+impl<'a, Message, Theme, Renderer> Closeable<'a, Message, Theme, Renderer>
 where
-    Message: 'a+Clone,
-    Renderer: 'a+iced::advanced::Renderer+iced::advanced::image::Renderer<Handle=Handle>,
-    Renderer::Theme: StyleSheet
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer+iced::advanced::image::Renderer<Handle=Handle>,
+    Theme: 'a + StyleSheet
 {
     /// Instantiates a new [Closeable] with the given content.
-    pub fn new(content: impl Into<Element<'a, Message, Renderer>>) -> Self
+    pub fn new(content: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self
     {
         Closeable {
             width: Length::Shrink,
@@ -50,7 +50,7 @@ where
             on_click: None,
             close_padding: DEFAULT_PADDING.into(),
             close_button: None,
-            style: <Renderer::Theme as StyleSheet>::Style::default()
+            style: <Theme as StyleSheet>::Style::default()
         }
     }
 
@@ -97,7 +97,7 @@ where
     }
 
     /// Sets the [style](StyleSheet::Style) of the [Closeable].
-    pub fn style(mut self, style: impl Into<<Renderer::Theme as StyleSheet>::Style>) -> Self
+    pub fn style(mut self, style: impl Into<<Theme as StyleSheet>::Style>) -> Self
     {
         self.style = style.into();
 
@@ -105,21 +105,20 @@ where
     }
 }
 
-impl<'a, Message, Renderer> Widget<Message, Renderer> for Closeable<'a, Message, Renderer>
+impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Closeable<'a, Message, Theme, Renderer>
 where
-    Message: 'a+Clone,
-    Renderer: 'a+iced::advanced::Renderer+iced::advanced::image::Renderer<Handle=Handle>,
-    Renderer::Theme: StyleSheet
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer+iced::advanced::image::Renderer<Handle=Handle>,
+    Theme: 'a + StyleSheet
 {
-    fn width(&self) -> Length {
-        self.width
+    fn size(&self) -> Size<Length> {
+        Size::new(
+            self.width,
+            self.height
+        )
     }
 
-    fn height(&self) -> Length {
-        self.height
-    }
-
-    fn layout(&self, renderer: &Renderer, limits: &Limits) -> Node {
+    fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
         let mut limits = limits
             .loose()
             .width(self.width)
@@ -128,11 +127,12 @@ where
 
         let mut close_node = if let Some(close_button) = &self.close_button {
             let close_node = close_button.as_widget().layout(
+                &mut tree.children[1],
                 renderer,
                 &limits
             );
 
-            let close_size = close_node.size().pad(self.close_padding);
+            let close_size = close_node.size().expand(self.close_padding);
             limits = limits.shrink(close_size);
 
             Some(close_node)
@@ -140,18 +140,18 @@ where
             None
         };
 
-        let mut content_node = self.content.as_widget().layout(renderer, &limits);
+        let mut content_node = self.content.as_widget().layout(&mut tree.children[0], renderer, &limits);
 
         if let Some(close_node) = close_node.as_mut() {
             let close_size = close_node.size();
-            close_node.align(Alignment::End, Alignment::Start, size);
-            close_node.move_to(Point::new(
+            close_node.align_mut(Alignment::End, Alignment::Start, size);
+            close_node.move_to_mut(Point::new(
                 size.width - self.close_padding.right - close_size.width,
                 self.close_padding.top
             ));
         }
 
-        content_node.align(Alignment::Center, Alignment::Center, size);
+        content_node.align_mut(Alignment::Center, Alignment::Center, size);
 
         Node::with_children(
             size,
@@ -167,7 +167,7 @@ where
         &self,
         state: &Tree,
         renderer: &mut Renderer,
-        theme: &Renderer::Theme,
+        theme: &Theme,
         style: &Style,
         layout: Layout<'_>,
         cursor: Cursor,
@@ -181,9 +181,8 @@ where
         renderer.fill_quad(
             Quad {
                 bounds,
-                border_radius: Default::default(),
-                border_width: 0.0,
-                border_color: Default::default(),
+                border: Default::default(),
+                shadow: Default::default(),
             },
             appearance.background
         );
@@ -353,13 +352,13 @@ where
     }
 }
 
-impl<'a, Message, Renderer> From<Closeable<'a, Message, Renderer>> for Element<'a, Message, Renderer>
+impl<'a, Message, Theme, Renderer> From<Closeable<'a, Message, Theme, Renderer>> for Element<'a, Message, Theme, Renderer>
 where
-    Message: 'a+Clone,
-    Renderer: 'a+iced::advanced::Renderer+iced::advanced::image::Renderer<Handle=Handle>,
-    Renderer::Theme: StyleSheet
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer+iced::advanced::image::Renderer<Handle=Handle>,
+    Theme: 'a + StyleSheet
 {
-    fn from(value: Closeable<'a, Message, Renderer>) -> Self {
+    fn from(value: Closeable<'a, Message, Theme, Renderer>) -> Self {
         Element::new(value)
     }
 }

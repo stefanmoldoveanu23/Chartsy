@@ -5,9 +5,8 @@ use dropbox_sdk::default_client::{NoauthDefaultClient, UserAuthDefaultClient};
 use dropbox_sdk::files;
 use dropbox_sdk::files::DownloadArg;
 use iced::advanced::svg::Handle;
-use iced::{Alignment, Element, Length, Renderer};
+use iced::{Alignment, Element, Length, Renderer, Command};
 use iced::widget::{Column, Row, Scrollable, Svg, Text};
-use iced_runtime::Command;
 use mongodb::bson::{Bson, doc, Uuid, UuidRepresentation};
 use crate::widgets::closeable::Closeable;
 use crate::widgets::modal_stack::ModalStack;
@@ -26,7 +25,7 @@ enum PostsAction {
     LoadedDrawings(Vec<Handle>),
     /// Triggers when a [modal](ModalType) is toggled.
     ToggleModal(ModalType),
-    /// Triggers when an error occured.
+    /// Triggers when an error occurred.
     ErrorHandler(Error),
 }
 
@@ -144,9 +143,10 @@ impl Scene for Posts {
                         vec![
                             MongoRequest::new(
                                 "posts".into(),
-                                MongoRequestType::Get(
-                                    doc! { }
-                                )
+                                MongoRequestType::Get {
+                                    filter: doc! {},
+                                    options: None,
+                                }
                             )
                         ]
                     ).await {
@@ -236,12 +236,12 @@ impl Scene for Posts {
         Command::none()
     }
 
-    fn view(&self, _globals: &Globals) -> Element<'_, Message, Renderer<Theme>> {
-        let post_summaries :Element<Message, Renderer<Theme>>= Scrollable::new(
+    fn view(&self, _globals: &Globals) -> Element<'_, Message, Theme, Renderer> {
+        let post_summaries :Element<Message, Theme, Renderer>= Scrollable::new(
             Column::with_children(
                 self.drawings.clone().map_or(
                     vec![], |handles| handles.iter().map(|handle| {
-                        PostSummary::<Message, Renderer<Theme>>::new(Svg::<Renderer<Theme>>::new(handle.clone()).width(Length::Shrink))
+                        PostSummary::<Message, Theme, Renderer>::new(Svg::<Theme>::new(handle.clone()).width(Length::Shrink))
                             .padding(40)
                             .on_click_image(Message::DoAction(Box::new(PostsAction::ToggleModal(ModalType::ShowingImage(handle.clone())))))
                             .on_click_data(Message::DoAction(Box::new(PostsAction::ToggleModal(ModalType::ShowingPost(handle.clone())))))

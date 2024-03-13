@@ -1,7 +1,6 @@
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
-use crate::theme::Theme;
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
@@ -11,6 +10,7 @@ use json::JsonValue;
 use mongodb::bson::{doc, Bson, Document};
 use std::fmt::Debug;
 use std::sync::Arc;
+use iced::keyboard::Key;
 use svg::node::element::path::Data;
 use svg::node::element::Group;
 
@@ -65,12 +65,17 @@ impl Pending for TrianglePending {
             }
             Event::Keyboard(key_event) => match key_event {
                 keyboard::Event::KeyPressed {
-                    key_code: keyboard::KeyCode::S,
+                    key: Key::Character(key),
                     ..
                 } => {
-                    *self = TrianglePending::None;
+                    let value = key.as_str();
+                    if value == "S" {
+                        *self = TrianglePending::None;
 
-                    (Status::Captured, None)
+                        (Status::Captured, None)
+                    } else {
+                        (Status::Ignored, None)
+                    }
                 }
                 _ => (Status::Ignored, None),
             },
@@ -80,7 +85,7 @@ impl Pending for TrianglePending {
 
     fn draw(
         &self,
-        renderer: &Renderer<Theme>,
+        renderer: &Renderer,
         bounds: Rectangle,
         cursor: Cursor,
         style: Style,

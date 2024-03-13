@@ -7,6 +7,7 @@ use iced::widget::canvas::{self, fill::Rule};
 use iced::{event, keyboard, Color, Point, Rectangle, Renderer};
 use json::JsonValue;
 use std::sync::Arc;
+use iced::keyboard::Key;
 
 /// A layer in the [canvas](crate::canvas::canvas::Canvas).
 pub struct Layer<'a> {
@@ -17,7 +18,7 @@ pub struct Layer<'a> {
     pub active: bool,
 }
 
-impl<'a> canvas::Program<CanvasAction, Renderer<Theme>> for Layer<'a> {
+impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for Layer<'a> {
     type State = Option<Box<dyn Pending>>;
 
     fn update(
@@ -31,22 +32,25 @@ impl<'a> canvas::Program<CanvasAction, Renderer<Theme>> for Layer<'a> {
             return (event::Status::Ignored, None);
         }
 
-        if let canvas::Event::Keyboard(event) = event {
+        if let canvas::Event::Keyboard(event) = event.clone() {
             match event {
                 keyboard::Event::KeyPressed {
-                    key_code,
+                    key: Key::Character(key),
                     modifiers,
+                    ..
                 } => {
-                    if key_code == keyboard::KeyCode::Z && modifiers == keyboard::Modifiers::CTRL {
+                    let value :&str= key.as_str();
+
+                    if value == "Z" && modifiers == keyboard::Modifiers::CTRL {
                         return (event::Status::Captured, Some(CanvasAction::Undo));
-                    } else if key_code == keyboard::KeyCode::S
-                        && modifiers == keyboard::Modifiers::CTRL
+                    } else if value == "S" && modifiers == keyboard::Modifiers::CTRL
                     {
                         return (event::Status::Captured, Some(CanvasAction::Save));
-                    } else if key_code == keyboard::KeyCode::Y
-                        && modifiers == keyboard::Modifiers::CTRL
+                    } else if value == "Y" && modifiers == keyboard::Modifiers::CTRL
                     {
                         return (event::Status::Captured, Some(CanvasAction::Redo));
+                    } else {
+                        return (event::Status::Ignored, None);
                     }
                 }
                 _ => {}
@@ -79,7 +83,7 @@ impl<'a> canvas::Program<CanvasAction, Renderer<Theme>> for Layer<'a> {
     fn draw(
         &self,
         state: &Self::State,
-        renderer: &Renderer<Theme>,
+        renderer: &Renderer,
         _theme: &Theme,
         bounds: Rectangle,
         cursor: Cursor,

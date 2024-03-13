@@ -21,11 +21,9 @@ use scenes::scenes::SceneLoader;
 use theme::Theme;
 
 use crate::config::{EMAIL_PASS, EMAIL_USERNAME};
-use iced::subscription::events;
 use iced::{
-    executor, window, Application, Command, Element, Renderer, Settings, Size, Subscription,
+    executor, window, Application, Command, Element, Renderer, Settings, Subscription,
 };
-use iced_runtime::command::Action;
 use lettre::{AsyncSmtpTransport, AsyncStd1Executor, AsyncTransport};
 
 pub fn main() -> iced::Result {
@@ -62,7 +60,7 @@ impl Application for Chartsy {
                 globals,
             },
             Command::batch(vec![
-                Command::single(Action::Window(window::Action::Maximize(true))),
+                window::change_mode(window::Id::MAIN, window::Mode::Fullscreen),
                 Command::perform(mongo::connect_to_mongodb(), Message::DoneDatabaseInit),
             ]),
         )
@@ -139,16 +137,6 @@ impl Application for Chartsy {
                 },
                 |_result| Message::None,
             ),
-            Message::Event(event) => {
-                match event {
-                    iced::Event::Window(window::Event::Resized { width, height }) => {
-                        self.globals
-                            .set_window_size(Size::new(width as f32, height as f32));
-                    }
-                    _ => {}
-                }
-                Command::none()
-            }
             Message::Error(error) => {
                 if error.is_debug() {
                     eprintln!("{}", error);
@@ -161,12 +149,10 @@ impl Application for Chartsy {
         }
     }
 
-    fn view(&self) -> Element<'_, Self::Message, Renderer<Self::Theme>> {
+    fn view(&self) -> Element<'_, Self::Message, Self::Theme, Renderer> {
         let scene = self.scene_loader.get().expect("Error getting scene.");
         scene.view(&self.globals)
     }
 
-    fn subscription(&self) -> Subscription<Self::Message> {
-        events().map(Message::Event)
-    }
+    fn subscription(&self) -> Subscription<Self::Message> { Subscription::none() }
 }

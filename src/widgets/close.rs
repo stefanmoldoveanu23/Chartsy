@@ -3,7 +3,7 @@ use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::{Quad, Style};
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::advanced::widget::Tree;
-use iced::{Background, Color, Element, Event, Length, mouse, Rectangle, Size};
+use iced::{Background, Border, Color, Element, Event, Length, mouse, Rectangle, Size};
 use iced::event::Status;
 use iced::mouse::{Cursor, Interaction};
 use iced::widget::image::Handle;
@@ -12,10 +12,10 @@ use iced::widget::image::Handle;
 const DEFAULT_SIZE :f32= 40.0;
 
 /// A [Widget] for a close button. Will be displayed using an [image](Handle). It can be resized.
-pub struct Close<'a, Message, Renderer>
+pub struct Close<'a, Message, Theme, Renderer>
 where
-    Message: Clone,
-    Renderer: iced::advanced::Renderer+iced::advanced::image::Renderer<Handle = Handle>
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer + iced::advanced::image::Renderer<Handle = Handle>
 {
     /// The size of the button.
     size: f32,
@@ -24,13 +24,13 @@ where
     /// The [Handle] which stores the X image. Necessary for resizing the image.
     handle: Handle,
     /// The [Element] which stores the [Handle].
-    image: Element<'a, Message, Renderer>
+    image: Element<'a, Message, Theme, Renderer>
 }
 
-impl<'a, Message, Renderer> Close<'a, Message, Renderer>
+impl<'a, Message, Theme, Renderer> Close<'a, Message, Theme, Renderer>
 where
-    Message: Clone,
-    Renderer: iced::advanced::Renderer+iced::advanced::image::Renderer<Handle = Handle>
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer + iced::advanced::image::Renderer<Handle = Handle>
 {
     /// Creates a new [Close] instance with the given trigger [Message].
     pub fn new(on_trigger: impl Into<Message>) -> Self
@@ -66,22 +66,21 @@ where
     }
 }
 
-impl<'a, Message, Renderer> Widget<Message, Renderer> for Close<'a, Message, Renderer>
+impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Close<'a, Message, Theme, Renderer>
 where
-    Message: Clone,
-    Renderer: iced::advanced::Renderer+iced::advanced::image::Renderer<Handle = Handle>
+    Message: 'a + Clone,
+    Renderer: 'a + iced::advanced::Renderer + iced::advanced::image::Renderer<Handle = Handle>
 {
-    fn width(&self) -> Length {
-        Length::Fixed(self.size)
+    fn size(&self) -> Size<Length> {
+        Size::new(
+            Length::Fixed(self.size),
+            Length::Fixed(self.size)
+        )
     }
 
-    fn height(&self) -> Length {
-        Length::Fixed(self.size)
-    }
-
-    fn layout(&self, renderer: &Renderer, limits: &Limits) -> Node {
+    fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
         let limits = limits.loose().width(self.size).height(self.size);
-        let image_layout = self.image.as_widget().layout(renderer, &limits);
+        let image_layout = self.image.as_widget().layout(&mut tree.children[0], renderer, &limits);
 
         Node::with_children(
             Size::new(self.size, self.size),
@@ -93,7 +92,7 @@ where
         &self,
         state: &Tree,
         renderer: &mut Renderer,
-        theme: &Renderer::Theme,
+        theme: &Theme,
         style: &Style,
         layout: Layout<'_>,
         cursor: Cursor,
@@ -124,9 +123,12 @@ where
         renderer.fill_quad(
             Quad {
                 bounds,
-                border_radius: 45.0.into(),
-                border_width: 2.0,
-                border_color: Color::from_rgb(0.5, 0.5, 0.5),
+                border: Border {
+                    color: Color::from_rgb(0.5, 0.5, 0.5),
+                    width: 2.0,
+                    radius: 45.0.into(),
+                },
+                shadow: Default::default(),
             },
             background
         );
@@ -183,12 +185,13 @@ where
     }
 }
 
-impl<'a, Message, Renderer> From<Close<'a, Message, Renderer>> for Element<'a, Message, Renderer>
+impl<'a, Message, Theme, Renderer> From<Close<'a, Message, Theme, Renderer>> for Element<'a, Message, Theme, Renderer>
 where
-    Message: 'a+Clone,
-    Renderer: 'a+iced::advanced::Renderer+iced::advanced::image::Renderer<Handle = Handle>
+    Message: 'a + Clone,
+    Theme: 'a,
+    Renderer: 'a + iced::advanced::Renderer + iced::advanced::image::Renderer<Handle = Handle>
 {
-    fn from(value: Close<'a, Message, Renderer>) -> Self {
+    fn from(value: Close<'a, Message, Theme, Renderer>) -> Self {
         Element::new(value)
     }
 }

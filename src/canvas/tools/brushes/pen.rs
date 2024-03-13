@@ -1,8 +1,7 @@
 use crate::canvas::style::Style;
 use crate::canvas::tool::Tool;
 use iced::widget::canvas::{Fill, Frame, Path};
-use iced::{Point, Vector};
-use iced_runtime::core::Color;
+use iced::{Point, Vector, Color};
 use std::fmt::Debug;
 use std::ops::{Add, Sub};
 use svg::node::element::path::Data;

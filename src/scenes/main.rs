@@ -4,12 +4,12 @@ use directories::ProjectDirs;
 
 use crate::errors::error::Error;
 use iced::alignment::{Horizontal, Vertical};
-use iced::widget::{button, column, horizontal_space, vertical_space, row, text, Column, Container, Scrollable};
+use iced::widget::{button, column, row, text, Column, Container, Scrollable, Space};
 use iced::{Alignment, Command, Element, Length, Renderer};
-use iced::advanced::widget::Text;
-use iced_aw::{Card, Tabs, TabLabel};
+use iced_aw::{Tabs, TabLabel};
 use mongodb::bson::{doc, Bson, Uuid, UuidRepresentation};
 use crate::widgets::modal_stack::ModalStack;
+use crate::widgets::card::Card;
 
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::scenes::auth::{AuthOptions, AuthTabIds};
@@ -195,7 +195,10 @@ impl Scene for Main {
                                             db,
                                             vec![MongoRequest::new(
                                                 "canvases".into(),
-                                                MongoRequestType::Get(doc! {"user_id": user_id}),
+                                                MongoRequestType::Get{
+                                                    filter: doc! {"user_id": user_id},
+                                                    options: None
+                                                },
                                             )]
                                         ).await
                                     },
@@ -234,11 +237,11 @@ impl Scene for Main {
         Command::none()
     }
 
-    fn view(&self, globals: &Globals) -> Element<Message, Renderer<Theme>> {
-        let container_auth: Element<Message, Renderer<Theme>> =
+    fn view(&self, globals: &Globals) -> Element<Message, Theme, Renderer> {
+        let container_auth: Element<Message, Theme, Renderer> =
             if let Some(user) = globals.get_user() {
                 row![
-                    horizontal_space(Length::Fill),
+                    Space::with_width(Length::Fill),
                     row![
                         text(format!("Welcome, {}!", user.get_username()))
                             .vertical_alignment(Vertical::Bottom),
@@ -253,7 +256,7 @@ impl Scene for Main {
                 .into()
             } else {
                 row![
-                    horizontal_space(Length::Fill),
+                    Space::with_width(Length::Fill),
                     row![
                         button("Register")
                             .padding(8)
@@ -272,7 +275,7 @@ impl Scene for Main {
                 .into()
             };
 
-        let container_entrance: Container<Message, Renderer<Theme>> = Container::new(
+        let container_entrance: Container<Message, Theme, Renderer> = Container::new(
             column![
                 container_auth,
                 column![text("Chartsy").width(Length::Shrink).size(50)]
@@ -287,13 +290,13 @@ impl Scene for Main {
                         .padding(8)
                         .on_press(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::ShowingDrawings)))),
                     if globals.get_db().is_some() && globals.get_user().is_some() {
-                        Element::<Message, Renderer<Theme>>::from(
+                        Element::<Message, Theme, Renderer>::from(
                             button("Browse posts")
                                 .padding(8)
                                 .on_press(Message::ChangeScene(Scenes::Posts(None)))
                         )
                     } else {
-                        vertical_space(Length::Shrink)
+                        Space::with_height(Length::Shrink)
                             .into()
                     }
                 ]
@@ -312,7 +315,7 @@ impl Scene for Main {
         let modal_generator = |modal_type: ModalType| {
             match modal_type {
                 ModalType::ShowingDrawings => {
-                    let online_tab = Container::new(Scrollable::new(Column::<Message, Renderer<Theme>>::with_children(
+                    let online_tab = Container::new(Scrollable::new(Column::<Message, Theme, Renderer>::with_children(
                         if let Some(drawings) = self.drawings_online.clone() {
                             drawings
                                 .clone()
@@ -335,7 +338,7 @@ impl Scene for Main {
                         .align_x(Horizontal::Center)
                         .align_y(Vertical::Top);
 
-                    let offline_tab = Container::new(Scrollable::new(Column::<Message, Renderer<Theme>>::with_children(
+                    let offline_tab = Container::new(Scrollable::new(Column::<Message, Theme, Renderer>::with_children(
                         if let Some(drawings) = self.drawings_offline.clone() {
                             drawings
                                 .clone()
@@ -358,12 +361,12 @@ impl Scene for Main {
                         .align_x(Horizontal::Center)
                         .align_y(Vertical::Top);
 
-                    Container::<Message, Renderer<Theme>>::new(
-                        Card::new::<Text<Renderer<Theme>>, Element<Message, Renderer<Theme>>>(
+                    Container::<Message, Theme, Renderer>::new(
+                        Card::new(
                             text("Your drawings")
                                 .horizontal_alignment(Horizontal::Center)
                                 .size(25),
-                            Tabs::with_tabs(
+                            Tabs::new_with_tabs(
                                 vec![
                                     (
                                         MainTabIds::Offline,
@@ -381,11 +384,10 @@ impl Scene for Main {
                                 .set_active_tab(&self.active_tab)
                                 .width(Length::Fill)
                                 .height(Length::Fixed(300.0))
-                                .into()
                         )
                             .width(Length::Fixed(500.0))
                             .height(Length::Fixed(300.0))
-                            .on_close(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::ShowingDrawings)))),
+                            //.on_close(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::ShowingDrawings)))),
                     )
                         .padding(10)
                         .height(Length::Fill)
@@ -394,17 +396,17 @@ impl Scene for Main {
                         .into()
                 }
                 ModalType::SelectingSaveMode => {
-                    Container::<Message, Renderer<Theme>>::new(
+                    Container::<Message, Theme, Renderer>::new(
                         Card::new(
                             text("Create new drawing"),
                             column![
-                                vertical_space(Length::Fill),
+                                Space::with_height(Length::Fill),
                                 row![
                                     button("Offline")
                                         .padding(8)
                                         .width(Length::FillPortion(1))
                                         .on_press(Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(None, Some(SaveMode::Offline))))))),
-                                    horizontal_space(Length::FillPortion(2)),
+                                    Space::with_width(Length::FillPortion(2)),
                                     if globals.get_db().is_some() && globals.get_user().is_some() {
                                         button("Online")
                                             .padding(8)
@@ -420,7 +422,7 @@ impl Scene for Main {
                                 .height(Length::Fixed(150.0))
                         )
                             .width(Length::Fixed(300.0))
-                            .on_close(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::SelectingSaveMode))))
+                            //.on_close(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::SelectingSaveMode))))
                     )
                         .into()
                 }

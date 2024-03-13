@@ -3,6 +3,7 @@ use dropbox_sdk::default_client::{NoauthDefaultClient, UserAuthDefaultClient};
 use dropbox_sdk::files;
 use dropbox_sdk::files::WriteMode;
 use std::any::Any;
+use std::fmt::{Display, Formatter};
 use std::fs;
 use std::fs::{create_dir_all, File};
 use std::io::Write;
@@ -10,13 +11,13 @@ use std::sync::Arc;
 
 use crate::canvas::canvas::Canvas;
 use iced::alignment::Horizontal;
-use iced::widget::{Container, Row, Column, Text, Button};
+use iced::widget::{Container, Row, Column, Text, Button, TextInput};
 use iced::{Alignment, Command, Element, Length, Renderer};
 use iced_aw::tab_bar::TabLabel;
 use iced_aw::tabs::Tabs;
 use json::object::Object;
 use json::JsonValue;
-use mongodb::bson::{doc, Bson, Uuid};
+use mongodb::bson::{doc, Bson, Uuid, Document};
 
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::tool;
@@ -38,19 +39,104 @@ use crate::scenes::scenes::Scenes;
 use crate::theme::Theme;
 
 use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
+use crate::serde::{Deserialize, Serialize};
+use crate::widgets::combo_box::ComboBox;
+use crate::widgets::modal_stack::ModalStack;
+use crate::widgets::card::Card;
 
-/// The [Messages](Action) for the [Drawing] scene:
-/// - [CanvasAction](DrawingAction::CanvasAction), for when the user interacts with the canvas;
-/// to be sent to the [Canvas] instance for handling;
-/// - [PostDrawing](DrawingAction::PostDrawing), to post a drawing for other users;
-/// - [TabSelection](DrawingAction::TabSelection), which handles the options tab for drawing;
-/// - [ErrorHandler(Error)](DrawingAction::ErrorHandler), which handles errors.
+/// The types of the modals that can be opened.
+#[derive(Clone, Eq, PartialEq)]
+enum ModalTypes {
+    /// A prompt where the user can write data for a post they are creating.
+    PostPrompt
+}
+
+/// Data for a post tag.
+#[derive(Default, Clone)]
+struct Tag {
+    /// The name of the tag.
+    name: String,
+    /// The number of posts the tag has been used in.
+    uses: u32,
+}
+
+impl Display for Tag {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&*format!("{}({})", self.name, self.uses))
+    }
+}
+
+impl Serialize<Document> for Tag {
+    fn serialize(&self) -> Document {
+        doc![
+            "name": self.name.clone(),
+            "uses": self.uses
+        ]
+    }
+}
+
+impl Deserialize<Document> for Tag {
+    fn deserialize(document: Document) -> Self where Self: Sized {
+        let mut tag = Tag { name: "".into(), uses: 0 };
+
+        if let Some(Bson::String(name)) = document.get("name") {
+           tag.name = name.clone();
+        }
+        if let Some(Bson::Int32(uses)) = document.get("uses") {
+            tag.uses = *uses as u32;
+        }
+
+        tag
+    }
+}
+
+/// The data of a post.
+#[derive(Default, Clone)]
+struct PostData {
+    /// The description of the post.
+    description: String,
+    /// The list of tags the user has chosen for the post.
+    post_tags: Vec<Tag>,
+    /// A list of all tags that have been applied to a post.
+    all_tags: Vec<Tag>,
+    /// The current input the user has written for a new tag.
+    tag_input: String,
+}
+
+#[derive(Clone)]
+enum UpdatePostData {
+    Description(String),
+    SelectedTag(Tag),
+    AllTags(Vec<Tag>),
+    TagInput(String),
+}
+
+impl PostData {
+    fn update(&mut self, update: UpdatePostData) {
+        match update {
+            UpdatePostData::Description(description) => self.description = description,
+            UpdatePostData::SelectedTag(tag) => { self.post_tags.push(tag); self.tag_input = "".into(); }
+            UpdatePostData::AllTags(tags) => self.all_tags = tags,
+            UpdatePostData::TagInput(tag_input) => self.tag_input = tag_input,
+        }
+    }
+}
+
+/// The [Messages](Action) for the [Drawing] scene.
 #[derive(Clone)]
 pub(crate) enum DrawingAction {
     None,
+    /// Triggered when the user has interacted with the canvas.
     CanvasAction(CanvasAction),
+    /// Creates a new post given the canvas and the [PostData].
     PostDrawing,
+    /// Updates the [PostData] given the modified field.
+    UpdatePostData(UpdatePostData),
+    /// Toggles a [Modal](ModalTypes).
+    ToggleModal(ModalTypes),
+    /// Opens the given tab.
     TabSelection(TabIds),
+    /// Handles errors.
     ErrorHandler(Error),
 }
 
@@ -73,6 +159,8 @@ impl Action for DrawingAction {
             DrawingAction::None => String::from("None"),
             DrawingAction::CanvasAction(_) => String::from("Canvas action"),
             DrawingAction::PostDrawing => String::from("Post drawing"),
+            DrawingAction::UpdatePostData(_) => String::from("Update post data"),
+            DrawingAction::ToggleModal(_) => String::from("Toggle modal"),
             DrawingAction::TabSelection(_) => String::from("Tab selected"),
             DrawingAction::ErrorHandler(_) => String::from("Handle error"),
         }
@@ -96,7 +184,9 @@ impl Into<Box<dyn Action + 'static>> for Box<DrawingAction> {
 pub struct Drawing {
     canvas: Canvas,
     active_tab: TabIds,
+    post_data: PostData,
     save_mode: SaveMode,
+    modal_stack: ModalStack<ModalTypes>,
 }
 
 impl Drawing {
@@ -113,11 +203,17 @@ impl Drawing {
                             vec![
                                 MongoRequest::new(
                                     "canvases".into(),
-                                    MongoRequestType::Get(doc! {"id": uuid}),
+                                    MongoRequestType::Get{
+                                        filter: doc! {"id": uuid},
+                                        options: None
+                                    },
                                 ),
                                 MongoRequest::new(
                                     "tools".into(),
-                                    MongoRequestType::Get(doc! {"canvas_id": uuid}),
+                                    MongoRequestType::Get{
+                                        filter: doc! {"canvas_id": uuid},
+                                        options: None
+                                    },
                                 ),
                             ]
                         ).await
@@ -173,7 +269,10 @@ impl Drawing {
                             db,
                             vec![MongoRequest::new(
                                 "canvases".into(),
-                                MongoRequestType::Insert(vec![doc! {"id": uuid, "user_id": user_id, "layers": 1}]),
+                                MongoRequestType::Insert{
+                                    documents: vec![doc! {"id": uuid, "user_id": user_id, "layers": 1}],
+                                    options: None
+                                },
                             )]
                         ).await
                     },
@@ -314,7 +413,9 @@ impl Scene for Box<Drawing> {
                 .width(Length::Fixed(800.0))
                 .height(Length::Fixed(600.0)),
             active_tab: TabIds::Tools,
+            post_data: Default::default(),
             save_mode: SaveMode::Online,
+            modal_stack: ModalStack::new(),
         });
 
         let set_tool = Command::perform(async {}, |_| {
@@ -347,6 +448,10 @@ impl Scene for Box<Drawing> {
 
         match message {
             DrawingAction::CanvasAction(action) => self.canvas.update(globals, action.clone()),
+            DrawingAction::UpdatePostData(update) => {
+                self.post_data.update(update.clone());
+                Command::none()
+            }
             DrawingAction::PostDrawing => {
                 let document: svg::Document = self.canvas.svg.as_document();
                 let db = globals.get_db().unwrap();
@@ -390,12 +495,15 @@ impl Scene for Box<Drawing> {
                             vec![
                                 MongoRequest::new(
                                     "posts".into(),
-                                    MongoRequestType::Insert(vec![
-                                        doc!{
-                                            "drawing_id": drawing_id,
-                                            "user_id": user_id,
-                                        }
-                                    ])
+                                    MongoRequestType::Insert{
+                                        documents: vec![
+                                            doc!{
+                                                "drawing_id": drawing_id,
+                                                "user_id": user_id,
+                                            }
+                                        ],
+                                        options: None
+                                    }
                                 )
                             ]
                         ).await)
@@ -408,6 +516,59 @@ impl Scene for Box<Drawing> {
                     },
                 )
             }
+            DrawingAction::ToggleModal(modal) => {
+                self.modal_stack.toggle_modal(modal.clone());
+
+                match modal {
+                    ModalTypes::PostPrompt => {
+                        if self.post_data.all_tags.is_empty() {
+                            if let (Some(_), Some(db)) = (globals.get_user(), globals.get_db()) {
+                                Command::perform(
+                                    async move {
+                                        MongoRequest::send_requests(
+                                            db,
+                                            vec![
+                                                MongoRequest::new(
+                                                    "tags".into(),
+                                                    MongoRequestType::Get {
+                                                        filter: doc![],
+                                                        options: None
+                                                    }
+                                                )
+                                            ]
+                                        ).await
+                                    },
+                                    |res| {
+                                        match res {
+                                            Ok(responses) => {
+                                                if let Some(MongoResponse::Get(documents)) = responses.get(0) {
+                                                    Message::DoAction(Box::new(DrawingAction::UpdatePostData(UpdatePostData::AllTags(
+                                                        documents.iter().map(
+                                                            |document| {
+                                                                Tag::deserialize(document.clone())
+                                                            }
+                                                        ).collect()
+                                                    ))))
+                                                } else {
+                                                    Message::Error(Error::DebugError(
+                                                        DebugError::new("Request answered wrong type".into())
+                                                    ))
+                                                }
+                                            }
+                                            Err(message) => message
+                                        }
+                                    }
+                                )
+                            } else {
+                                Command::none()
+                            }
+                        } else {
+                            Command::none()
+                        }
+                    }
+                    _ => Command::none()
+                }
+            }
             DrawingAction::TabSelection(tab_id) => {
                 self.active_tab = *tab_id;
                 Command::none()
@@ -417,7 +578,7 @@ impl Scene for Box<Drawing> {
         }
     }
 
-    fn view(&self, globals: &Globals) -> Element<'_, Message, Renderer<Theme>> {
+    fn view(&self, globals: &Globals) -> Element<'_, Message, Theme, Renderer> {
         if globals.get_window_height() == 0.0 {
             return Element::new(Text::new(""));
         }
@@ -430,7 +591,7 @@ impl Scene for Box<Drawing> {
                 .into()
         };
 
-        let geometry_section :Element<Message, Renderer<Theme>>= Column::with_children(vec![
+        let geometry_section :Element<Message, Theme, Renderer>= Column::with_children(vec![
             tool_button("Line".into(), Box::new(LinePending::None)),
             tool_button("Rectangle".into(), Box::new(RectPending::None)),
             tool_button("Triangle".into(), Box::new(TrianglePending::None)),
@@ -442,7 +603,7 @@ impl Scene for Box<Drawing> {
             .padding(10.0)
             .into();
 
-        let brushes_section :Element<Message, Renderer<Theme>>= Column::with_children(vec![
+        let brushes_section :Element<Message, Theme, Renderer>= Column::with_children(vec![
             tool_button("Pencil".into(), Box::new(BrushPending::<Pencil>::None)),
             tool_button("Fountain Pen".into(), Box::new(BrushPending::<Pen>::None)),
             tool_button("Airbrush".into(), Box::new(BrushPending::<Airbrush>::None))
@@ -451,14 +612,14 @@ impl Scene for Box<Drawing> {
             .padding(10.0)
             .into();
 
-        let eraser_section :Element<Message, Renderer<Theme>>= Column::with_children(vec![
+        let eraser_section :Element<Message, Theme, Renderer>= Column::with_children(vec![
             tool_button("Eraser".into(), Box::new(BrushPending::<Eraser>::None))
         ])
             .spacing(5.0)
             .padding(10.0)
             .into();
 
-        let layers_section :Element<Message, Renderer<Theme>>= Row::with_children((|layers: usize| {
+        let layers_section :Element<Message, Theme, Renderer>= Row::with_children((|layers: usize| {
             let mut buttons = vec![];
             for layer in 0..layers.clone() {
                 buttons.push(
@@ -476,13 +637,13 @@ impl Scene for Box<Drawing> {
         })(self.canvas.get_layer_count()))
             .into();
 
-        let buttons_section :Element<Message, Renderer<Theme>>= Row::with_children(vec![
+        let buttons_section :Element<Message, Theme, Renderer>= Row::with_children(vec![
             Button::new(Text::new("Back"))
                 .on_press(Message::ChangeScene(Scenes::Main(None)))
                 .into(),
             if globals.get_db().is_some() && globals.get_user().is_some() {
                 Button::new(Text::new("Post"))
-                    .on_press(Message::DoAction(Box::new(DrawingAction::PostDrawing)))
+                    .on_press(Message::DoAction(Box::new(DrawingAction::ToggleModal(ModalTypes::PostPrompt))))
             } else {
                 Button::new(Text::new("Post"))
             }
@@ -498,9 +659,9 @@ impl Scene for Box<Drawing> {
             .spacing(8.0)
             .into();
 
-        Row::with_children(
+        let underlay = Row::with_children(
             vec![
-                Tabs::with_tabs(
+                Tabs::new_with_tabs(
                     vec![
                         (
                             TabIds::Tools,
@@ -570,7 +731,51 @@ impl Scene for Box<Drawing> {
             .width(Length::Fill)
             .height(Length::Fill)
             .align_items(Alignment::Center)
-            .into()
+            .into();
+
+        let modal_transform = |modal_type: ModalTypes| -> Element<Message, Theme, Renderer> {
+            match modal_type {
+                ModalTypes::PostPrompt => {
+                    Card::new(
+                        Text::new("Create a new post"),
+                        Column::with_children(
+                            vec![
+                                Text::new("Description:").into(),
+                                TextInput::new(
+                                    "Write description here...",
+                                    &*self.post_data.description
+                                )
+                                    .on_input(|new_value| Message::DoAction(Box::new(DrawingAction::UpdatePostData(UpdatePostData::Description(new_value)))))
+                                    .into(),
+                                Text::new("Tags:").into(),
+                                ComboBox::new(
+                                    self.post_data.all_tags.clone(),
+                                    "Add a new tag...",
+                                    &*self.post_data.tag_input,
+                                    |tag| Message::DoAction(Box::new(
+                                        DrawingAction::UpdatePostData(UpdatePostData::SelectedTag(tag))
+                                    ))
+                                )
+                                    .width(Length::Fixed(250.0))
+                                    .on_input(|new_value| Message::DoAction(Box::new(
+                                        DrawingAction::UpdatePostData(UpdatePostData::TagInput(new_value))
+                                    )))
+                                    .into()
+                            ]
+                        )
+                            .height(Length::Fixed(150.0))
+                    )
+                        .footer(
+                            Button::new("Post")
+                                .on_press(Message::DoAction(Box::new(DrawingAction::PostDrawing)))
+                        )
+                        .width(Length::Fixed(300.0))
+                        .into()
+                }
+            }
+        };
+
+        self.modal_stack.get_modal(underlay, modal_transform)
     }
 
     fn get_error_handler(&self, error: Error) -> Box<dyn Action> {
