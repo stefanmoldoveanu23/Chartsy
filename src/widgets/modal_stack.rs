@@ -22,6 +22,7 @@ impl<ModalTypes> ModalStack<ModalTypes>
 where
     ModalTypes: Clone+Eq+PartialEq
 {
+    /// Initializes a [modal stack](ModalStack).
     pub fn new() -> ModalStack<ModalTypes>
     {
         ModalStack {
@@ -69,6 +70,7 @@ where
 {
     /// The underlay of the modal.
     underlay: Element<'a, Message, Theme, Renderer>,
+
     /// A list of the overlays, stacked from first to last.
     overlays: Vec<Element<'a, Message, Theme, Renderer>>,
 }
@@ -267,10 +269,13 @@ where
 {
     /// A reference to the [state](Tree) of the original [Modal]. Holds the underlay and all overlays.
     state: &'b mut Tree,
+
     /// A reference to the vector of overlays.
     overlays: &'b mut Vec<Element<'a, Message, Theme, Renderer>>,
+
     /// The index of the current overlay. Is incremented when instantiating its own overlay.
     depth: usize,
+
     /// The translation of the overlay.
     translation: Vector,
 }
@@ -308,7 +313,7 @@ where
         let mut underlay = self.overlays
             .get(self.depth)
             .expect("Wrong depth.")
-            .as_widget().layout(&mut self.state.children[self.depth], renderer, &limits);
+            .as_widget().layout(&mut self.state.children[self.depth + 1], renderer, &limits);
         let max_size = limits.max();
 
         underlay.align_mut(Alignment::Center, Alignment::Center, max_size);
@@ -409,7 +414,7 @@ where
             let underlay = self.overlays.get_mut(self.depth).expect("Wrong depth.");
             underlay.as_widget_mut().overlay(
                 &mut self.state.children[self.depth + 1],
-                layout,
+                layout.children().next().expect("Card needs to have overlay."),
                 renderer,
                 self.translation
             )

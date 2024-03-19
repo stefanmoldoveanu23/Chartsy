@@ -30,24 +30,51 @@ pub struct State {
     cache: canvas::Cache,
 }
 
-/// The canvas structure; holds all relevant information in regard to the current state of the canvas,
-/// its layers, the saved items, the selected drawing tool, and the data necessary for posting the
-/// drawing.
+/// The canvas structure.
 pub struct Canvas {
+    /// The id of the drawing.
     pub(crate) id: Uuid,
+
+    /// The width of the [Canvas].
     pub(crate) width: Length,
+
+    /// The height of the [Canvas].
     pub(crate) height: Length,
+
+    /// The list of caches corresponding to each [Layer].
     pub(crate) layers: Box<Vec<State>>,
+
+    /// The index of currently active layer.
     pub(crate) current_layer: usize,
+
+    /// A list of all the [tools](Tool).
     pub(crate) tools: Box<Vec<(Arc<dyn Tool>, usize)>>,
+
+    /// A list of the removed [tools](Tool).
     pub(crate) undo_stack: Box<Vec<(Arc<dyn Tool>, usize)>>,
+
+    /// The added [tools](Tool) organized by [Layer].
     pub(crate) tool_layers: Box<Vec<Vec<Arc<dyn Tool>>>>,
+
+    /// The index where the [Tool] list was last saved.
     pub(crate) last_saved: usize,
+
+    /// The amount of [tools](Tool) that were saved in total.
     pub(crate) count_saved: usize,
+
+    /// A [SVG] that holds the same drawing; used when making a post.
     pub(crate) svg: SVG,
+
+    /// A list of the tools held in [json](JsonValue) form. Used when the drawing is stored locally.
     pub(crate) json_tools: Option<Vec<JsonValue>>,
+
+    /// The automatically selected [Tool] when the drawing is opened.
     pub(crate) default_tool: Box<dyn Pending>,
+
+    /// The currently selected [Tool].
     pub(crate) current_tool: Box<dyn Pending>,
+
+    /// The [Style] applied to the current [Tool].
     pub(crate) style: Style,
 }
 
@@ -388,15 +415,25 @@ impl<'a> From<&'a Canvas> for Element<'a, Message, Theme, Renderer> {
 /// A struct that holds the [canvas](canvas::Canvas) objects for each layer, and handles the interaction.
 struct CanvasVessel<'a>
 {
+    /// The width of the [Canvas].
     width: Length,
+
+    /// The height of the [Canvas].
     height: Length,
+
+    /// The list of caches for each [Layer].
     states: &'a [State],
+
+    /// The list of [canvas layers](Canvas).
     layers: Box<Vec<canvas::Canvas<Layer<'a>, CanvasAction, Theme, Renderer>>>,
+
+    /// The index of the currently active [Layer].
     current_layer: usize,
 }
 
 impl<'a> CanvasVessel<'a>
 {
+    /// Creates a new [Canvas] widget.
     fn new(canvas: &'a Canvas) -> Self {
         let mut vessel = CanvasVessel {
             width: canvas.width,
@@ -488,6 +525,20 @@ impl<'a> Widget<CanvasAction, Theme, Renderer> for CanvasVessel<'a>
         >>::State::default())
     }
 
+    fn children(&self) -> Vec<Tree> {
+        self.layers.iter().map(
+            |layer| Tree::new(layer as &dyn Widget<CanvasAction, Theme, Renderer>)
+        ).collect()
+    }
+
+    fn diff(&self, tree: &mut Tree) {
+        tree.diff_children(
+            self.layers.iter().map(
+                |layer| layer as &dyn Widget<CanvasAction, Theme, Renderer>
+            ).collect::<Vec<&dyn Widget<CanvasAction, Theme, Renderer>>>().as_slice()
+        )
+    }
+
     fn on_event(
         &mut self,
         state: &mut Tree,
@@ -504,7 +555,7 @@ impl<'a> Widget<CanvasAction, Theme, Renderer> for CanvasVessel<'a>
         let binding = Node::default();
         let mut layout = Layout::new(&binding);
 
-        for _ in 0..self.current_layer {
+        for _ in 0..=self.current_layer {
             layout = children.next().expect(&*format!("Canvas needs to have at least {} children.", self.current_layer));
         }
 
@@ -531,7 +582,7 @@ impl<'a> Widget<CanvasAction, Theme, Renderer> for CanvasVessel<'a>
         let mut children = layout.children();
         let binding = Node::default();
         let mut layout = Layout::new(&binding);
-        for _ in 0..self.current_layer {
+        for _ in 0..=self.current_layer {
             layout = children.next().expect(&*format!("Canvas needs to have at least {} children.", self.current_layer));
         }
         

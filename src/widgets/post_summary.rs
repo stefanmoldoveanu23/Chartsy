@@ -18,12 +18,19 @@ where
 {
     /// The padding of the image associated to the post.
     padding: Padding,
+
+    /// The summary of the post.
+    summary: Element<'a, Message, Theme, Renderer>,
+
     /// The image associated to the post.
     image: Element<'a, Message, Theme, Renderer>,
+
     /// Optional message triggered when pressing on the post.
     on_click_data: Option<Message>,
+
     /// Optional message triggered when pressing on the image.
     on_click_image: Option<Message>,
+
     /// The style of the [post summary](PostSummary).
     style: <Theme as StyleSheet>::Style,
 }
@@ -35,10 +42,13 @@ where
     Theme: 'a + StyleSheet,
 {
     /// Creates a new [post summary](PostSummary), given the posts image.
-    pub fn new(image: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self
-    {
+    pub fn new(
+        summary: impl Into<Element<'a, Message, Theme, Renderer>>,
+        image: impl Into<Element<'a, Message, Theme, Renderer>>
+    ) -> Self {
         PostSummary {
             padding: DEFAULT_PADDING.into(),
+            summary: summary.into(),
             image: image.into(),
             on_click_data: None,
             on_click_image: None,
@@ -94,21 +104,42 @@ where
     fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
         let padding = self.padding;
 
-        let limits = limits
+        let limits_summary = limits
+            .loose()
+            .width(self.summary.as_widget().size().width)
+            .height(self.summary.as_widget().size().height)
+            .shrink(padding);
+
+        let mut summary = self.summary.as_widget().layout(&mut tree.children[0], renderer, &limits_summary);
+        let summary_size = summary.size();
+
+        summary.move_to_mut(Point::new(padding.left, padding.top));
+        summary.align_mut(Alignment::Start, Alignment::Start, summary.size());
+
+        let limits_image = limits
             .loose()
             .width(self.image.as_widget().size().width)
             .height(self.image.as_widget().size().height)
             .shrink(padding);
 
-        let mut image = self.image.as_widget().layout(&mut tree.children[0], renderer, &limits);
-        let size = image.size();
+        let mut image = self.image.as_widget().layout(&mut tree.children[1], renderer, &limits_image);
+        let image_size = image.size();
 
-        image.move_to_mut(Point::new(padding.left, padding.top));
+        image.move_to_mut(
+            Point::new(
+                padding.left,
+                2.0 * padding.top + summary_size.height
+            )
+        );
         image.align_mut(Alignment::Center, Alignment::Center, image.size());
 
         Node::with_children(
-            size.expand(padding),
-            vec![image],
+            Size::new(
+                image_size.width.max(summary_size.width),
+                image_size.height + summary_size.height + padding.top
+            )
+                .expand(padding),
+            vec![summary, image],
         )
     }
 
@@ -144,9 +175,20 @@ where
         );
 
         let mut children = layout.children();
+        let summary_layout = children.next().expect("Post needs to have summary.");
+        self.summary.as_widget().draw(
+            &state.children[0],
+            renderer,
+            theme,
+            style,
+            summary_layout,
+            cursor,
+            viewport
+        );
+
         let image_layout = children.next().expect("Post needs to have image.");
         self.image.as_widget().draw(
-            &state.children[0],
+            &state.children[1],
             renderer,
             theme,
             style,
@@ -157,11 +199,11 @@ where
     }
 
     fn children(&self) -> Vec<Tree> {
-        vec![Tree::new(&self.image)]
+        vec![Tree::new(&self.summary), Tree::new(&self.image)]
     }
 
     fn diff(&self, tree: &mut Tree) {
-        tree.diff_children(&[&self.image]);
+        tree.diff_children(&[&self.summary, &self.image]);
     }
 
     fn operate(
@@ -172,9 +214,12 @@ where
         operation: &mut dyn Operation<Message>
     ) {
         let mut children = layout.children();
-        let image_layout = children.next().expect("Post needs to have image.");
 
-        self.image.as_widget().operate(&mut state.children[0], image_layout, renderer, operation);
+        let summary_layout = children.next().expect("Post needs to have summary.");
+        self.summary.as_widget().operate(&mut state.children[0], summary_layout, renderer, operation);
+
+        let image_layout = children.next().expect("Post needs to have image.");
+        self.image.as_widget().operate(&mut state.children[1], image_layout, renderer, operation);
     }
 
     fn on_event(
@@ -191,6 +236,7 @@ where
         let bounds = layout.bounds();
 
         let mut children = layout.children();
+        children.next().expect("Post needs to have summary");
         let image_layout = children.next().expect("Post needs to have image.");
         let image_bounds = image_layout.bounds();
 

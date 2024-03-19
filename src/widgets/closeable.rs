@@ -8,8 +8,10 @@ use iced::mouse::{Cursor, Interaction};
 use iced::widget::image::Handle;
 use crate::widgets::close::Close;
 
+/// The default padding for the content.
+const DEFAULT_PADDING :f32= 0.0;
 /// The default padding for the [close button](Close).
-const DEFAULT_PADDING :f32= 10.0;
+const DEFAULT_CLOSE_PADDING :f32= 10.0;
 
 /// A [Widget] for a container which can be closed.
 pub struct Closeable<'a, Message, Theme, Renderer>
@@ -20,16 +22,31 @@ where
 {
     /// The width of the [Closeable].
     width: Length,
+
     /// The height of the [Closeable].
     height: Length,
+
+    /// The horizontal alignment of the [Closeable].
+    horizontal_alignment: Alignment,
+
+    /// The vertical alignment of the [Closeable].
+    vertical_alignment: Alignment,
+
+    /// THe padding of the content.
+    padding: Padding,
+
     /// The content stored in the [Closeable].
     content: Element<'a, Message, Theme, Renderer>,
+
     /// Optional message triggered when clicking the content.
     on_click: Option<Message>,
+
     /// The padding of the [close button](Close).
     close_padding: Padding,
+
     /// Optional [close button](Close).
     close_button: Option<Element<'a, Message, Theme, Renderer>>,
+
     /// The [style](StyleSheet::Style) of the [Closeable].
     style: <Theme as StyleSheet>::Style
 }
@@ -46,9 +63,12 @@ where
         Closeable {
             width: Length::Shrink,
             height: Length::Shrink,
+            horizontal_alignment: Alignment::Center,
+            vertical_alignment: Alignment::Center,
+            padding: DEFAULT_PADDING.into(),
             content: content.into(),
             on_click: None,
-            close_padding: DEFAULT_PADDING.into(),
+            close_padding: DEFAULT_CLOSE_PADDING.into(),
             close_button: None,
             style: <Theme as StyleSheet>::Style::default()
         }
@@ -70,6 +90,30 @@ where
         self
     }
 
+    /// Sets the horizontal alignment of the [Closeable].
+    pub fn horizontal_alignment(mut self, horizontal_alignment: impl Into<Alignment>) -> Self
+    {
+        self.horizontal_alignment = horizontal_alignment.into();
+
+        self
+    }
+
+    /// Sets the vertical alignment of the [Closeable].
+    pub fn vertical_alignment(mut self, vertical_alignment: impl Into<Alignment>) -> Self
+    {
+        self.vertical_alignment = vertical_alignment.into();
+
+        self
+    }
+
+    /// Sets the padding of the content.
+    pub fn padding(mut self, padding: impl Into<Padding>) -> Self
+    {
+        self.padding = padding.into();
+
+        self
+    }
+
     /// Sets the triggered message for when the content is pressed.
     pub fn on_click(mut self, on_click: impl Into<Message>) -> Self
     {
@@ -87,10 +131,10 @@ where
     }
 
     /// Sets the message triggered when the [close button](Close) is pressed.
-    pub fn on_close(mut self, on_close: impl Into<Message>) -> Self
+    pub fn on_close(mut self, on_close: impl Into<Message>, size: impl Into<f32>) -> Self
     {
         self.close_button = Some(
-            Close::new(on_close).into()
+            Close::new(on_close).size(size.into()).into()
         );
 
         self
@@ -119,11 +163,15 @@ where
     }
 
     fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
-        let mut limits = limits
+        let limits = limits
             .loose()
             .width(self.width)
             .height(self.height);
-        let size = limits.max();
+
+        let content_limits = limits.shrink(self.padding);
+
+        let mut content_node = self.content.as_widget().layout(&mut tree.children[0], renderer, &content_limits);
+        let size = limits.resolve(self.width, self.height, content_node.size());
 
         let mut close_node = if let Some(close_button) = &self.close_button {
             let close_node = close_button.as_widget().layout(
@@ -132,15 +180,10 @@ where
                 &limits
             );
 
-            let close_size = close_node.size().expand(self.close_padding);
-            limits = limits.shrink(close_size);
-
             Some(close_node)
         } else {
             None
         };
-
-        let mut content_node = self.content.as_widget().layout(&mut tree.children[0], renderer, &limits);
 
         if let Some(close_node) = close_node.as_mut() {
             let close_size = close_node.size();
@@ -151,10 +194,11 @@ where
             ));
         }
 
-        content_node.align_mut(Alignment::Center, Alignment::Center, size);
+        content_node.move_to_mut(Point::new(self.padding.left, self.padding.top));
+        content_node.align_mut(self.horizontal_alignment, self.vertical_alignment, size);
 
         Node::with_children(
-            size,
+            size.expand(self.padding),
             if let Some(close_node) = close_node {
                 vec![content_node, close_node]
             } else {

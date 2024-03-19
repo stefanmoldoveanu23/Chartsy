@@ -17,16 +17,21 @@ pub trait Scene: Send + Sync {
     ) -> (Self, Command<Message>)
     where
         Self: Sized;
+
     /// Returns the name of the [Scene].
     fn get_title(&self) -> String;
+
     /// Updates the [Scene] using the given [message](Action); to be called in the
     /// [update](iced::Application::update) function of the [Application](crate::Chartsy).
     fn update(&mut self, globals: &mut Globals, message: Box<dyn Action>) -> Command<Message>;
+
     /// Returns a view of the [Scene]; to be called in the [view](iced::Application::view)
     /// function of the [Application](crate::Chartsy).
     fn view(&self, globals: &Globals) -> Element<'_, Message, Theme, Renderer>;
+
     /// Returns the [scenes](Scene) own error handler action.
     fn get_error_handler(&self, error: Error) -> Box<dyn Action>;
+
     /// Handles closing the [Scene].
     fn clear(&self);
 }
@@ -41,6 +46,7 @@ impl Debug for dyn Scene {
 pub trait SceneOptions<SceneType: Scene>: Debug + Send + Sync {
     /// This function applies the options to the given [Scene].
     fn apply_options(&self, scene: &mut SceneType);
+
     /// Returns a clone of the reference to the [options](SceneOptions) enclosed in a [Box].
     fn boxed_clone(&self) -> Box<dyn SceneOptions<SceneType>>;
 }
@@ -55,8 +61,10 @@ impl<SceneType: Scene> Clone for Box<dyn SceneOptions<SceneType>> {
 pub trait Action: Send + Sync {
     /// Returns an upcasted reference of the [Action] as [Any].
     fn as_any(&self) -> &dyn Any;
+
     /// Returns the name of the [Action].
     fn get_name(&self) -> String;
+
     /// Returns a reference to a clone of the [Action] enclosed in a [Box].
     fn boxed_clone(&self) -> Box<dyn Action + 'static>;
 }
@@ -73,31 +81,32 @@ impl Debug for dyn Action {
     }
 }
 
-/// The Messages used in the [Application](crate::Chartsy):
-/// - [Error](Message::Error), for error handling;
-/// - [ChangeScene](Message::ChangeScene), for handling transitions between [Scenes](Scene);
-/// - [DoAction](Message::DoAction), which is passed to the [update](Scene::update) function
-/// of the current [Scene];
-/// - [DoneDatabaseInit](Message::DoneDatabaseInit), which signals that the mongo [Database]
-/// connection was completed successfully;
-/// - [AutoLoggedIn](Message::AutoLoggedIn), for when the user had previously logged in;
-/// - [SendSmtpMail](Message::SendSmtpMail), to send an e-mail using the official email address.
+/// The Messages used in the [Application](crate::Chartsy).
 #[derive(Debug, Clone)]
 pub enum Message {
     None,
+    /// Handles errors.
     Error(Error),
+    /// Changes the scene to the given [Scene](Scenes).
     ChangeScene(Scenes),
+    /// Performs an [Action], which should correspond to the current [scenes](Scene) enum of messages.
     DoAction(Box<dyn Action>),
+    /// Triggers when a database connection has been established.
     DoneDatabaseInit(Result<Database, Error>),
+    /// Triggers when a user has been logged in using a token stored locally from a previous login.
     AutoLoggedIn(User),
+    /// Sends en e-mail.
     SendSmtpMail(lettre::Message),
 }
 
 /// The [Applications](crate::Chartsy) global values.
 #[derive(Debug, Clone)]
 pub struct Globals {
+    /// The data corresponding the authenticated [User]. Is None is no user is authenticated.
     user: Option<User>,
+    /// The database the program is connected to.
     mongo_db: Option<Database>,
+    /// The size of the window.
     window_size: Size,
 }
 

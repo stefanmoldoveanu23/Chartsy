@@ -18,14 +18,19 @@ where
 {
     /// Holds the option that is currently being hovered over.
     hovering: Option<iced::Color>,
+
     /// The message that is triggered when an option is selected.
     on_submit: fn(iced::Color) -> Message,
+
     /// The slider object for the opacity.
     slider: Slider<'a, f32, Message, Theme>,
+
     /// The opacity of the [ColorPicker].
     alpha: f32,
+
     /// The width of the [ColorPicker].
     width: f32,
+
     /// The height of the [ColorPicker].
     height: f32,
 }

@@ -35,6 +35,7 @@ pub trait Tool:
     fn id(&self) -> String;
 }
 
+/// Returns the list of [tools](Tool) stored in the given [Document].
 pub fn get_deserialized(document: Document) -> Option<(Arc<dyn Tool>, usize)> {
     let mut layer: usize = 0;
     if let Some(Bson::Int32(layer_count)) = document.get("layer") {
@@ -60,6 +61,7 @@ pub fn get_deserialized(document: Document) -> Option<(Arc<dyn Tool>, usize)> {
     }
 }
 
+/// Returns the list of [tools](Tool) stored in the given [json](Object).
 pub fn get_json(value: Object) -> Option<(Arc<dyn Tool>, usize)> {
     let mut layer: usize = 0;
     if let Some(JsonValue::Number(layer_count)) = value.get("layer") {

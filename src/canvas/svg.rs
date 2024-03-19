@@ -4,11 +4,15 @@ use svg::node::element::{Group, Rectangle};
 use svg::Document;
 
 /// Data for a svg object.
-/// The [BTreeMap] is used to get the latest added tool for undo-ing.
 #[derive(Debug, Clone)]
 pub struct SVG {
+    /// The list of tools organized by layer.
     tools: Vec<Vec<(Group, usize)>>,
+
+    /// Used to get the latest added tool for undo-ing.
     group_order: BTreeMap<usize, usize>,
+
+    /// The total amount of tools.
     tool_count: usize,
 }
 

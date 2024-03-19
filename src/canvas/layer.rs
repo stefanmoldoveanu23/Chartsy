@@ -11,10 +11,19 @@ use iced::keyboard::Key;
 
 /// A layer in the [canvas](crate::canvas::canvas::Canvas).
 pub struct Layer<'a> {
+    /// The cache of the [Layer].
     pub(crate) state: Option<&'a canvas::Cache>,
+
+    /// The [tools](Tool) stored on the [Layer].
     pub(crate) tools: &'a [Arc<dyn Tool>],
+
+    /// The currently selected [Tool].
     pub(crate) current_tool: &'a Box<dyn Pending>,
+
+    /// The currently selected [Style].
     pub(crate) style: &'a Style,
+
+    /// Tells whether this layer is currently being drawn on.
     pub active: bool,
 }
 
@@ -160,18 +169,37 @@ impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for Layer<'a> {
 /// - [Redo](CanvasAction::Redo), to redo the last undo.
 #[derive(Clone)]
 pub enum CanvasAction {
+    /// Adds a [Tool] to the active [Layer].
     UseTool(Arc<dyn Tool>),
+
+    /// Changed the [Tool] used for drawing.
     ChangeTool(Box<dyn Pending>),
+
+    /// Updates the [Style].
     UpdateStyle(StyleUpdate),
+
+    /// Appends a new [Layer].
     AddLayer,
+
+    /// Sets the currently active [Layer].
     ActivateLayer(usize),
+
+    /// Saves the state of the drawing.
     Save,
+
+    /// Triggered when the drawing is successfully saved.
     Saved,
+
+    /// Triggered when the drawing data is successfully loaded.
     Loaded {
         layers: usize,
         tools: Vec<(Arc<dyn Tool>, usize)>,
         json_tools: Option<Vec<JsonValue>>,
     },
+
+    /// Removes the last added [Tool].
     Undo,
+
+    /// Adds the last removed [Tool].
     Redo,
 }

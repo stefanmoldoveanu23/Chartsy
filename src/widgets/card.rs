@@ -18,20 +18,28 @@ where
 {
     /// The width of the [Card].
     width: Length,
+
     /// The height of the [Card].
     height: Length,
+
     /// The header of the [Card].
     header: Element<'a, Message, Theme, Renderer>,
+
     /// The content of the [Card].
     content: Element<'a, Message, Theme, Renderer>,
+
     /// The optional footer of the [Card].
     footer: Option<Element<'a, Message, Theme, Renderer>>,
+
     /// The padding of the header.
     header_padding: Padding,
+
     /// The padding of the content.
     content_padding: Padding,
+
     /// The padding of the footer.
     footer_padding: Padding,
+
     /// The style of the [Card].
     style: <Theme as StyleSheet>::Style,
 }
@@ -483,8 +491,10 @@ pub struct Appearance
 {
     /// The background of the content.
     pub background: Background,
+
     /// The background of the header.
     pub header_background: Background,
+
     /// The color of the border.
     pub border_color: Color
 }

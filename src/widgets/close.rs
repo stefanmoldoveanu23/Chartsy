@@ -19,10 +19,13 @@ where
 {
     /// The size of the button.
     size: f32,
+    
     /// The [Message] which will be triggered when the button is pressed.
     on_trigger: Message,
+    
     /// The [Handle] which stores the X image. Necessary for resizing the image.
     handle: Handle,
+    
     /// The [Element] which stores the [Handle].
     image: Element<'a, Message, Theme, Renderer>
 }

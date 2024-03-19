@@ -7,24 +7,84 @@ use dropbox_sdk::files::DownloadArg;
 use iced::advanced::svg::Handle;
 use iced::{Alignment, Element, Length, Renderer, Command};
 use iced::widget::{Column, Row, Scrollable, Svg, Text};
-use mongodb::bson::{Bson, doc, Uuid, UuidRepresentation};
+use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
+use mongodb::options::AggregateOptions;
 use crate::widgets::closeable::Closeable;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::post_summary::PostSummary;
 use crate::config::{DROPBOX_ID, DROPBOX_REFRESH_TOKEN};
 use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
-use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
+use crate::scenes::auth::User;
+use crate::serde::Deserialize;
 use crate::theme::Theme;
+
+/// The data for a loaded post.
+#[derive(Clone)]
+struct Post {
+    /// The data of the image.
+    image: Vec<u8>,
+
+    /// The description of the [Post].
+    description: String,
+
+    /// The tags of the [Post].
+    tags: Vec<String>,
+
+    /// The [User] this [Post] belongs to.
+    user: User,
+
+    /// The id of the drawing.
+    drawing_id: Uuid,
+}
+
+impl Default for Post {
+    fn default() -> Self {
+        Post {
+            image: vec![],
+            description: "".into(),
+            tags: vec![],
+            user: User::default(),
+            drawing_id: Uuid::default(),
+        }
+    }
+}
+
+impl Deserialize<Document> for Post {
+    fn deserialize(document: Document) -> Self where Self: Sized {
+        let mut post :Post= Default::default();
+
+        if let Some(Bson::String(description)) = document.get("description") {
+            post.description = description.clone();
+        }
+        if let Some(Bson::Array(tags)) = document.get("tags") {
+            for tag in tags {
+                if let Bson::String(tag) = tag {
+                    post.tags.push(tag.clone());
+                }
+            }
+        }
+        if let Some(Bson::Binary(bin)) = document.get("drawing_id") {
+            post.drawing_id = bin.to_uuid_with_representation(UuidRepresentation::Standard).unwrap();
+        }
+        if let Some(Bson::Document(user)) = document.get("user") {
+            post.user = Deserialize::deserialize(user.clone());
+        }
+
+        post
+    }
+}
 
 /// The [messages](Action) that can be triggered on the [Posts] scene.
 #[derive(Clone)]
 enum PostsAction {
     /// Triggers when some posts are loaded to be displayed.
-    LoadedDrawings(Vec<Handle>),
+    LoadedPosts(Vec<Post>),
+    
     /// Triggers when a [modal](ModalType) is toggled.
     ToggleModal(ModalType),
+    
     /// Triggers when an error occurred.
     ErrorHandler(Error),
 }
@@ -37,7 +97,7 @@ impl Action for PostsAction
 
     fn get_name(&self) -> String {
         match self {
-            PostsAction::LoadedDrawings(_) => String::from("Loaded drawings"),
+            PostsAction::LoadedPosts(_) => String::from("Loaded posts"),
             PostsAction::ToggleModal(_) => String::from("Toggle modal"),
             PostsAction::ErrorHandler(_) => String::from("Error handler"),
         }
@@ -56,12 +116,13 @@ impl Into<Box<dyn Action + 'static>> for Box<PostsAction>
 }
 
 /// The types a modal can have on the [Posts] scene.
-#[derive(Clone, Eq)]
+#[derive(Clone)]
 enum ModalType {
     /// Modal for displaying an image in the center of the screen.
-    ShowingImage(Handle),
+    ShowingImage(Vec<u8>),
+    
     /// Modal for opening a post.
-    ShowingPost(Handle),
+    ShowingPost(Post),
 }
 
 impl ModalType {
@@ -95,13 +156,16 @@ impl PartialEq for ModalType {
     }
 }
 
+impl Eq for ModalType { }
+
 /// A scene that displays posts.
 #[derive(Clone)]
 pub struct Posts {
     /// The stack of modals.
     modals: ModalStack<ModalType>,
+    
     /// The list of available posts.
-    drawings: Option<Vec<Handle>>,
+    posts: Vec<Post>,
 }
 
 /// The [Posts] scene does not have any optional initialization values.
@@ -126,7 +190,7 @@ impl Scene for Posts {
     {
         let mut posts = Posts {
             modals: ModalStack::new(),
-            drawings: None,
+            posts: vec![],
         };
 
         if let Some(options) = options {
@@ -138,27 +202,25 @@ impl Scene for Posts {
             posts,
             Command::perform(
                 async move {
-                    let posts = match MongoRequest::send_requests(
-                        db,
+                    let mut posts = match db.collection::<Result<Document, mongodb::error::Error>>("posts").aggregate(
                         vec![
-                            MongoRequest::new(
-                                "posts".into(),
-                                MongoRequestType::Get {
-                                    filter: doc! {},
-                                    options: None,
+                            doc! {
+                                "$lookup": {
+                                    "from": "users",
+                                    "localField": "user_id",
+                                    "foreignField": "id",
+                                    "as": "user"
                                 }
-                            )
-                        ]
-                    ).await {
-                        Ok(results) => {
-                            if let Some(MongoResponse::Get(documents)) = results.get(0) {
-                                documents.clone()
-                            } else {
-                                return Err(Message::Error(Error::DebugError(DebugError::new("Mongo response type error when getting posts".into()))))
+                            },
+                            doc! {
+                                "$unwind": "$user"
                             }
-                        },
-                        Err(message) => {
-                            return Err(message);
+                        ],
+                        AggregateOptions::builder().allow_disk_use(true).build()
+                    ).await {
+                        Ok(cursor) => cursor,
+                        Err(err) => {
+                            return Err(Message::Error(Error::DebugError(DebugError::new(err.to_string()))));
                         }
                     };
 
@@ -172,45 +234,46 @@ impl Scene for Posts {
                         .unwrap();
                     let client = UserAuthDefaultClient::new(auth);
 
-                    let posts :Vec<Handle>= posts.iter().filter_map(
-                        |post| {
-                            let mut user_id = Uuid::default();
-                            let mut drawing_id = Uuid::default();
-
-                            if let Some(Bson::Binary(bin)) = post.get("user_id") {
-                                user_id = bin.to_uuid_with_representation(UuidRepresentation::Standard).unwrap();
-                            }
-                            if let Some(Bson::Binary(bin)) = post.get("drawing_id") {
-                                drawing_id = bin.to_uuid_with_representation(UuidRepresentation::Standard).unwrap();
-                            }
-
-                            if user_id != Uuid::default() && drawing_id != Uuid::default() {
-                                match files::download(
-                                    &client,
-                                    &DownloadArg::new(format!("/{}/{}.svg", user_id, drawing_id)),
-                                    None,
-                                    None
-                                ) {
-                                    Ok(Ok(result)) => {
-                                        let mut read = result.body.unwrap();
-                                        let mut data = vec![];
-
-                                        let _ = io::copy(read.deref_mut(), &mut data).unwrap();
-
-                                        Some(Handle::from_memory(data))
-                                    },
-                                    _ => None
+                    let mut posts_vec = vec![];
+                    loop {
+                        let exists = posts.advance().await;
+                        let post = match exists {
+                            Ok(true) => {
+                                match Document::try_from(posts.current()) {
+                                    Ok(document) => document,
+                                    _ => { break; }
                                 }
-                            } else {
+                            }
+                            _ => { break; }
+                        };
+
+                        let mut post :Post= Deserialize::deserialize(post);
+
+                        if post.drawing_id != Uuid::default() && post.user.get_id() != Uuid::default() {
+                            match files::download(
+                                &client,
+                                &DownloadArg::new(format!("/{}/{}.svg", post.user.get_id(), post.drawing_id)),
+                                None,
                                 None
+                            ) {
+                                Ok(Ok(result)) => {
+                                    let mut read = result.body.unwrap();
+                                    let mut data = vec![];
+
+                                    let _ = io::copy(read.deref_mut(), &mut data).unwrap();
+
+                                    post.image = data;
+                                    posts_vec.push(post);
+                                },
+                                _ => {}
                             }
                         }
-                    ).collect();
+                    }
 
-                    Ok(posts)
+                    Ok(posts_vec)
                 },
-                |handles| {
-                    Message::DoAction(Box::new(PostsAction::LoadedDrawings(handles.unwrap())))
+                |posts| {
+                    Message::DoAction(Box::new(PostsAction::LoadedPosts(posts.unwrap())))
                 }
             )
         )
@@ -224,8 +287,8 @@ impl Scene for Posts {
         let message = message.as_any().downcast_ref::<PostsAction>().expect("Panic downcasting to PostsAction");
 
         match message {
-            PostsAction::LoadedDrawings(handles) => {
-                self.drawings = Some(handles.clone());
+            PostsAction::LoadedPosts(posts) => {
+                self.posts = posts.clone();
             }
             PostsAction::ToggleModal(modal) => {
                 self.modals.toggle_modal(modal.clone());
@@ -239,15 +302,27 @@ impl Scene for Posts {
     fn view(&self, _globals: &Globals) -> Element<'_, Message, Theme, Renderer> {
         let post_summaries :Element<Message, Theme, Renderer>= Scrollable::new(
             Column::with_children(
-                self.drawings.clone().map_or(
-                    vec![], |handles| handles.iter().map(|handle| {
-                        PostSummary::<Message, Theme, Renderer>::new(Svg::<Theme>::new(handle.clone()).width(Length::Shrink))
+                self.posts.iter().map(
+                    |post| {
+                        PostSummary::<Message, Theme, Renderer>::new(
+                            Column::with_children(vec![
+                                Text::new(post.user.get_username()).size(20.0).into(),
+                                Text::new(post.description.clone()).into()
+                            ]),
+                            Svg::<Theme>::new(
+                                Handle::from_memory(post.image.clone())
+                            ).width(Length::Shrink)
+                        )
                             .padding(40)
-                            .on_click_image(Message::DoAction(Box::new(PostsAction::ToggleModal(ModalType::ShowingImage(handle.clone())))))
-                            .on_click_data(Message::DoAction(Box::new(PostsAction::ToggleModal(ModalType::ShowingPost(handle.clone())))))
+                            .on_click_image(Message::DoAction(Box::new(PostsAction::ToggleModal(
+                                ModalType::ShowingImage(post.image.clone())
+                            ))))
+                            .on_click_data(Message::DoAction(Box::new(PostsAction::ToggleModal(
+                                ModalType::ShowingPost(post.clone())
+                            ))))
                             .into()
-                    }).collect()
-                )
+                    }
+                ).collect::<Vec<Element<Message, Theme, Renderer>>>()
             )
                 .width(Length::Fill)
                 .align_items(Alignment::Center)
@@ -258,26 +333,51 @@ impl Scene for Posts {
 
         let modal_generator = |modal_type: ModalType| {
             match modal_type {
-                ModalType::ShowingImage(handle) => {
-                    Closeable::new(Svg::new(handle.clone()).width(Length::Shrink))
-                        .on_close(Message::DoAction(Box::new(PostsAction::ToggleModal(ModalType::ShowingImage(handle.clone())))))
+                ModalType::ShowingImage(data) => {
+                    Closeable::new(Svg::new(
+                        Handle::from_memory(data.clone())
+                    ).width(Length::Shrink))
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .on_close(
+                            Message::DoAction(Box::new(PostsAction::ToggleModal(
+                                ModalType::ShowingImage(data.clone())
+                            ))),
+                            40.0
+                        )
                         .style(crate::theme::closeable::Closeable::SpotLight)
                         .into()
                 }
-                ModalType::ShowingPost(handle) => {
+                ModalType::ShowingPost(post) => {
                     Row::with_children(
                         vec![
-                            Closeable::new(Svg::new(handle.clone()).width(Length::Shrink))
+                            Closeable::new(Svg::new(
+                                Handle::from_memory(post.image.clone())
+                            ).width(Length::Shrink))
                                 .width(Length::FillPortion(3))
                                 .height(Length::Fill)
                                 .style(crate::theme::closeable::Closeable::SpotLight)
-                                .on_click(Message::DoAction(Box::new(PostsAction::ToggleModal(ModalType::ShowingImage(handle.clone())))))
+                                .on_click(Message::DoAction(Box::new(PostsAction::ToggleModal(ModalType::ShowingImage(post.image.clone())))))
                                 .into(),
-                            Closeable::new(Text::new("Hello"))
+                            Closeable::new(
+                                Column::with_children(vec![
+                                    Text::new(post.user.get_username())
+                                        .size(20.0)
+                                        .into(),
+                                    Text::new(post.description.clone())
+                                        .into(),
+                                ])
+                            )
                                 .width(Length::FillPortion(1))
                                 .height(Length::Fill)
+                                .horizontal_alignment(Alignment::Start)
+                                .vertical_alignment(Alignment::Start)
+                                .padding([30.0, 0.0, 0.0, 10.0])
                                 .style(crate::theme::closeable::Closeable::Default)
-                                .on_close(Message::DoAction(Box::new(PostsAction::ToggleModal(ModalType::ShowingPost(handle.clone())))))
+                                .on_close(
+                                    Message::DoAction(Box::new(PostsAction::ToggleModal(ModalType::ShowingPost(post.clone())))),
+                                    40.0
+                                )
                                 .into()
                         ]
                     )

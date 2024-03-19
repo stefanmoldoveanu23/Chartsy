@@ -4,10 +4,10 @@ use directories::ProjectDirs;
 
 use crate::errors::error::Error;
 use iced::alignment::{Horizontal, Vertical};
-use iced::widget::{button, column, row, text, Column, Container, Scrollable, Space};
+use iced::widget::{Column, Container, Scrollable, Space, Row, Button, Text};
 use iced::{Alignment, Command, Element, Length, Renderer};
 use iced_aw::{Tabs, TabLabel};
-use mongodb::bson::{doc, Bson, Uuid, UuidRepresentation};
+use mongodb::bson::{doc, Bson, Uuid, UuidRepresentation, Document};
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::card::Card;
 
@@ -18,27 +18,36 @@ use crate::scenes::scenes::Scenes;
 use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 use crate::scenes::drawing::{DrawingOptions, SaveMode};
 use crate::theme::Theme;
+use crate::widgets::closeable::Closeable;
 
+/// The modals that can be displayed on the [Main] [scene](Scene).
 #[derive(Clone, Eq, PartialEq)]
 enum ModalType {
+    /// This modal displays the list of drawings a user can draw on.
     ShowingDrawings,
+
+    /// This modal allows a user to create a new drawing.
     SelectingSaveMode,
 }
 
-/// The [Messages](Action) of the main [Scene]:
-/// - [ToggleModal](MainAction::ToggleModal), which opens or closes the given overlay;
-/// - [LoadedDrawings](MainAction::LoadedDrawings), which receives the list of drawings from
-/// the [Database](mongodb::Database), or locally;
-/// - [LogOut](MainAction::LogOut), which logs the user out of their account;
-/// - [SelectTab](MainAction::SelectTab), for the drawings overlay tabs;
-/// - [ErrorHandler(Error)](MainAction::ErrorHandler), which handles errors.
+/// The [Messages](Action) of the main [Scene].
 #[derive(Clone)]
 enum MainAction {
     None,
+
+    /// Opens or closes the given modal.
     ToggleModal(ModalType),
+
+    /// Triggered when the drawings(either online or offline) are loaded.
     LoadedDrawings(Vec<Uuid>, MainTabIds),
+
+    /// Logs out the user from their account.
     LogOut,
+
+    /// Changes the tab for the drawings online/offline tab bar.
     SelectTab(MainTabIds),
+
+    /// Handles errors.
     ErrorHandler(Error),
 }
 
@@ -70,14 +79,18 @@ impl Into<Box<dyn Action + 'static>> for Box<MainAction> {
 }
 
 /// The main [Scene] of the [Application](crate::Chartsy).
-///
-/// Allows the user to create a new [Drawing](crate::scenes::drawing::Drawing) or to open an already
-/// existing one.
 #[derive(Clone)]
 pub struct Main {
+    /// The modal stack. Used for displaying modals.
     modals: ModalStack<ModalType>,
+
+    /// The list of the users' drawings that are stored online.
     drawings_online: Option<Vec<Uuid>>,
+
+    /// The list of the users' drawings that are stored offline.
     drawings_offline: Option<Vec<Uuid>>,
+
+    /// The id of the active tab on the drawing selection tab bar.
     active_tab: MainTabIds,
 }
 
@@ -90,6 +103,170 @@ impl SceneOptions<Main> for MainOptions {
 
     fn boxed_clone(&self) -> Box<dyn SceneOptions<Main>> {
         Box::new((*self).clone())
+    }
+}
+
+impl Main {
+    /// Toggles a modal.
+    fn toggle_modal(&mut self, modal: &ModalType, globals: &mut Globals) -> Command<Message>
+    {
+        self.modals.toggle_modal(modal.clone());
+
+        if modal.clone() == ModalType::ShowingDrawings {
+            self.update(globals, Box::new(MainAction::SelectTab(self.active_tab)))
+        } else {
+            Command::none()
+        }
+    }
+
+    /// Sets the drawings on the given tab.
+    fn loaded_drawings(&mut self, tab: &MainTabIds, drawings: &Vec<Uuid>, _globals: &mut Globals
+    ) -> Command<Message> {
+        match tab {
+            MainTabIds::Offline => {
+                self.drawings_offline = Some(drawings.clone());
+            }
+            MainTabIds::Online => {
+                self.drawings_online = Some(drawings.clone());
+            }
+        }
+
+        Command::none()
+    }
+
+    /// Logs out the currently authenticated user.
+    fn log_out(&mut self, globals: &mut Globals) -> Command<Message>
+    {
+        globals.set_user(None);
+        self.drawings_online = None;
+
+        let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
+        let dir_path = proj_dirs.data_local_dir();
+        let file_path = dir_path.join("./token");
+
+        fs::remove_file(file_path).unwrap();
+
+        Command::none()
+    }
+
+    /// Returns the ids of the drawings stored locally.
+    async fn get_drawings_offline() -> Vec<Uuid>
+    {
+        let proj_dirs = ProjectDirs::from(
+            "",
+            "CharMe",
+            "Chartsy"
+        ).unwrap();
+
+        let dir_path = proj_dirs.data_local_dir();
+        fs::create_dir_all(dir_path).unwrap();
+        let mut list = vec![];
+
+        for entry in fs::read_dir(dir_path).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.is_dir() {
+                if let Ok(uuid) = Uuid::parse_str(path.iter().last().unwrap().to_str().unwrap()) {
+                    list.push(uuid);
+                }
+            }
+        }
+
+        list
+    }
+
+    /// Returns the ids of the drawings stored in a database that belong to the currently
+    /// authenticated user.
+    fn get_drawings_online(drawings: &Vec<Document>) -> Vec<Uuid>
+    {
+        let mut list = vec![];
+        for document in drawings {
+            if let Some(Bson::Binary(bin)) = document.get("id") {
+                if let Ok(uuid) =
+                    bin.to_uuid_with_representation(UuidRepresentation::Standard)
+                {
+                    list.push(uuid);
+                }
+            }
+        }
+
+        list
+    }
+
+    /// Switches to the tab of locally stored drawings.
+    fn select_offline_tab(&mut self, _globals: &mut Globals) -> Command<Message>
+    {
+        if self.drawings_offline.is_none() {
+            Command::perform(
+                async {
+                    Main::get_drawings_offline().await
+                },
+                |list| Message::DoAction(Box::new(
+                    MainAction::LoadedDrawings(list, MainTabIds::Offline)
+                ))
+            )
+        } else {
+            Command::none()
+        }
+    }
+
+    /// Switches to the tab of remotely stored drawings.
+    fn select_online_tab(&mut self, globals: &mut Globals) -> Command<Message>
+    {
+        if self.drawings_online.is_none() {
+            if let (Some(db), Some(user)) = (globals.get_db(), globals.get_user()) {
+                let user_id = user.get_id();
+
+                Command::perform(
+                    async move {
+                        MongoRequest::send_requests(
+                            db,
+                            vec![MongoRequest::new(
+                                "canvases".into(),
+                                MongoRequestType::Get{
+                                    filter: doc! {"user_id": user_id},
+                                    options: None
+                                },
+                            )]
+                        ).await
+                    },
+                    |res| {
+                        match res {
+                            Ok(res) => {
+                                if let Some(MongoResponse::Get(cursor)) = res.get(0) {
+                                    Message::DoAction(Box::new(MainAction::LoadedDrawings(
+                                        Main::get_drawings_online(cursor),
+                                        MainTabIds::Online
+                                    )))
+                                } else {
+                                    Message::DoAction(Box::new(MainAction::None))
+                                }
+                            }
+                            Err(message) => message
+                        }
+                    }
+                )
+            } else {
+                Command::none()
+            }
+        } else {
+            Command::none()
+        }
+    }
+
+    /// Sets the tab to the given value.
+    fn select_tab(&mut self, tab_id: &MainTabIds, globals: &mut Globals) -> Command<Message>
+    {
+        self.active_tab = tab_id.clone();
+
+        match tab_id {
+            MainTabIds::Offline => {
+                self.select_offline_tab(globals)
+            }
+            MainTabIds::Online => {
+                self.select_online_tab(globals)
+            }
+        }
     }
 }
 
@@ -129,169 +306,91 @@ impl Scene for Main {
 
         match message {
             MainAction::ToggleModal(modal) => {
-                self.modals.toggle_modal(modal.clone());
-
-                if modal.clone() == ModalType::ShowingDrawings {
-                    return self.update(globals, Box::new(MainAction::SelectTab(self.active_tab)));
-                }
+                self.toggle_modal(modal, globals)
             }
             MainAction::LoadedDrawings(drawings, tab) => {
-                match tab {
-                    MainTabIds::Offline => {
-                        self.drawings_offline = Some(drawings.clone());
-                    }
-                    MainTabIds::Online => {
-                        self.drawings_online = Some(drawings.clone());
-                    }
-                }
+                self.loaded_drawings(tab, drawings, globals)
             }
             MainAction::LogOut => {
-                globals.set_user(None);
-                self.drawings_online = None;
-
-                let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
-                let dir_path = proj_dirs.data_local_dir();
-                let file_path = dir_path.join("./token");
-
-                fs::remove_file(file_path).unwrap();
+                self.log_out(globals)
             }
             MainAction::SelectTab(tab_id) => {
-                self.active_tab = tab_id.clone();
-
-                match tab_id {
-                    MainTabIds::Offline => {
-                        if self.drawings_online.is_none() {
-                            return Command::perform(
-                                async {
-                                    let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
-                                    let dir_path = proj_dirs.data_local_dir();
-                                    let mut list = vec![];
-
-                                    for entry in fs::read_dir(dir_path).unwrap() {
-                                        let entry = entry.unwrap();
-                                        let path = entry.path();
-                                        if path.is_dir() {
-                                            if let Ok(uuid) = Uuid::parse_str(path.iter().last().unwrap().to_str().unwrap()) {
-                                                list.push(uuid);
-                                            }
-                                        }
-                                    }
-
-                                    list
-                                },
-                                |list| Message::DoAction(Box::new(MainAction::LoadedDrawings(list, MainTabIds::Offline)))
-                            )
-                        }
-                    }
-                    MainTabIds::Online => {
-                        if self.drawings_online.is_none() {
-
-                            if let (Some(db), Some(user)) = (globals.get_db(), globals.get_user()) {
-                                let user_id = user.get_id();
-                                
-                                return Command::perform(
-                                    async move {
-                                        MongoRequest::send_requests(
-                                            db,
-                                            vec![MongoRequest::new(
-                                                "canvases".into(),
-                                                MongoRequestType::Get{
-                                                    filter: doc! {"user_id": user_id},
-                                                    options: None
-                                                },
-                                            )]
-                                        ).await
-                                    },
-                                    |res| {
-                                        match res {
-                                            Ok(res) => {
-                                                if let Some(MongoResponse::Get(cursor)) = res.get(0) {
-                                                    let mut list = vec![];
-                                                    for document in cursor {
-                                                        if let Some(Bson::Binary(bin)) = document.get("id") {
-                                                            if let Ok(uuid) =
-                                                                bin.to_uuid_with_representation(UuidRepresentation::Standard)
-                                                            {
-                                                                list.push(uuid);
-                                                            }
-                                                        }
-                                                    }
-                                                    Message::DoAction(Box::new(MainAction::LoadedDrawings(list, MainTabIds::Online)))
-                                                } else {
-                                                    Message::DoAction(Box::new(MainAction::None))
-                                                }
-                                            }
-                                            Err(message) => message
-                                        }
-                                    }
-                                );
-                            }
-                        }
-                    }
-                }
+                self.select_tab(tab_id, globals)
             }
-            MainAction::ErrorHandler(_) => {}
-            MainAction::None => {}
+            MainAction::ErrorHandler(_) => Command::none(),
+            MainAction::None => Command::none()
         }
-
-        Command::none()
     }
 
     fn view(&self, globals: &Globals) -> Element<Message, Theme, Renderer> {
         let container_auth: Element<Message, Theme, Renderer> =
             if let Some(user) = globals.get_user() {
-                row![
-                    Space::with_width(Length::Fill),
-                    row![
-                        text(format!("Welcome, {}!", user.get_username()))
-                            .vertical_alignment(Vertical::Bottom),
-                        button("Log Out")
+                Row::with_children(vec![
+                    Space::with_width(Length::Fill).into(),
+                    Row::with_children(vec![
+                        Text::new(format!("Welcome, {}!", user.get_username()))
+                            .vertical_alignment(Vertical::Bottom)
+                            .into(),
+                        Button::new("Log Out")
                             .padding(8)
-                            .on_press(Message::DoAction(Box::new(MainAction::LogOut))),
-                    ]
-                    .align_items(Alignment::Center)
-                    .width(Length::Shrink)
-                    .spacing(20)
-                ]
+                            .on_press(Message::DoAction(Box::new(MainAction::LogOut)))
+                            .into(),
+                    ])
+                        .align_items(Alignment::Center)
+                        .width(Length::Shrink)
+                        .spacing(20)
+                        .into()
+                ])
                 .into()
             } else {
-                row![
-                    Space::with_width(Length::Fill),
-                    row![
-                        button("Register")
+                Row::with_children(vec![
+                    Space::with_width(Length::Fill).into(),
+                    Row::with_children(vec![
+                        Button::new("Register")
                             .padding(8)
                             .on_press(Message::ChangeScene(Scenes::Auth(Some(Box::new(
                                 AuthOptions::new(AuthTabIds::Register)
-                            ))))),
-                        button("Log In")
+                            )))))
+                            .into(),
+                        Button::new("Log In")
                             .padding(8)
                             .on_press(Message::ChangeScene(Scenes::Auth(Some(Box::new(
                                 AuthOptions::new(AuthTabIds::LogIn)
-                            ))))),
-                    ]
-                    .width(Length::Shrink)
-                    .spacing(10),
-                ]
+                            )))))
+                            .into(),
+                    ])
+                        .width(Length::Shrink)
+                        .spacing(10)
+                        .into()
+                ])
                 .into()
             };
 
         let container_entrance: Container<Message, Theme, Renderer> = Container::new(
-            column![
+            Column::with_children(vec![
                 container_auth,
-                column![text("Chartsy").width(Length::Shrink).size(50)]
+                Column::with_children(vec![
+                    Text::new("Chartsy")
+                        .width(Length::Shrink)
+                        .size(50)
+                        .into()
+                ])
                     .height(Length::FillPortion(2))
                     .width(Length::Fill)
-                    .align_items(Alignment::Center),
-                column![
-                    button("Start new Drawing")
+                    .align_items(Alignment::Center)
+                    .into(),
+                Column::with_children(vec![
+                    Button::new("Start new Drawing")
                         .padding(8)
-                        .on_press(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::SelectingSaveMode)))),
-                    button("Continue drawing")
+                        .on_press(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::SelectingSaveMode))))
+                        .into(),
+                    Button::new("Continue drawing")
                         .padding(8)
-                        .on_press(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::ShowingDrawings)))),
+                        .on_press(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::ShowingDrawings))))
+                        .into(),
                     if globals.get_db().is_some() && globals.get_user().is_some() {
                         Element::<Message, Theme, Renderer>::from(
-                            button("Browse posts")
+                            Button::new("Browse posts")
                                 .padding(8)
                                 .on_press(Message::ChangeScene(Scenes::Posts(None)))
                         )
@@ -299,17 +398,18 @@ impl Scene for Main {
                         Space::with_height(Length::Shrink)
                             .into()
                     }
-                ]
+                ])
+                    .spacing(20)
+                    .height(Length::FillPortion(3))
+                    .width(Length::Fill)
+                    .align_items(Alignment::Center)
+                    .into()
+            ])
                 .spacing(20)
-                .height(Length::FillPortion(3))
+                .padding(20)
                 .width(Length::Fill)
-                .align_items(Alignment::Center),
-            ]
-            .spacing(20)
-            .padding(20)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .align_items(Alignment::Center),
+                .height(Length::Fill)
+                .align_items(Alignment::Center)
         );
 
         let modal_generator = |modal_type: ModalType| {
@@ -321,7 +421,7 @@ impl Scene for Main {
                                 .clone()
                                 .iter()
                                 .map(|uuid| {
-                                    Element::from(button(text(uuid)).on_press(Message::ChangeScene(
+                                    Element::from(Button::new(Text::new(uuid.to_string())).on_press(Message::ChangeScene(
                                         Scenes::Drawing(Some(Box::new(DrawingOptions::new(
                                             Some(uuid.clone()),
                                             Some(SaveMode::Online),
@@ -344,7 +444,7 @@ impl Scene for Main {
                                 .clone()
                                 .iter()
                                 .map(|uuid| {
-                                    Element::from(button(text(uuid)).on_press(Message::ChangeScene(
+                                    Element::from(Button::new(Text::new(uuid.to_string())).on_press(Message::ChangeScene(
                                         Scenes::Drawing(Some(Box::new(DrawingOptions::new(
                                             Some(uuid.clone()),
                                             Some(SaveMode::Offline),
@@ -361,9 +461,9 @@ impl Scene for Main {
                         .align_x(Horizontal::Center)
                         .align_y(Vertical::Top);
 
-                    Container::<Message, Theme, Renderer>::new(
+                    Closeable::<Message, Theme, Renderer>::new(
                         Card::new(
-                            text("Your drawings")
+                            Text::new("Your drawings")
                                 .horizontal_alignment(Horizontal::Center)
                                 .size(25),
                             Tabs::new_with_tabs(
@@ -387,38 +487,42 @@ impl Scene for Main {
                         )
                             .width(Length::Fixed(500.0))
                             .height(Length::Fixed(300.0))
-                            //.on_close(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::ShowingDrawings)))),
                     )
-                        .padding(10)
-                        .height(Length::Fill)
-                        .align_x(Horizontal::Center)
-                        .align_y(Vertical::Center)
+                        .style(crate::theme::closeable::Closeable::Transparent)
+                        .on_close(
+                            Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::ShowingDrawings))),
+                            32.0
+                        )
                         .into()
                 }
                 ModalType::SelectingSaveMode => {
                     Container::<Message, Theme, Renderer>::new(
                         Card::new(
-                            text("Create new drawing"),
-                            column![
-                                Space::with_height(Length::Fill),
-                                row![
-                                    button("Offline")
+                            Text::new("Create new drawing"),
+                            Column::with_children(vec![
+                                Space::with_height(Length::Fill).into(),
+                                Row::with_children(vec![
+                                    Button::new("Offline")
                                         .padding(8)
                                         .width(Length::FillPortion(1))
-                                        .on_press(Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(None, Some(SaveMode::Offline))))))),
-                                    Space::with_width(Length::FillPortion(2)),
+                                        .on_press(Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(None, Some(SaveMode::Offline)))))))
+                                        .into(),
+                                    Space::with_width(Length::FillPortion(2)).into(),
                                     if globals.get_db().is_some() && globals.get_user().is_some() {
-                                        button("Online")
+                                        Button::new("Online")
                                             .padding(8)
                                             .width(Length::FillPortion(1))
                                             .on_press(Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(None, Some(SaveMode::Online)))))))
+                                            .into()
                                     } else {
-                                        button("Online")
+                                        Button::new("Online")
                                             .padding(8)
                                             .width(Length::FillPortion(1))
-                                    },
-                                ]
-                            ]
+                                            .into()
+                                    }
+                                ])
+                                    .into()
+                            ])
                                 .height(Length::Fixed(150.0))
                         )
                             .width(Length::Fixed(300.0))
@@ -439,9 +543,7 @@ impl Scene for Main {
     fn clear(&self) {}
 }
 
-/// The tabs for the drawing list overlay:
-/// - [Offline](MainTabIds::Offline), for drawings stored locally;
-/// - [Online](MainTabIds::Online), for drawings stored remotely in the mongo database.
+/// The tabs for the drawing list overlay.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MainTabIds {
     Offline,

@@ -124,10 +124,19 @@ pub async fn update_user_token(database: Database, user_id: Uuid)
 /// error took place, the chain can also be halted by setting the next request as [Err].
 #[derive(Debug)]
 pub enum MongoRequestType {
+    /// Sends a get request.
     Get{ filter: Document, options: Option<FindOptions> },
+
+    /// Sends an insert request.
     Insert{ documents: Vec<Document>, options: Option<InsertManyOptions> },
+
+    /// Sends an update request.
     Update{ filter: Document, update: Document, options: Option<UpdateOptions> },
+
+    /// Sends a delete request.
     Delete{ filter: Document, options: Option<DeleteOptions> },
+
+    /// Sends a chain of requests. The response of a request is used to create the next request.
     Chain(
         Box<Self>,
         Vec<(
@@ -138,11 +147,12 @@ pub enum MongoRequestType {
 }
 
 /// A request to be sent to a mongo [Database].
-///
-/// Contains the name of the altered [Collection], and the [request type](MongoRequestType).
 #[derive(Debug)]
 pub struct MongoRequest {
+    /// The name of the collection.
     collection_name: String,
+
+    /// The [type](MongoRequestType) of the request.
     request_type: MongoRequestType,
 }
 
@@ -356,14 +366,17 @@ impl MongoRequest {
 }
 
 /// The response to a [MongoRequest] sent to a [Database]:
-/// - [Get](MongoResponse::Get), with a list of [Documents](Document);
-/// - [Insert](MongoResponse::Insert), with the list of [inserted ids](InsertManyResult);
-/// - [Update](MongoResponse::Update), with the [update results](UpdateResult);
-/// - [Delete](MongoResponse::Delete), with the [number of deleted records](DeleteResult).
 pub enum MongoResponse {
+    /// Response to a get request.
     Get(Vec<Document>),
+
+    /// Response to an insert request.
     Insert(InsertManyResult),
+
+    /// Response to an update request.
     Update(UpdateResult),
+
+    /// Response to a delete request.
     Delete(DeleteResult),
 }
 

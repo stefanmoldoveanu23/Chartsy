@@ -21,12 +21,18 @@ where
 {
     /// The list of options the user can choose from.
     tags: Vec<Tag>,
+
     /// The text input object where the user will write.
     text_input: TextInput<'a, Message, Theme, Renderer>,
+
     /// The column of options that is displayed on the screen.
     column: Column<'a, Message, Theme, Renderer>,
+
     /// The message that will be triggered when the user selects an option.
-    on_selected: fn(Tag) -> Message
+    on_selected: fn(Tag) -> Message,
+
+    /// The index of the tab that is hovered on.
+    tag_hovered: Option<usize>,
 }
 
 impl<'a, Tag, Message, Theme, Renderer> ComboBox<'a, Tag, Message, Theme, Renderer>
@@ -47,8 +53,10 @@ where
             column: Column::with_children(
                 filtered_tags.iter().map(|tag| Text::new(tag.to_string()).into())
                     .collect::<Vec<iced::Element<'a, Message, Theme, Renderer>>>()
-            ),
-            on_selected
+            )
+                .padding(1.0),
+            on_selected,
+            tag_hovered: None,
         }
     }
 
@@ -188,15 +196,14 @@ where
             renderer,
             translation
         );
-        
-        println!("{}", self.tags.len());
+
         if self.tags.len() > 0 {
             let bounds = layout.bounds();
             let column = Column::<Message, Theme, Renderer>::with_children(
                 self.tags.iter().map(|tag| Text::new(tag.to_string()).into())
                     .collect::<Vec<iced::Element<'a, Message, Theme, Renderer>>>()
             )
-                .width(bounds.width);
+                .width(Length::Fixed(bounds.width));
             self.column = column;
             
             let state = children.next().expect("Need to have menu child.");
@@ -208,7 +215,8 @@ where
                     &mut self.column,
                     &mut self.tags,
                     self.on_selected,
-                    Vector::new(translation.x, translation.y + bounds.height)
+                    Vector::new(bounds.x + translation.x, bounds.y + translation.y + bounds.height),
+                    &mut self.tag_hovered
                 ))
             );
             
@@ -249,14 +257,21 @@ where
 {
     /// The tree object of the column.
     state: &'b mut Tree,
+
     /// The column object.
     column: &'b mut Column<'a, Message, Theme, Renderer>,
+
     /// The list of options.
     tags: &'b mut Vec<Tag>,
+
     /// The message that will be triggered when the user selects an option.
     on_select: fn(Tag) -> Message,
+
     /// The translation of the overlay.
     translation: Vector,
+
+    /// The tag which the user is hovering on.
+    tag_hovered: &'b mut Option<usize>,
 }
 
 impl<'a, 'b, Tag, Message, Theme, Renderer> Menu<'a, 'b, Tag, Message, Theme, Renderer>
@@ -272,13 +287,15 @@ where
         tags: &'b mut Vec<Tag>,
         on_select: fn(Tag) -> Message,
         translation: Vector,
+        tag_hovered: &'b mut Option<usize>,
     ) -> Self {
         Menu {
             state,
             column,
             tags,
             on_select,
-            translation
+            translation,
+            tag_hovered,
         }
     }
 }
@@ -294,10 +311,7 @@ where
         renderer: &Renderer,
         bounds: Size,
     ) -> Node {
-        let limits = Limits::new(
-            Size::new(0.0, bounds.width),
-            Size::new(0.0, bounds.height)
-        );
+        let limits = Limits::new(Size::ZERO, bounds);
 
         let mut node = self.column.layout(self.state, renderer, &limits);
         node.move_to_mut(Point::new(self.translation.x, self.translation.y));
@@ -314,22 +328,23 @@ where
         cursor: Cursor
     ) {
         let bounds = layout.bounds();
-        renderer.fill_quad(
-            Quad {
-                bounds,
-                border: Border {
-                    color: Color::BLACK,
-                    width: 2.0,
-                    radius: Default::default()
-                },
-                shadow: Default::default(),
-            },
-            Color::TRANSPARENT
-        );
+        let width = bounds.width;
 
         let children = layout.children();
+        let mut index :usize= 0;
         for node in children {
-            let bounds = node.bounds();
+            let mut bounds = node.bounds();
+            bounds.width = width;
+
+            let color = if let Some(pos) = self.tag_hovered.as_ref() {
+                if *pos == index {
+                    Color::from_rgb(0.7, 0.7, 0.7)
+                } else {
+                    Color::WHITE
+                }
+            } else {
+                Color::WHITE
+            };
 
             renderer.fill_quad(
                 Quad {
@@ -337,9 +352,24 @@ where
                     border: Default::default(),
                     shadow: Default::default(),
                 },
-                Color::WHITE
-            )
+                color
+            );
+
+            index += 1;
         }
+
+        renderer.fill_quad(
+            Quad {
+                bounds,
+                border: Border {
+                    color: Color::BLACK,
+                    width: 1.0,
+                    radius: Default::default()
+                },
+                shadow: Default::default(),
+            },
+            Color::TRANSPARENT
+        );
 
         self.column.draw(
             self.state,
@@ -375,13 +405,17 @@ where
         _clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>
     ) -> Status {
+        let width = layout.bounds().width;
+
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
                 let mut index :usize= 0;
                 let children = layout.children();
 
                 for node in children {
-                    let bounds = node.bounds();
+                    let mut bounds = node.bounds();
+                    bounds.width = width;
+
                     if cursor.is_over(bounds) {
                         shell.publish((self.on_select)(self.tags[index].clone()));
                         return Status::Captured;
@@ -390,6 +424,34 @@ where
                     index = index + 1;
                 }
 
+                Status::Ignored
+            }
+            Event::Mouse(mouse::Event::CursorMoved { .. }) => {
+                let mut index :usize= 0;
+                let children = layout.children();
+
+                for node in children {
+                    let mut bounds = node.bounds();
+                    bounds.width = width;
+
+                    if cursor.is_over(bounds) {
+                        if let Some(tag_hovered) = self.tag_hovered {
+                            if *tag_hovered != index {
+                                *self.tag_hovered = Some(index);
+                                return Status::Captured;
+                            } else {
+                                return Status::Ignored;
+                            }
+                        } else {
+                            *self.tag_hovered = Some(index);
+                            return Status::Captured;
+                        }
+                    }
+
+                    index = index + 1;
+                }
+
+                *self.tag_hovered = None;
                 Status::Ignored
             }
             _ => Status::Ignored
@@ -435,7 +497,7 @@ where
             total_score += score;
         }
 
-        if total_score > 1.0 {
+        if total_score > 30.0 {
             if filtered.len() == count && *(scores.last().unwrap()) > total_score {
                 continue;
             }

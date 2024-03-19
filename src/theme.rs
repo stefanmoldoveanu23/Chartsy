@@ -235,6 +235,20 @@ pub(crate) mod tab_bar {
     }
 }
 
+/// Module that implements the [badge](iced_aw::badge::Badge) [StyleSheet] for the custom [Theme].
+pub(crate) mod badge {
+    use super::Theme;
+    use iced_aw::style::badge::{Appearance, StyleSheet};
+    
+    impl StyleSheet for Theme {
+        type Style = iced_aw::style::BadgeStyles;
+
+        fn active(&self, style: &Self::Style) -> Appearance {
+            iced::Theme::Light.active(&style)
+        }
+    }
+}
+
 /// Module that implements the [post](crate::widgets::post_summary::PostSummary) [StyleSheet]
 /// for the custom [Theme].
 pub(crate) mod post {
