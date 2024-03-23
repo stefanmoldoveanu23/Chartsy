@@ -414,7 +414,7 @@ where
             let underlay = self.overlays.get_mut(self.depth).expect("Wrong depth.");
             underlay.as_widget_mut().overlay(
                 &mut self.state.children[self.depth + 1],
-                layout.children().next().expect("Card needs to have overlay."),
+                layout.children().next().expect("Modal needs to have overlay."),
                 renderer,
                 self.translation
             )

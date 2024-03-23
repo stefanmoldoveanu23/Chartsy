@@ -1,4 +1,4 @@
-use crate::config::EMAIL_ADDRESS;
+use crate::config;
 use crate::errors::auth::AuthError;
 use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
@@ -422,7 +422,7 @@ impl Scene for Auth {
 
                 return if *added_to_db {
                     let mail = lettre::Message::builder()
-                        .from(format!("Chartsy <{}>", EMAIL_ADDRESS).parse().unwrap())
+                        .from(format!("Chartsy <{}>", config::email_address()).parse().unwrap())
                         .to(format!("{} <{}>", self.register_form.username.clone(), self.register_form.email.clone()).parse().unwrap())
                         .subject("Code validation for Chartsy account")
                         .multipart(MultiPart::alternative_plain_html(

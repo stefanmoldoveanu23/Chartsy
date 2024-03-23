@@ -497,7 +497,7 @@ where
             total_score += score;
         }
 
-        if total_score > 30.0 {
+        if total_score > 40.0 {
             if filtered.len() == count && *(scores.last().unwrap()) > total_score {
                 continue;
             }

@@ -1,4 +1,4 @@
-use iced::{Alignment, Background, Color, Element, Event, Length, mouse, Padding, Point, Rectangle, Size};
+use iced::{Alignment, Background, Color, Element, Event, Length, mouse, Padding, Point, Rectangle, Size, Vector};
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::{Quad, Style};
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
@@ -393,6 +393,21 @@ where
         };
 
         mouse_interaction.max(content_interaction)
+    }
+
+    fn overlay<'b>(
+        &'b mut self,
+        state: &'b mut Tree,
+        layout: Layout<'_>,
+        renderer: &Renderer,
+        translation: Vector
+    ) -> Option<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
+        self.content.as_widget_mut().overlay(
+            &mut state.children[0],
+            layout.children().next().expect("Closeable needs to have content."),
+            renderer,
+            translation
+        )
     }
 }
 

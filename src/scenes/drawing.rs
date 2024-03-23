@@ -7,6 +7,7 @@ use std::fmt::{Display, Formatter};
 use std::fs;
 use std::fs::{create_dir_all, File};
 use std::io::Write;
+use std::ops::Deref;
 use std::sync::Arc;
 
 use crate::canvas::canvas::Canvas;
@@ -20,6 +21,7 @@ use iced_aw::tabs::Tabs;
 use json::object::Object;
 use json::JsonValue;
 use mongodb::bson::{doc, Bson, Uuid, Document};
+use svg2webp::svg2webp;
 
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::tool;
@@ -32,7 +34,7 @@ use crate::canvas::tools::{
     circle::CirclePending, ellipse::EllipsePending, line::LinePending, polygon::PolygonPending,
     rect::RectPending, triangle::TrianglePending,
 };
-use crate::config::{DROPBOX_ID, DROPBOX_REFRESH_TOKEN};
+use crate::config;
 use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
@@ -512,7 +514,7 @@ impl Scene for Box<Drawing> {
                 Command::none()
             }
             DrawingAction::PostDrawing => {
-                let document: svg::Document = self.canvas.svg.as_document();
+                let document = self.canvas.svg.as_document();
                 let db = globals.get_db().unwrap();
                 let user_id = globals.get_user().unwrap().get_id();
                 let drawing_id = self.canvas.id;
@@ -529,11 +531,13 @@ impl Scene for Box<Drawing> {
                 Command::perform(
                     async move {
                         let buffer = document.to_string();
-                        let img = buffer.as_bytes();
+                        let img = svg2webp(&*buffer, 80.0).unwrap();
                         let mut auth = dropbox_sdk::oauth2::Authorization::from_refresh_token(
-                            DROPBOX_ID.into(),
-                            DROPBOX_REFRESH_TOKEN.into(),
+                            config::dropbox_id().into(),
+                            config::dropbox_refresh_token().into(),
                         );
+
+                        let post_id = Uuid::new();
 
                         let _token = auth
                             .obtain_access_token(NoauthDefaultClient::default())
@@ -542,10 +546,10 @@ impl Scene for Box<Drawing> {
 
                         match files::upload(
                             &client,
-                            &files::UploadArg::new(format!("/{}/{}.svg", user_id, drawing_id))
+                            &files::UploadArg::new(format!("/{}/{}.webp", user_id, post_id))
                                 .with_mute(false)
                                 .with_mode(WriteMode::Overwrite),
-                            img,
+                            &img,
                         ) {
                             Ok(Ok(_metadata)) => {
                                 println!("File successfully sent!");
@@ -566,6 +570,7 @@ impl Scene for Box<Drawing> {
                                     MongoRequestType::Insert {
                                         documents: vec![
                                             doc!{
+                                                "id": post_id,
                                                 "drawing_id": drawing_id,
                                                 "user_id": user_id,
                                                 "description": description,
@@ -791,7 +796,7 @@ impl Scene for Box<Drawing> {
                 )
                     .tab_bar_height(Length::Fixed(35.0))
                     .width(Length::Fixed(250.0))
-                    .height(Length::Fixed(globals.get_window_height() - 35.0))
+                    .height(Length::Fixed(800.0))
                     .set_active_tab(&self.active_tab)
                     .into(),
                 Column::with_children(vec![

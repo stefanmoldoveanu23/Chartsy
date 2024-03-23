@@ -1,28 +1,34 @@
 use std::any::Any;
-use std::io;
+use std::{fs, io};
 use std::ops::DerefMut;
 use dropbox_sdk::default_client::{NoauthDefaultClient, UserAuthDefaultClient};
 use dropbox_sdk::files;
 use dropbox_sdk::files::DownloadArg;
-use iced::advanced::svg::Handle;
+use dropbox_sdk::oauth2::Authorization;
+use iced::advanced::image::Handle;
 use iced::{Alignment, Element, Length, Renderer, Command};
-use iced::widget::{Column, Row, Scrollable, Svg, Text};
+use iced::widget::{Column, Row, Scrollable, Image, Text};
 use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
-use mongodb::options::AggregateOptions;
+use mongodb::options::{AggregateOptions, UpdateOptions};
 use crate::widgets::closeable::Closeable;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::post_summary::PostSummary;
-use crate::config::{DROPBOX_ID, DROPBOX_REFRESH_TOKEN};
+use crate::config;
 use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
+use crate::mongo::{MongoRequest, MongoRequestType};
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::scenes::auth::User;
 use crate::serde::Deserialize;
 use crate::theme::Theme;
+use crate::widgets::rating::Rating;
 
 /// The data for a loaded post.
 #[derive(Clone)]
 struct Post {
+    /// The id of the post.
+    id: Uuid,
+
     /// The data of the image.
     image: Vec<u8>,
 
@@ -37,16 +43,21 @@ struct Post {
 
     /// The id of the drawing.
     drawing_id: Uuid,
+
+    /// The rating of the post.
+    rating: usize,
 }
 
 impl Default for Post {
     fn default() -> Self {
         Post {
-            image: vec![],
+            id: Uuid::default(),
+            image: fs::read("./src/images/loading.png").unwrap(),
             description: "".into(),
             tags: vec![],
             user: User::default(),
             drawing_id: Uuid::default(),
+            rating: 0
         }
     }
 }
@@ -55,6 +66,9 @@ impl Deserialize<Document> for Post {
     fn deserialize(document: Document) -> Self where Self: Sized {
         let mut post :Post= Default::default();
 
+        if let Some(Bson::Binary(bin)) = document.get("id") {
+            post.id = bin.to_uuid_with_representation(UuidRepresentation::Standard).unwrap();
+        }
         if let Some(Bson::String(description)) = document.get("description") {
             post.description = description.clone();
         }
@@ -71,6 +85,11 @@ impl Deserialize<Document> for Post {
         if let Some(Bson::Document(user)) = document.get("user") {
             post.user = Deserialize::deserialize(user.clone());
         }
+        if let Some(Bson::Document(rating)) = document.get("rating") {
+            if let Some(Bson::Int32(rating)) = rating.get("rating") {
+                post.rating = *rating as usize;
+            }
+        }
 
         post
     }
@@ -81,9 +100,15 @@ impl Deserialize<Document> for Post {
 enum PostsAction {
     /// Triggers when some posts are loaded to be displayed.
     LoadedPosts(Vec<Post>),
+
+    /// Triggers when the given amount of images from the posts have been loaded.
+    LoadedImage{ image: Vec<u8>, index: usize, auth: Authorization },
     
     /// Triggers when a [modal](ModalType) is toggled.
     ToggleModal(ModalType),
+
+    /// Sets the rating of the given post.
+    RatePost{ post_index: usize, rating: usize },
     
     /// Triggers when an error occurred.
     ErrorHandler(Error),
@@ -98,7 +123,9 @@ impl Action for PostsAction
     fn get_name(&self) -> String {
         match self {
             PostsAction::LoadedPosts(_) => String::from("Loaded posts"),
+            PostsAction::LoadedImage{ .. } => String::from("Loaded image"),
             PostsAction::ToggleModal(_) => String::from("Toggle modal"),
+            PostsAction::RatePost { .. } => String::from("Rate post"),
             PostsAction::ErrorHandler(_) => String::from("Error handler"),
         }
     }
@@ -122,7 +149,7 @@ enum ModalType {
     ShowingImage(Vec<u8>),
     
     /// Modal for opening a post.
-    ShowingPost(Post),
+    ShowingPost(usize),
 }
 
 impl ModalType {
@@ -214,6 +241,30 @@ impl Scene for Posts {
                             },
                             doc! {
                                 "$unwind": "$user"
+                            },
+                            doc! {
+                                "$lookup": {
+                                    "from": "ratings",
+                                    "localField": "id",
+                                    "foreignField": "post_id",
+                                    "let": { "user_id_value": "$user_id" },
+                                    "pipeline": vec![
+                                        doc! {
+                                            "$match": {
+                                                "$expr": {
+                                                    "$eq": ["$user_id", "$$user_id_value"]
+                                                }
+                                            }
+                                        }
+                                    ],
+                                    "as": "rating"
+                                }
+                            },
+                            doc! {
+                                "$unwind": {
+                                    "path": "$rating",
+                                    "preserveNullAndEmptyArrays": true
+                                }
                             }
                         ],
                         AggregateOptions::builder().allow_disk_use(true).build()
@@ -223,16 +274,6 @@ impl Scene for Posts {
                             return Err(Message::Error(Error::DebugError(DebugError::new(err.to_string()))));
                         }
                     };
-
-                    let mut auth = dropbox_sdk::oauth2::Authorization::from_refresh_token(
-                        DROPBOX_ID.into(),
-                        DROPBOX_REFRESH_TOKEN.into()
-                    );
-
-                    let _token = auth
-                        .obtain_access_token(NoauthDefaultClient::default())
-                        .unwrap();
-                    let client = UserAuthDefaultClient::new(auth);
 
                     let mut posts_vec = vec![];
                     loop {
@@ -247,26 +288,10 @@ impl Scene for Posts {
                             _ => { break; }
                         };
 
-                        let mut post :Post= Deserialize::deserialize(post);
+                        let post :Post= Deserialize::deserialize(post);
 
                         if post.drawing_id != Uuid::default() && post.user.get_id() != Uuid::default() {
-                            match files::download(
-                                &client,
-                                &DownloadArg::new(format!("/{}/{}.svg", post.user.get_id(), post.drawing_id)),
-                                None,
-                                None
-                            ) {
-                                Ok(Ok(result)) => {
-                                    let mut read = result.body.unwrap();
-                                    let mut data = vec![];
-
-                                    let _ = io::copy(read.deref_mut(), &mut data).unwrap();
-
-                                    post.image = data;
-                                    posts_vec.push(post);
-                                },
-                                _ => {}
-                            }
+                            posts_vec.push(post);
                         }
                     }
 
@@ -283,33 +308,194 @@ impl Scene for Posts {
         String::from("Posts")
     }
 
-    fn update(&mut self, _globals: &mut Globals, message: Box<dyn Action>) -> Command<Message> {
+    fn update(&mut self, globals: &mut Globals, message: Box<dyn Action>) -> Command<Message> {
         let message = message.as_any().downcast_ref::<PostsAction>().expect("Panic downcasting to PostsAction");
 
         match message {
             PostsAction::LoadedPosts(posts) => {
                 self.posts = posts.clone();
+
+                if self.posts.len() > 0 {
+                    let post_user_id = self.posts[0].user.get_id().clone();
+                    let post_id = self.posts[0].id.clone();
+
+                    Command::perform(
+                        async move {
+                            let mut auth = Authorization::from_refresh_token(
+                                config::dropbox_id().into(),
+                                config::dropbox_refresh_token().into()
+                            );
+
+                            let _token = auth
+                                .obtain_access_token(NoauthDefaultClient::default())
+                                .unwrap();
+
+                            let client = UserAuthDefaultClient::new(auth.clone());
+                            let mut data = vec![];
+
+                            match files::download(
+                                &client,
+                                &DownloadArg::new(format!("/{}/{}.webp", post_user_id, post_id)),
+                                None,
+                                None
+                            ) {
+                                Ok(Ok(result)) => {
+                                    let mut read = result.body.unwrap();
+
+                                    let _ = io::copy(read.deref_mut(), &mut data).unwrap();
+                                },
+                                _ => {}
+                            }
+
+                            (data, auth)
+                        },
+                        |(data, auth)| Message::DoAction(Box::new(PostsAction::LoadedImage {
+                            image: data,
+                            index: 0,
+                            auth
+                        }))
+                    )
+                } else {
+                    Command::none()
+                }
+            }
+            PostsAction::LoadedImage { image, index, auth } => {
+                let post = self.posts.get_mut(*index).unwrap();
+                post.image = image.clone();
+
+                let index = index.clone() + 1;
+
+                if index == self.posts.len() {
+                    Command::none()
+                } else {
+                    let auth = auth.clone();
+
+                    let post_user_id = self.posts[index].user.get_id().clone();
+                    let post_id = self.posts[index].id.clone();
+                    let client = UserAuthDefaultClient::new(auth.clone());
+
+                    Command::perform(
+                        async move {
+                            let mut data = vec![];
+
+                            match files::download(
+                                &client,
+                                &DownloadArg::new(format!("/{}/{}.webp", post_user_id, post_id)),
+                                None,
+                                None
+                            ) {
+                                Ok(Ok(result)) => {
+                                    let mut read = result.body.unwrap();
+
+                                    let _ = io::copy(read.deref_mut(), &mut data).unwrap();
+                                },
+                                _ => {}
+                            }
+
+                            data
+                        },
+                        move |data| Message::DoAction(Box::new(PostsAction::LoadedImage {
+                            image: data,
+                            index,
+                            auth
+                        }))
+                    )
+                }
             }
             PostsAction::ToggleModal(modal) => {
                 self.modals.toggle_modal(modal.clone());
+                Command::none()
             }
-            PostsAction::ErrorHandler(_) => { }
-        }
+            PostsAction::RatePost { post_index, rating } => {
+                let post :Option<&mut Post>= self.posts.get_mut(*post_index);
+                if let Some(post) = post {
+                    let rating = rating.clone();
+                    post.rating = rating;
 
-        Command::none()
+                    let post_id = post.id;
+                    let user_id = globals.get_user().unwrap().get_id();
+                    let db = globals.get_db().unwrap();
+
+                    if rating > 0 {
+                        Command::perform(
+                            async move {
+                                MongoRequest::send_requests(
+                                    db,
+                                    vec![
+                                        MongoRequest::new(
+                                            "ratings".into(),
+                                            MongoRequestType::Update {
+                                                filter: doc!{
+                                                    "post_id": post_id,
+                                                    "user_id": user_id
+                                                },
+                                                update: doc!{
+                                                    "$set": {
+                                                        "rating": rating as i32
+                                                    }
+                                                },
+                                                options: Some(UpdateOptions::builder()
+                                                    .upsert(Some(true))
+                                                    .build()
+                                                )
+                                            }
+                                        )
+                                    ]
+                                ).await
+                            },
+                            |result| {
+                                match result {
+                                    Ok(_) => Message::None,
+                                    Err(message) => message
+                                }
+                            }
+                        )
+                    } else {
+                        Command::perform(
+                            async move {
+                                MongoRequest::send_requests(
+                                    db,
+                                    vec![
+                                        MongoRequest::new(
+                                            "ratings".into(),
+                                            MongoRequestType::Delete {
+                                                filter: doc! {
+                                                    "user_id": user_id,
+                                                    "post_id": post_id
+                                                },
+                                                options: None
+                                            }
+                                        )
+                                    ]
+                                ).await
+                            },
+                            |result| {
+                                match result {
+                                    Ok(_) => Message::None,
+                                    Err(message) => message
+                                }
+                            }
+                        )
+                    }
+                } else {
+                    Command::none()
+                }
+            }
+            PostsAction::ErrorHandler(_) => { Command::none() }
+        }
     }
 
     fn view(&self, _globals: &Globals) -> Element<'_, Message, Theme, Renderer> {
         let post_summaries :Element<Message, Theme, Renderer>= Scrollable::new(
             Column::with_children(
-                self.posts.iter().map(
-                    |post| {
+                self.posts.iter().zip(0..self.posts.len()).map(
+                    |(post, index)| {
                         PostSummary::<Message, Theme, Renderer>::new(
                             Column::with_children(vec![
                                 Text::new(post.user.get_username()).size(20.0).into(),
                                 Text::new(post.description.clone()).into()
                             ]),
-                            Svg::<Theme>::new(
+                            Image::new(
                                 Handle::from_memory(post.image.clone())
                             ).width(Length::Shrink)
                         )
@@ -318,7 +504,7 @@ impl Scene for Posts {
                                 ModalType::ShowingImage(post.image.clone())
                             ))))
                             .on_click_data(Message::DoAction(Box::new(PostsAction::ToggleModal(
-                                ModalType::ShowingPost(post.clone())
+                                ModalType::ShowingPost(index)
                             ))))
                             .into()
                     }
@@ -334,7 +520,7 @@ impl Scene for Posts {
         let modal_generator = |modal_type: ModalType| {
             match modal_type {
                 ModalType::ShowingImage(data) => {
-                    Closeable::new(Svg::new(
+                    Closeable::new(Image::new(
                         Handle::from_memory(data.clone())
                     ).width(Length::Shrink))
                         .width(Length::Fill)
@@ -348,10 +534,12 @@ impl Scene for Posts {
                         .style(crate::theme::closeable::Closeable::SpotLight)
                         .into()
                 }
-                ModalType::ShowingPost(post) => {
+                ModalType::ShowingPost(post_index) => {
+                    let post = self.posts.get(post_index).unwrap();
+
                     Row::with_children(
                         vec![
-                            Closeable::new(Svg::new(
+                            Closeable::new(Image::new(
                                 Handle::from_memory(post.image.clone())
                             ).width(Length::Shrink))
                                 .width(Length::FillPortion(3))
@@ -366,6 +554,21 @@ impl Scene for Posts {
                                         .into(),
                                     Text::new(post.description.clone())
                                         .into(),
+                                    Rating::new()
+                                        .on_rate(move |value| Message::DoAction(Box::new(
+                                            PostsAction::RatePost {
+                                                post_index: post_index.clone(),
+                                                rating: value
+                                            }
+                                        )))
+                                        .on_unrate(Message::DoAction(Box::new(
+                                            PostsAction::RatePost {
+                                                post_index,
+                                                rating: 0
+                                            }
+                                        )))
+                                        .value(post.rating)
+                                        .into()
                                 ])
                             )
                                 .width(Length::FillPortion(1))
@@ -375,7 +578,7 @@ impl Scene for Posts {
                                 .padding([30.0, 0.0, 0.0, 10.0])
                                 .style(crate::theme::closeable::Closeable::Default)
                                 .on_close(
-                                    Message::DoAction(Box::new(PostsAction::ToggleModal(ModalType::ShowingPost(post.clone())))),
+                                    Message::DoAction(Box::new(PostsAction::ToggleModal(ModalType::ShowingPost(post_index)))),
                                     40.0
                                 )
                                 .into()

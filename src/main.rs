@@ -6,6 +6,11 @@
     windows_subsystem = "windows"
 )]
 
+#[macro_use]
+extern crate litcrypt2;
+
+use_litcrypt!();
+
 mod canvas;
 mod config;
 mod errors;
@@ -20,7 +25,6 @@ use scene::{Globals, Message};
 use scenes::scenes::SceneLoader;
 use theme::Theme;
 
-use crate::config::{EMAIL_PASS, EMAIL_USERNAME};
 use iced::{
     executor, window, Application, Command, Element, Renderer, Settings, Subscription,
 };
@@ -119,7 +123,7 @@ impl Application for Chartsy {
                 async {
                     let connection = AsyncSmtpTransport::<AsyncStd1Executor>::from_url(&*format!(
                         "smtps://{}:{}@smtp.gmail.com:465/",
-                        EMAIL_USERNAME, EMAIL_PASS
+                        config::email_username(), config::email_pass()
                     ))
                     .unwrap()
                     .build();

@@ -12,8 +12,8 @@ use mongodb::bson::spec::BinarySubtype;
 use mongodb::options::{DeleteOptions, FindOptions, InsertManyOptions, UpdateOptions};
 use rand::random;
 use sha2::{Digest, Sha256};
+use crate::config::{self};
 
-use crate::config::{MONGO_NAME, MONGO_PASS};
 use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
 use crate::scenes::auth::User;
@@ -27,7 +27,11 @@ where
     Client: Send + 'static,
 {
     let client_options = ClientOptions::parse(
-        format!("mongodb+srv://{}:{}@chartsy.1fzpgot.mongodb.net/?retryWrites=true&w=majority&appName=Chartsy", MONGO_NAME, MONGO_PASS)
+        format!(
+            "mongodb+srv://{}:{}@chartsy.1fzpgot.mongodb.net/?retryWrites=true&w=majority&appName=Chartsy",
+            config::mongo_name(),
+            config::mongo_pass()
+        )
     ).await.map_err(|error| Error::from(error))?;
 
     let client = Client::with_options(client_options).map_err(|error| Error::from(error))?;
