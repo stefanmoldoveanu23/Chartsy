@@ -9,7 +9,7 @@ impl StyleSheet for Theme {
     type Style = ();
 
     fn appearance(&self, _style: &Self::Style) -> Appearance {
-        iced::Theme::Light.appearance(&Application::default())
+        iced::Theme::GruvboxDark.appearance(&Application::default())
     }
 }
 
@@ -23,7 +23,7 @@ pub(crate) mod text {
         type Style = Text;
 
         fn appearance(&self, style: Self::Style) -> Appearance {
-            iced::Theme::Light.appearance(style)
+            iced::Theme::GruvboxDark.appearance(style)
         }
     }
 }
@@ -40,31 +40,31 @@ pub(crate) mod text_input {
         type Style = TextInput;
 
         fn active(&self, style: &Self::Style) -> Appearance {
-            iced::Theme::Light.active(style)
+            iced::Theme::GruvboxDark.active(style)
         }
 
         fn focused(&self, style: &Self::Style) -> Appearance {
-            iced::Theme::Light.focused(style)
+            iced::Theme::GruvboxDark.focused(style)
         }
 
         fn placeholder_color(&self, style: &Self::Style) -> Color {
-            iced::Theme::Light.placeholder_color(style)
+            iced::Theme::GruvboxDark.placeholder_color(style)
         }
 
         fn value_color(&self, style: &Self::Style) -> Color {
-            iced::Theme::Light.value_color(style)
+            iced::Theme::GruvboxDark.value_color(style)
         }
 
         fn disabled_color(&self, style: &Self::Style) -> Color {
-            iced::Theme::Light.disabled_color(style)
+            iced::Theme::GruvboxDark.disabled_color(style)
         }
 
         fn selection_color(&self, style: &Self::Style) -> Color {
-            iced::Theme::Light.selection_color(style)
+            iced::Theme::GruvboxDark.selection_color(style)
         }
 
         fn disabled(&self, style: &Self::Style) -> Appearance {
-            iced::Theme::Light.disabled(style)
+            iced::Theme::GruvboxDark.disabled(style)
         }
     }
 }
@@ -73,13 +73,32 @@ pub(crate) mod text_input {
 pub(crate) mod button {
     use crate::theme::Theme;
     use iced::widget::button::{Appearance, StyleSheet};
-    use iced::theme::Button;
+
+    pub enum Button {
+        Button(iced::theme::Button),
+        Transparent,
+    }
+
+    impl Default for Button {
+        fn default() -> Self {
+            Button::Button(iced::theme::Button::default())
+        }
+    }
 
     impl StyleSheet for Theme {
-        type Style = ();
+        type Style = Button;
 
-        fn active(&self, _style: &Self::Style) -> Appearance {
-            iced::Theme::Light.active(&Button::default())
+        fn active(&self, style: &Self::Style) -> Appearance {
+            match style {
+                Button::Button(style) => iced::Theme::GruvboxDark.active(style),
+                Button::Transparent => Appearance {
+                    shadow_offset: Default::default(),
+                    background: None,
+                    text_color: iced::Theme::GruvboxDark.palette().text,
+                    border: Default::default(),
+                    shadow: Default::default(),
+                }
+            }
         }
     }
 }
@@ -102,7 +121,7 @@ pub(crate) mod container {
         fn appearance(&self, style: &Self::Style) -> Appearance {
             match style {
                 Container::Default => {
-                    iced::Theme::Light.appearance(&iced::theme::Container::Transparent)
+                    iced::Theme::GruvboxDark.appearance(&iced::theme::Container::Transparent)
                 }
                 Container::Canvas => Appearance {
                     background: Some(Background::Color(Color::BLACK)),
@@ -124,11 +143,11 @@ pub(crate) mod scrollable {
         type Style = Scrollable;
 
         fn active(&self, style: &Self::Style) -> Appearance {
-            iced::Theme::Light.active(style)
+            iced::Theme::GruvboxDark.active(style)
         }
 
         fn hovered(&self, style: &Self::Style, is_mouse_over_scrollbar: bool) -> Appearance {
-            iced::Theme::Light.hovered(style, is_mouse_over_scrollbar)
+            iced::Theme::GruvboxDark.hovered(style, is_mouse_over_scrollbar)
         }
     }
 }
@@ -144,15 +163,15 @@ pub(crate) mod slider {
         type Style = Slider;
 
         fn active(&self, style: &Self::Style) -> Appearance {
-            iced::Theme::Light.active(style)
+            iced::Theme::GruvboxDark.active(style)
         }
 
         fn hovered(&self, style: &Self::Style) -> Appearance {
-            iced::Theme::Light.hovered(style)
+            iced::Theme::GruvboxDark.hovered(style)
         }
 
         fn dragging(&self, style: &Self::Style) -> Appearance {
-            iced::Theme::Light.dragging(style)
+            iced::Theme::GruvboxDark.dragging(style)
         }
     }
 }
@@ -167,7 +186,7 @@ pub(crate) mod svg {
         type Style = Svg;
 
         fn appearance(&self, style: &Self::Style) -> Appearance {
-            iced::Theme::Light.appearance(style)
+            iced::Theme::GruvboxDark.appearance(style)
         }
     }
 }
@@ -226,11 +245,11 @@ pub(crate) mod tab_bar {
         type Style = iced_aw::style::tab_bar::TabBarStyles;
 
         fn active(&self, style: &Self::Style, is_active: bool) -> Appearance {
-            iced::Theme::Light.active(style, is_active)
+            iced::Theme::GruvboxDark.active(style, is_active)
         }
 
         fn hovered(&self, style: &Self::Style, is_active: bool) -> Appearance {
-            iced::Theme::Light.hovered(style, is_active)
+            iced::Theme::GruvboxDark.hovered(style, is_active)
         }
     }
 }
@@ -244,7 +263,7 @@ pub(crate) mod badge {
         type Style = iced_aw::style::BadgeStyles;
 
         fn active(&self, style: &Self::Style) -> Appearance {
-            iced::Theme::Light.active(&style)
+            iced::Theme::GruvboxDark.active(&style)
         }
     }
 }

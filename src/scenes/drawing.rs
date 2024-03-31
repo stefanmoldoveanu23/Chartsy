@@ -7,7 +7,6 @@ use std::fmt::{Display, Formatter};
 use std::fs;
 use std::fs::{create_dir_all, File};
 use std::io::Write;
-use std::ops::Deref;
 use std::sync::Arc;
 
 use crate::canvas::canvas::Canvas;
@@ -517,7 +516,6 @@ impl Scene for Box<Drawing> {
                 let document = self.canvas.svg.as_document();
                 let db = globals.get_db().unwrap();
                 let user_id = globals.get_user().unwrap().get_id();
-                let drawing_id = self.canvas.id;
                 let description = self.post_data.description.clone();
 
                 let tags :Vec<String>= self.post_data.post_tags.iter().map(|tag| tag.name.clone()).collect();
@@ -571,7 +569,6 @@ impl Scene for Box<Drawing> {
                                         documents: vec![
                                             doc!{
                                                 "id": post_id,
-                                                "drawing_id": drawing_id,
                                                 "user_id": user_id,
                                                 "description": description,
                                                 "tags": tags.clone()

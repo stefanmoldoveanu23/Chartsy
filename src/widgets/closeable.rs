@@ -1,10 +1,11 @@
-use iced::{Alignment, Background, Color, Element, Event, Length, mouse, Padding, Point, Rectangle, Size, Vector};
+use iced::{Alignment, Background, Element, Event, Length, mouse, Padding, Point, Rectangle, Size, Vector};
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::{Quad, Style};
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::advanced::widget::{Operation, Tree};
 use iced::event::Status;
 use iced::mouse::{Cursor, Interaction};
+use iced::theme::Palette;
 use iced::widget::image::Handle;
 use crate::widgets::close::Close;
 
@@ -431,7 +432,7 @@ pub struct Appearance {
 impl Default for Appearance {
     fn default() -> Self {
         Appearance {
-            background: Background::Color(Color::WHITE)
+            background: Background::Color(Palette::GRUVBOX_DARK.background)
         }
     }
 }
