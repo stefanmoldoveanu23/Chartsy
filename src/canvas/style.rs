@@ -201,7 +201,7 @@ impl Serialize<Document> for Style {
 }
 
 impl Deserialize<Document> for Style {
-    fn deserialize(document: Document) -> Self
+    fn deserialize(document: &Document) -> Self
     where
         Self: Sized,
     {
@@ -216,14 +216,14 @@ impl Deserialize<Document> for Style {
             }
 
             if let Some(Bson::Document(color)) = stroke.get("color") {
-                stroke_color = Color::deserialize(color.clone());
+                stroke_color = Color::deserialize(color);
             }
 
             style.stroke = Some((stroke_width, stroke_color, false, false));
         }
 
         if let Some(Bson::Document(fill)) = document.get("fill") {
-            style.fill = Some((Color::deserialize(fill.clone()), false));
+            style.fill = Some((Color::deserialize(fill), false));
         }
 
         style
@@ -251,7 +251,7 @@ impl Serialize<Object> for Style {
 }
 
 impl Deserialize<Object> for Style {
-    fn deserialize(document: Object) -> Self
+    fn deserialize(document: &Object) -> Self
     where
         Self: Sized,
     {
@@ -265,14 +265,14 @@ impl Deserialize<Object> for Style {
                 width = f32::from(*width_value);
             }
             if let Some(JsonValue::Object(color_value)) = stroke.get("color") {
-                color = Color::deserialize(color_value.clone());
+                color = Color::deserialize(color_value);
             }
 
             style.stroke = Some((width, color, false, false));
         }
 
         if let Some(JsonValue::Object(fill)) = document.get("fill") {
-            style.fill = Some((Color::deserialize(fill.clone()), false));
+            style.fill = Some((Color::deserialize(fill), false));
         }
 
         style

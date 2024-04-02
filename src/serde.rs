@@ -18,9 +18,15 @@ where
     T: Clone,
 {
     /// Deserialized the document, returning an instance.
-    fn deserialize(document: T) -> Self
+    fn deserialize(document: &T) -> Self
     where
         Self: Sized;
+}
+
+impl Deserialize<Document> for Document {
+    fn deserialize(document: &Document) -> Self where Self: Sized {
+        document.clone()
+    }
 }
 
 impl Serialize<Document> for Vector {
@@ -88,7 +94,7 @@ impl Serialize<Object> for Color {
 }
 
 impl Deserialize<Document> for Vector {
-    fn deserialize(document: Document) -> Self {
+    fn deserialize(document: &Document) -> Self {
         let mut vector = Vector::new(0.0, 0.0);
 
         if let Some(Bson::Double(x)) = document.get("x") {
@@ -104,7 +110,7 @@ impl Deserialize<Document> for Vector {
 }
 
 impl Deserialize<Object> for Vector {
-    fn deserialize(document: Object) -> Self
+    fn deserialize(document: &Object) -> Self
     where
         Self: Sized,
     {
@@ -123,7 +129,7 @@ impl Deserialize<Object> for Vector {
 }
 
 impl Deserialize<Document> for Point {
-    fn deserialize(document: Document) -> Self {
+    fn deserialize(document: &Document) -> Self {
         let mut point = Point::new(0.0, 0.0);
 
         if let Some(Bson::Double(x)) = document.get("x") {
@@ -139,7 +145,7 @@ impl Deserialize<Document> for Point {
 }
 
 impl Deserialize<Object> for Point {
-    fn deserialize(document: Object) -> Self
+    fn deserialize(document: &Object) -> Self
     where
         Self: Sized,
     {
@@ -157,7 +163,7 @@ impl Deserialize<Object> for Point {
 }
 
 impl Deserialize<Document> for Color {
-    fn deserialize(document: Document) -> Self
+    fn deserialize(document: &Document) -> Self
     where
         Self: Sized,
     {
@@ -184,7 +190,7 @@ impl Deserialize<Document> for Color {
 }
 
 impl Deserialize<Object> for Color {
-    fn deserialize(document: Object) -> Self
+    fn deserialize(document: &Object) -> Self
     where
         Self: Sized,
     {

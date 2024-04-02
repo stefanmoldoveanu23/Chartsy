@@ -151,7 +151,7 @@ impl Serialize<Document> for Circle {
 }
 
 impl Deserialize<Document> for Circle {
-    fn deserialize(document: Document) -> Self
+    fn deserialize(document: &Document) -> Self
     where
         Self: Sized,
     {
@@ -162,7 +162,7 @@ impl Deserialize<Document> for Circle {
         };
 
         if let Some(Bson::Document(center)) = document.get("center") {
-            circle.center = Point::deserialize(center.clone());
+            circle.center = Point::deserialize(center);
         }
 
         if let Some(Bson::Double(radius)) = document.get("radius") {
@@ -170,7 +170,7 @@ impl Deserialize<Document> for Circle {
         }
 
         if let Some(Bson::Document(style)) = document.get("style") {
-            circle.style = Style::deserialize(style.clone());
+            circle.style = Style::deserialize(style);
         }
 
         circle
@@ -207,7 +207,7 @@ impl Serialize<Object> for Circle {
 }
 
 impl Deserialize<Object> for Circle {
-    fn deserialize(document: Object) -> Self
+    fn deserialize(document: &Object) -> Self
     where
         Self: Sized,
     {
@@ -218,13 +218,13 @@ impl Deserialize<Object> for Circle {
         };
 
         if let Some(JsonValue::Object(center)) = document.get("center") {
-            circle.center = Point::deserialize(center.clone());
+            circle.center = Point::deserialize(center);
         }
         if let Some(JsonValue::Number(radius)) = document.get("radius") {
             circle.radius = f32::from(*radius);
         }
         if let Some(JsonValue::Object(style)) = document.get("style") {
-            circle.style = Style::deserialize(style.clone());
+            circle.style = Style::deserialize(style);
         }
 
         circle

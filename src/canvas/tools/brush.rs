@@ -202,7 +202,7 @@ impl<BrushType> Deserialize<Document> for BrushType
 where
     BrushType: Brush + Clone + 'static,
 {
-    fn deserialize(document: Document) -> Self
+    fn deserialize(document: &Document) -> Self
     where
         Self: Sized,
     {
@@ -211,19 +211,19 @@ where
         let mut brush_style: Style = Style::default();
 
         if let Some(Bson::Document(start)) = document.get("start") {
-            brush_start = Point::deserialize(start.clone());
+            brush_start = Point::deserialize(start);
         }
 
         if let Some(Bson::Array(offsets)) = document.get("offsets") {
             for offset in offsets {
                 if let Bson::Document(offset) = offset {
-                    brush_offsets.push(Vector::deserialize(offset.clone()));
+                    brush_offsets.push(Vector::deserialize(offset));
                 }
             }
         }
 
         if let Some(Bson::Document(style)) = document.get("style") {
-            brush_style = Style::deserialize(style.clone());
+            brush_style = Style::deserialize(style);
         }
 
         BrushType::new(brush_start, brush_offsets, brush_style)
@@ -275,7 +275,7 @@ impl<BrushType> Deserialize<Object> for BrushType
 where
     BrushType: Brush + Clone + 'static,
 {
-    fn deserialize(document: Object) -> Self
+    fn deserialize(document: &Object) -> Self
     where
         Self: Sized,
     {
@@ -284,17 +284,17 @@ where
         let mut brush_style = Style::default();
 
         if let Some(JsonValue::Object(start)) = document.get("start") {
-            brush_start = Point::deserialize(start.clone());
+            brush_start = Point::deserialize(start);
         }
         if let Some(JsonValue::Array(offsets)) = document.get("offsets") {
             for offset in offsets {
                 if let JsonValue::Object(offset) = offset {
-                    brush_offsets.push(Vector::deserialize(offset.clone()));
+                    brush_offsets.push(Vector::deserialize(offset));
                 }
             }
         }
         if let Some(JsonValue::Object(style)) = document.get("style") {
-            brush_style = Style::deserialize(style.clone());
+            brush_style = Style::deserialize(style);
         }
 
         BrushType::new(brush_start, brush_offsets, brush_style)

@@ -7,8 +7,8 @@ pub struct DebugError {
 }
 
 impl DebugError {
-    pub fn new(message: String) -> Self {
-        DebugError { message }
+    pub fn new(message: impl Into<String>) -> Self {
+        DebugError { message: message.into() }
     }
 }
 

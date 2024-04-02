@@ -133,7 +133,7 @@ impl Serialize<Document> for Line {
 }
 
 impl Deserialize<Document> for Line {
-    fn deserialize(document: Document) -> Self
+    fn deserialize(document: &Document) -> Self
     where
         Self: Sized,
     {
@@ -144,15 +144,15 @@ impl Deserialize<Document> for Line {
         };
 
         if let Some(Bson::Document(start)) = document.get("start") {
-            line.start = Point::deserialize(start.clone());
+            line.start = Point::deserialize(start);
         }
 
         if let Some(Bson::Document(end)) = document.get("end") {
-            line.end = Point::deserialize(end.clone());
+            line.end = Point::deserialize(end);
         }
 
         if let Some(Bson::Document(style)) = document.get("style") {
-            line.style = Style::deserialize(style.clone());
+            line.style = Style::deserialize(style);
         }
 
         line
@@ -190,7 +190,7 @@ impl Serialize<Object> for Line {
 }
 
 impl Deserialize<Object> for Line {
-    fn deserialize(document: Object) -> Self
+    fn deserialize(document: &Object) -> Self
     where
         Self: Sized,
     {
@@ -201,13 +201,13 @@ impl Deserialize<Object> for Line {
         };
 
         if let Some(JsonValue::Object(start)) = document.get("start") {
-            line.start = Point::deserialize(start.clone());
+            line.start = Point::deserialize(start);
         }
         if let Some(JsonValue::Object(end)) = document.get("end") {
-            line.end = Point::deserialize(end.clone());
+            line.end = Point::deserialize(end);
         }
         if let Some(JsonValue::Object(style)) = document.get("style") {
-            line.style = Style::deserialize(style.clone());
+            line.style = Style::deserialize(style);
         }
 
         line

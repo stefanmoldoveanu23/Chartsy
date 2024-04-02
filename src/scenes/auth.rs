@@ -1,8 +1,6 @@
 use crate::config;
 use crate::errors::auth::AuthError;
-use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
-use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::scenes::scenes::Scenes;
 use crate::serde::{Deserialize, Serialize};
@@ -36,8 +34,6 @@ enum LogInField {
 /// Possible messages for the authentication page.
 #[derive(Clone)]
 enum AuthAction {
-    None,
-
     /// Triggered when a field in the registration form has been updated.
     RegisterTextFieldUpdate(RegisterField),
 
@@ -75,7 +71,6 @@ impl Action for AuthAction {
 
     fn get_name(&self) -> String {
         match self {
-            AuthAction::None => String::from("None"),
             AuthAction::RegisterTextFieldUpdate(_) => {
                 String::from("Modified register text input field")
             }
@@ -140,7 +135,7 @@ impl User {
 }
 
 impl Deserialize<Document> for User {
-    fn deserialize(document: Document) -> Self
+    fn deserialize(document: &Document) -> Self
     where
         Self: Sized,
     {
@@ -266,64 +261,6 @@ impl SceneOptions<Auth> for AuthOptions {
 }
 
 impl Auth {
-    /// [Mongo request chain function](MongoRequestType::Chain) that checks whether a user already exists.
-    fn check_user_exists(res: MongoResponse, document: Document) -> Result<MongoRequest, Error> {
-        match res {
-            MongoResponse::Get(res) => {
-                if res.len() > 0 {
-                    Err(Error::AuthError(AuthError::RegisterUserAlreadyExists))
-                } else {
-                    Ok(MongoRequest::new(
-                        "users".into(),
-                        MongoRequestType::Insert{
-                            documents: vec![document],
-                            options: None
-                        },
-                    ))
-                }
-            }
-            _ => Err(Error::DebugError(DebugError::new(
-                "Error in chain request typing when registering user!".into(),
-            ))),
-        }
-    }
-
-    /// [Mongo request chain function](MongoRequestType::Chain) that sets the validated field as true for a given user.
-    fn set_email_validated(res: MongoResponse, document: Document) -> Result<MongoRequest, Error> {
-        let email = document.get_str("email");
-        if email.is_err() {
-            return Err(Error::DebugError(DebugError::new(
-                "Error in chain setting email validated; no email provided!".into(),
-            )));
-        }
-
-        match res {
-            MongoResponse::Get(res) => {
-                if res.len() > 0 {
-                    Ok(MongoRequest::new(
-                        "users".into(),
-                        MongoRequestType::Update {
-                            filter: doc! {
-                                "email": email.unwrap(),
-                            },
-                            update: doc! {
-                                "$set": {
-                                "validated": true,
-                                },
-                            },
-                            options: None,
-                        },
-                    ))
-                } else {
-                    Err(Error::AuthError(AuthError::RegisterBadCode))
-                }
-            }
-            _ => Err(Error::DebugError(DebugError::new(
-                "Error in chain request typing when registering user!".into(),
-            ))),
-        }
-    }
-
     /// Checks the provided credentials in the registration form; if there is an issue, then it will return the error;
     /// otherwise, it will return [None].
     fn check_credentials(&self) -> Option<Error> {
@@ -451,34 +388,16 @@ impl Scene for Auth {
                         Some(db) => {
                             Command::perform(
                                 async move {
-                                    MongoRequest::send_requests(
-                                        db,
-                                        vec![MongoRequest::new(
-                                            "users".into(),
-                                            MongoRequestType::Chain(
-                                                Box::new(MongoRequestType::Get{
-                                                    filter: doc! {
-                                                        "email": register_form.email.clone(),
-                                                    },
-                                                    options: None
-                                                }),
-                                                vec![(register_form.serialize(), Auth::check_user_exists)],
-                                            ),
-                                        )]
+                                    mongo::auth::create_user(
+                                        &db,
+                                        register_form.email.clone(),
+                                        register_form.serialize()
                                     ).await
                                 },
                                 move |res| {
                                     match res {
-                                        Ok(res) => {
-                                            if let Some(MongoResponse::Insert(_)) = res.get(0) {
-                                                Message::DoAction(Box::new(AuthAction::SendRegister(true)))
-                                            } else {
-                                                Message::DoAction(Box::new(AuthAction::HandleError(Error::DebugError(
-                                                    DebugError::new("Wrong chain final typing!".into()),
-                                                ))))
-                                            }
-                                        }
-                                        Err(message) => message
+                                        Ok(_) => Message::DoAction(Box::new(AuthAction::SendRegister(true))),
+                                        Err(err) => Message::Error(err)
                                     }
 
                                 })
@@ -495,39 +414,17 @@ impl Scene for Auth {
 
                 if let Some(db) = globals.get_db() {
                     return Command::perform(
-                        async {
-                            MongoRequest::send_requests(
-                                db,
-                                vec![MongoRequest::new(
-                                    "users".into(),
-                                    MongoRequestType::Chain(
-                                        Box::new(MongoRequestType::Get{
-                                            filter: doc! {
-                                                "email": register_form.email.clone(),
-                                                "code": register_code,
-                                            },
-                                            options: None
-                                        }),
-                                        vec![(
-                                            doc! {"email": register_form.email},
-                                            Auth::set_email_validated,
-                                        )],
-                                    ),
-                                )]
+                        async move {
+                            mongo::auth::validate_email(
+                                &db,
+                                register_form.email,
+                                register_code.unwrap_or_default()
                             ).await
                         },
                         move |res| {
                             match res {
-                                Ok(res) => {
-                                    if let Some(MongoResponse::Update(_)) = res.get(0) {
-                                        Message::DoAction(Box::new(AuthAction::DoneRegistration))
-                                    } else {
-                                        Message::DoAction(Box::new(AuthAction::HandleError(Error::DebugError(
-                                            DebugError::new("Wrong chain final typing!".into()),
-                                        ))))
-                                    }
-                                }
-                                Err(message) => message
+                                Ok(_) => Message::DoAction(Box::new(AuthAction::DoneRegistration)),
+                                Err(err) => Message::Error(err)
                             }
                         }
                     );
@@ -544,35 +441,14 @@ impl Scene for Auth {
                 if let Some(db) = globals.get_db() {
                     return Command::perform(
                         async move {
-                            MongoRequest::send_requests(
-                                db,
-                                vec![MongoRequest::new(
-                                    "users".into(),
-                                    MongoRequestType::Get{
-                                        filter: log_in_form.serialize(),
-                                        options: None
-                                    },
-                                )]
-                            ).await
+                            mongo::auth::login(&db, log_in_form.serialize()).await
                         },
                         move |res| {
                             match res {
-                                Ok(res) => {
-                                    if let Some(MongoResponse::Get(cursor)) = res.get(0) {
-                                        if let Some(document) = cursor.get(0) {
-                                            Message::DoAction(Box::new(AuthAction::LoggedIn(User::deserialize(
-                                                document.clone(),
-                                            ))))
-                                        } else {
-                                            Message::DoAction(Box::new(AuthAction::HandleError(Error::AuthError(
-                                                AuthError::LogInUserDoesntExist,
-                                            ))))
-                                        }
-                                    } else {
-                                        Message::DoAction(Box::new(AuthAction::None))
-                                    }
+                                Ok(user) => {
+                                    Message::DoAction(Box::new(AuthAction::LoggedIn(user)))
                                 }
-                                Err(message) => message
+                                Err(err) => Message::Error(err)
                             }
                         }
                     );
@@ -591,7 +467,7 @@ impl Scene for Auth {
 
                 return Command::perform(
                     async move {
-                        mongo::update_user_token(db, id).await
+                        mongo::auth::update_user_token(&db, id).await
                     },
                     |_| Message::ChangeScene(Scenes::Main(None))
                 );
@@ -617,7 +493,6 @@ impl Scene for Auth {
                     }
                 }
             }
-            AuthAction::None => {}
         }
 
         Command::none()

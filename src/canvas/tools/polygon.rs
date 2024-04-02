@@ -190,7 +190,7 @@ impl Serialize<Document> for Polygon {
 }
 
 impl Deserialize<Document> for Polygon {
-    fn deserialize(document: Document) -> Self
+    fn deserialize(document: &Document) -> Self
     where
         Self: Sized,
     {
@@ -201,19 +201,19 @@ impl Deserialize<Document> for Polygon {
         };
 
         if let Some(Bson::Document(first)) = document.get("first") {
-            polygon.first = Point::deserialize(first.clone());
+            polygon.first = Point::deserialize(first);
         }
 
         if let Some(Bson::Array(offsets)) = document.get("offsets") {
             for offset in offsets {
                 if let Bson::Document(offset) = offset {
-                    polygon.offsets.push(Vector::deserialize(offset.clone()));
+                    polygon.offsets.push(Vector::deserialize(offset));
                 }
             }
         }
 
         if let Some(Bson::Document(style)) = document.get("style") {
-            polygon.style = Style::deserialize(style.clone());
+            polygon.style = Style::deserialize(style);
         }
 
         polygon
@@ -270,7 +270,7 @@ impl Serialize<Object> for Polygon {
 }
 
 impl Deserialize<Object> for Polygon {
-    fn deserialize(document: Object) -> Self
+    fn deserialize(document: &Object) -> Self
     where
         Self: Sized,
     {
@@ -281,17 +281,17 @@ impl Deserialize<Object> for Polygon {
         };
 
         if let Some(JsonValue::Object(first)) = document.get("first") {
-            polygon.first = Point::deserialize(first.clone());
+            polygon.first = Point::deserialize(first);
         }
         if let Some(JsonValue::Array(offsets)) = document.get("offsets") {
             for offset in offsets {
                 if let JsonValue::Object(offset) = offset {
-                    polygon.offsets.push(Vector::deserialize(offset.clone()));
+                    polygon.offsets.push(Vector::deserialize(offset));
                 }
             }
         }
         if let Some(JsonValue::Object(style)) = document.get("style") {
-            polygon.style = Style::deserialize(style.clone());
+            polygon.style = Style::deserialize(style);
         }
 
         polygon

@@ -63,7 +63,7 @@ impl Application for Chartsy {
             },
             Command::batch(vec![
                 window::change_mode(window::Id::MAIN, window::Mode::Fullscreen),
-                Command::perform(mongo::connect_to_mongodb(), Message::DoneDatabaseInit),
+                Command::perform(mongo::base::connect_to_mongodb(), Message::DoneDatabaseInit),
             ]),
         )
     }
@@ -88,29 +88,27 @@ impl Application for Chartsy {
                         println!("Successfully connected to database.");
                         Command::perform(
                             async move {
-                                let result = mongo::get_user_from_token(db.clone()).await;
+                                let result = mongo::auth::get_user_from_token(&db).await;
 
                                 if let Ok(user) = &result {
                                     let user_id = user.get_id();
 
-                                    mongo::update_user_token(db, user_id).await;
+                                    mongo::auth::update_user_token(&db, user_id).await;
                                 }
 
                                 result
                             },
                             |result| {
                                 match result {
-                                    Ok(user) => {
-                                        Message::AutoLoggedIn(user)
-                                    }
-                                    Err(message) => message
+                                    Ok(user) => Message::AutoLoggedIn(user),
+                                    Err(err) => Message::Error(err)
                                 }
                             }
                         )
                     }
                     Err(err) => {
                         println!("Error connecting to database: {}", err);
-                        Command::perform(mongo::connect_to_mongodb(), Message::DoneDatabaseInit)
+                        Command::perform(mongo::base::connect_to_mongodb(), Message::DoneDatabaseInit)
                     }
                 }
 

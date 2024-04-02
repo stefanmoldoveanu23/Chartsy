@@ -3,7 +3,6 @@ use super::tools::line::LinePending;
 use crate::canvas::layer::{CanvasAction, Layer};
 use crate::canvas::style::Style;
 use crate::canvas::svg::SVG;
-use crate::mongo::{MongoRequest, MongoRequestType};
 use crate::scene::{Globals, Message};
 use crate::scenes::drawing::DrawingAction;
 use crate::serde::Serialize;
@@ -18,12 +17,13 @@ use iced::widget::canvas;
 use iced::{Command, Element, Event, Length, Rectangle, Renderer, Size};
 use json::object::Object;
 use json::JsonValue;
-use mongodb::bson::{doc, Document, Uuid};
+use mongodb::bson::{Document, Uuid};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::ops::Deref;
 use std::sync::Arc;
 use svg::node::element::Group;
+use crate::mongo;
 
 /// Holds the [cache](canvas::Cache) for a canvas layer.
 pub struct State {
@@ -217,28 +217,16 @@ impl Canvas {
                     if let Some(db) = db {
                         return Command::perform(
                             async move {
-                                MongoRequest::send_requests(
-                                    db,
-                                    vec![
-                                        MongoRequest::new(
-                                            "canvases".into(),
-                                            MongoRequestType::Update {
-                                                filter: doc! { "id": id },
-                                                update: doc! { "$set": { "layers": layers as u32 } },
-                                                options: None
-                                            }
-                                        )
-                                    ]
+                                mongo::drawing::update_layer_count(
+                                    &db,
+                                    id,
+                                    layers as u32
                                 ).await
                             },
                             |responses| {
                                 match responses {
-                                    Ok(_) => {
-                                        Message::DoAction(Box::new(DrawingAction::None))
-                                    }
-                                    Err(message) => {
-                                        message
-                                    }
+                                    Ok(_) => Message::None,
+                                    Err(err) => Message::Error(err)
                                 }
                             }
                         );
@@ -305,34 +293,22 @@ impl Canvas {
                     if let Some(db) = db {
                         Command::perform(
                         async move {
-                            MongoRequest::send_requests(
-                                db,
-                                vec![
-                                    MongoRequest::new(
-                                        "tools".into(),
-                                        MongoRequestType::Delete{
-                                            filter: doc! {
-                                                "canvas_id": canvas_id,
-                                                "order": {
-                                                    "$gte": delete_lower_bound as u32,
-                                                    "$lte": delete_upper_bound as u32,
-                                                }
-                                            },
-                                            options: None
-                                        },
-                                    ),
-                                    MongoRequest::new(
-                                        "tools".into(),
-                                        MongoRequestType::Insert{
-                                            documents: tools_mongo,
-                                            options: None,
-                                        },
-                                    ),
-                                ]
+                            mongo::drawing::update_drawing(
+                                &db,
+                                canvas_id,
+                                delete_lower_bound as u32,
+                                delete_upper_bound as u32,
+                                tools_mongo
                             ).await
                         },
-                        move |_| {
-                            Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Saved)))
+                        move |result| {
+                            match result {
+                                Ok(()) => {
+                                    Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Saved)))
+                                }
+                                Err(err) => Message::Error(err)
+                            }
+
                         })
                     } else {
                         Command::none()

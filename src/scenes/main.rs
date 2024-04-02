@@ -7,7 +7,8 @@ use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{Column, Container, Scrollable, Space, Row, Button, Text};
 use iced::{Alignment, Command, Element, Length, Renderer};
 use iced_aw::{Tabs, TabLabel};
-use mongodb::bson::{doc, Bson, Uuid, UuidRepresentation, Document};
+use mongodb::bson::{Bson, Uuid, UuidRepresentation, Document};
+use crate::mongo;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::card::Card;
 
@@ -15,7 +16,6 @@ use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::scenes::auth::{AuthOptions, AuthTabIds};
 use crate::scenes::scenes::Scenes;
 
-use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 use crate::scenes::drawing::{DrawingOptions, SaveMode};
 use crate::theme::Theme;
 use crate::widgets::closeable::Closeable;
@@ -33,8 +33,6 @@ enum ModalType {
 /// The [Messages](Action) of the main [Scene].
 #[derive(Clone)]
 enum MainAction {
-    None,
-
     /// Opens or closes the given modal.
     ToggleModal(ModalType),
 
@@ -58,7 +56,6 @@ impl Action for MainAction {
 
     fn get_name(&self) -> String {
         match self {
-            MainAction::None => String::from("None"),
             MainAction::ToggleModal {..} => String::from("Toggle modal"),
             MainAction::LoadedDrawings(_, _) => String::from("Loaded drawings"),
             MainAction::LogOut => String::from("Logged out"),
@@ -219,30 +216,17 @@ impl Main {
 
                 Command::perform(
                     async move {
-                        MongoRequest::send_requests(
-                            db,
-                            vec![MongoRequest::new(
-                                "canvases".into(),
-                                MongoRequestType::Get{
-                                    filter: doc! {"user_id": user_id},
-                                    options: None
-                                },
-                            )]
-                        ).await
+                        mongo::main::get_drawings(&db, user_id).await
                     },
-                    |res| {
-                        match res {
-                            Ok(res) => {
-                                if let Some(MongoResponse::Get(cursor)) = res.get(0) {
-                                    Message::DoAction(Box::new(MainAction::LoadedDrawings(
-                                        Main::get_drawings_online(cursor),
-                                        MainTabIds::Online
-                                    )))
-                                } else {
-                                    Message::DoAction(Box::new(MainAction::None))
-                                }
+                    |result| {
+                        match result {
+                            Ok(ref documents) => {
+                                Message::DoAction(Box::new(MainAction::LoadedDrawings(
+                                    Main::get_drawings_online(documents),
+                                    MainTabIds::Online
+                                )))
                             }
-                            Err(message) => message
+                            Err(err) => Message::Error(err)
                         }
                     }
                 )
@@ -318,7 +302,6 @@ impl Scene for Main {
                 self.select_tab(tab_id, globals)
             }
             MainAction::ErrorHandler(_) => Command::none(),
-            MainAction::None => Command::none()
         }
     }
 

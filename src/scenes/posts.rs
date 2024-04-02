@@ -9,15 +9,11 @@ use iced::advanced::image::Handle;
 use iced::{Alignment, Element, Length, Renderer, Command};
 use iced::widget::{Column, Row, Scrollable, Image, Text, TextInput, Button};
 use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
-use mongodb::Cursor;
-use mongodb::options::{AggregateOptions, UpdateOptions};
 use crate::widgets::closeable::Closeable;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::post_summary::PostSummary;
-use crate::config;
-use crate::errors::debug::DebugError;
+use crate::{config, mongo};
 use crate::errors::error::Error;
-use crate::mongo::{MongoRequest, MongoRequestType};
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::scenes::auth::User;
 use crate::serde::{Deserialize, Serialize};
@@ -26,7 +22,7 @@ use crate::widgets::rating::Rating;
 
 /// A comment on a post.
 #[derive(Clone)]
-struct Comment {
+pub struct Comment {
     /// The id of the [Comment].
     id: Uuid,
 
@@ -88,14 +84,14 @@ impl Serialize<Document> for Comment {
 }
 
 impl Deserialize<Document> for Comment {
-    fn deserialize(document: Document) -> Self where Self: Sized {
+    fn deserialize(document: &Document) -> Self where Self: Sized {
         let mut comment = Comment::default();
 
         if let Some(Bson::Binary(bin)) = document.get("id") {
             comment.id = bin.to_uuid_with_representation(UuidRepresentation::Standard).unwrap();
         }
         if let Some(Bson::Document(user)) = document.get("user") {
-            comment.user = Deserialize::deserialize(user.clone());
+            comment.user = Deserialize::deserialize(user);
         }
         if let Some(Bson::String(content)) = document.get("content") {
             comment.content = content.clone();
@@ -214,25 +210,12 @@ impl CommentMessage {
 
                 Command::perform(
                     async move {
-                        MongoRequest::send_requests(
-                            db,
-                            vec![
-                                MongoRequest::new(
-                                    "comments".into(),
-                                    MongoRequestType::Insert {
-                                        documents: vec![
-                                            document
-                                        ],
-                                        options: None
-                                    }
-                                )
-                            ]
-                        ).await
+                        mongo::posts::create_comment(&db, &document).await
                     },
                     |result| {
                         match result {
                             Ok(_) => Message::None,
-                            Err(message) => message
+                            Err(err) => Message::Error(err)
                         }
                     }
                 )
@@ -254,45 +237,20 @@ impl CommentMessage {
 
                 Command::perform(
                     async move {
-                        let mut cursor = match db.collection::<Result<Document, mongodb::error::Error>>("comments").aggregate(
-                            vec![
-                                doc! {
-                                    "$match": filter,
-                                },
-                                doc! {
-                                    "$lookup": {
-                                        "from": "users",
-                                        "localField": "user_id",
-                                        "foreignField": "id",
-                                        "as": "user"
-                                    }
-                                },
-                                doc! {
-                                    "$unwind": "$user"
-                                }
-                            ],
-                            AggregateOptions::builder().allow_disk_use(true).build()
-                        ).await {
-                            Ok(cursor) => cursor,
-                            Err(err) => {
-                                return Err(Message::Error(Error::DebugError(DebugError::new(err.to_string()))));
-                            }
-                        };
-
-                        Ok(Posts::get_from_cursor::<Comment>(&mut cursor).await)
+                        mongo::posts::get_comments(&db, filter).await
                     },
                     move |result| {
                         match result {
-                            Ok(result) => {
+                            Ok(comments) => {
                                 Message::DoAction(Box::new(PostsAction::CommentMessage(
                                     CommentMessage::Loaded {
                                         post,
                                         parent,
-                                        comments: result
+                                        comments
                                     }
                                 )))
                             }
-                            Err(message) => message
+                            Err(err) => Message::Error(err)
                         }
                     }
                 )
@@ -317,7 +275,7 @@ impl CommentMessage {
 
 /// The data for a loaded post.
 #[derive(Clone)]
-struct Post {
+pub struct Post {
     /// The id of the post.
     id: Uuid,
 
@@ -364,7 +322,7 @@ impl Default for Post {
 }
 
 impl Deserialize<Document> for Post {
-    fn deserialize(document: Document) -> Self where Self: Sized {
+    fn deserialize(document: &Document) -> Self where Self: Sized {
         let mut post :Post= Default::default();
 
         if let Some(Bson::Document(post_data)) = document.get("post") {
@@ -384,7 +342,7 @@ impl Deserialize<Document> for Post {
             }
         }
         if let Some(Bson::Document(user)) = document.get("user") {
-            post.user = Deserialize::deserialize(user.clone());
+            post.user = User::deserialize(user);
         }
         if let Some(Bson::Document(rating)) = document.get("rating") {
             if let Some(Bson::Int32(rating)) = rating.get("rating") {
@@ -513,33 +471,6 @@ pub struct Posts {
     loading: bool,
 }
 
-impl Posts {
-    async fn get_from_cursor<Type>(documents: &mut Cursor<Document>) -> Vec<Type>
-    where
-        Type: Deserialize<Document>
-    {
-        let mut objects = vec![];
-        loop {
-            let exists = documents.advance().await;
-            let document = match exists {
-                Ok(true) => {
-                    match Document::try_from(documents.current()) {
-                        Ok(document) => document,
-                        _ => { break; }
-                    }
-                }
-                _ => { break; }
-            };
-
-            let object :Type= Deserialize::deserialize(document);
-
-            objects.push(object);
-        }
-
-        objects
-    }
-}
-
 /// The [Posts] scene does not have any optional initialization values.
 #[derive(Debug, Clone, Copy)]
 pub struct PostsOptions {}
@@ -578,338 +509,41 @@ impl Scene for Posts {
             posts,
             Command::perform(
                 async move {
-                    let mut posts = match db.collection::<Result<Document, mongodb::error::Error>>("ratings").aggregate(
-                        Vec::from([
-                            /// Groups all ratings by the post they were made on
-                            doc! {
-                                "$group": {
-                                    "_id": "$post_id",
-                                    "ratings": {
-                                        "$push": "$$ROOT"
-                                    }
-                                }
-                            },
-                            /// Filters out all posts that the currently authenticated user hasn't rated
-                            doc! {
-                                "$match": {
-                                    "ratings": {
-                                        "$elemMatch": { "user_id": user_id }
-                                    }
-                                }
-                            },
-                            /// Unwind all groups
-                            doc! {
-                                "$unwind": "$ratings"
-                            },
-                            /// Join with the corresponding post
-                            doc! {
-                                "$lookup": {
-                                    "from": "posts",
-                                    "localField": "_id",
-                                    "foreignField": "id",
-                                    "as": "post"
-                                }
-                            },
-                            /// Unwind by post
-                            doc! {
-                                "$unwind": "$post"
-                            },
-                            /// Unwind by tags
-                            doc! {
-                                "$unwind": "$post.tags"
-                            },
-                            /// Restructure to keep the essential data
-                            doc! {
-                                "$project": {
-                                    "_id": 0,
-                                    "user_id": "$ratings.user_id",
-                                    "tag": "$post.tags",
-                                    "value": {
-                                        "$subtract": [
-                                            { "$divide":
-                                                [
-                                                    { "$subtract": ["$ratings.rating", 1.0] },
-                                                    2.0
-                                                ]
-                                            },
-                                            1.0
-                                        ]
-                                    },
-                                }
-                            },
-                            /// Average score by user and tag
-                            doc! {
-                                "$group": {
-                                    "_id": { "user_id": "$user_id", "tag": "$tag" },
-                                    "score": { "$avg": "$value" }
-                                }
-                            },
-                            /// Group by user, computing the magnitudes
-                            doc! {
-                                "$group": {
-                                    "_id": "$_id.tag",
-                                    "user_score": {
-                                        "$max": {
-                                            "$cond": {
-                                                "if": { "$eq": ["$_id.user_id", user_id] },
-                                                "then": "$score",
-                                                "else": null
-                                            }
-                                        }
-                                    },
-                                    "groups": {
-                                        "$push": {
-                                            "user_id": "$_id.user_id",
-                                            "score": "$score"
-                                        }
-                                    }
-                                }
-                            },
-                            /// Unwind; this way, each tag will have access to the authenticated users score for the same tag
-                            doc! {
-                                "$unwind": "$groups"
-                            },
-                            /// Create the dot multiplication
-                            doc! {
-                                "$project": {
-                                    "_id": 0,
-                                    "user_id": "$groups.user_id",
-                                    "tag": "$_id",
-                                    "score": "$groups.score",
-                                    "dot": {
-                                        "$multiply": ["$groups.score", "$user_score"]
-                                    }
-                                }
-                            },
-                            /// Group by user and compute magnitudes and dot product
-                            doc! {
-                                "$group": {
-                                    "_id": "$user_id",
-                                    "magnitude_square": {
-                                        "$sum": {
-                                            "$pow": ["$score", 2]
-                                        }
-                                    },
-                                    "dot": {
-                                        "$sum": "$dot"
-                                    }
-                                }
-                            },
-                            /// Group to isolate authenticated user
-                            doc! {
-                                "$group": {
-                                    "_id": null,
-                                    "auth_user_magnitude": {
-                                        "$max": {
-                                            "$cond": {
-                                                "if": { "$eq": [ "$_id", user_id ] },
-                                                "then": { "$sqrt": "$magnitude_square" },
-                                                "else": null
-                                            }
-                                        }
-                                    },
-                                    "users": {
-                                        "$push": {
-                                            "$cond": {
-                                                "if": { "$eq": [ "$_id", user_id ] },
-                                                "then": "$$REMOVE",
-                                                "else": {
-                                                    "_id": "$_id",
-                                                    "magnitude": { "$sqrt": "$magnitude_square" },
-                                                    "dot": "$dot"
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                            /// Unwind to get each user again, except the authenticated one
-                            doc! {
-                                "$unwind": "$users"
-                            },
-                            /// Project to compute each user's similarity score
-                            doc! {
-                                "$project": {
-                                    "_id": "$users._id",
-                                    "score": {
-                                        "$divide": [
-                                            "$users.dot",
-                                            {
-                                                "$max": [
-                                                    {
-                                                        "$multiply": [
-                                                            "$users.magnitude",
-                                                            "$auth_user_magnitude"
-                                                        ]
-                                                    },
-                                                    0.00001
-                                                ]
-                                            }
-                                        ]
-                                    }
-                                }
-                            },
-                            /// Join with users to get full data
-                            doc! {
-                                "$lookup": {
-                                    "from": "users",
-                                    "localField": "_id",
-                                    "foreignField": "id",
-                                    "as": "user"
-                                }
-                            },
-                            /// Unwind user data
-                            doc! {
-                                "$unwind": "$user"
-                            },
-                            /// Join with posts
-                            doc! {
-                                "$lookup": {
-                                    "from": "posts",
-                                    "localField": "_id",
-                                    "foreignField": "user_id",
-                                    "as": "post",
-                                }
-                            },
-                            /// Unwind the posts
-                            doc! {
-                                "$unwind": "$post"
-                            },
-                            /// Add a field of random value
-                            doc! {
-                                "$addFields": {
-                                    "randomValue": { "$rand": {} }
-                                }
-                            },
-                            /// Remove those with score less than the random value
-                            doc! {
-                                "$match": {
-                                    "$expr": {
-                                        "$lte": ["$randomValue", "$score"]
-                                    }
-                                }
-                            },
-                            /// Sample 100 of those remaining
-                            doc! {
-                                "$sample": {
-                                    "size": 100
-                                }
-                            },
-                            /// Join with ratings
-                            doc! {
-                                "$lookup": {
-                                    "from": "ratings",
-                                    "localField": "post.id",
-                                    "foreignField": "post_id",
-                                    "pipeline": vec![
-                                        doc! {
-                                            "$match": {
-                                                "$expr": {
-                                                    "$eq": ["$user_id", user_id]
-                                                }
-                                            }
-                                        }
-                                    ],
-                                    "as": "rating"
-                                }
-                            },
-                            /// Unwind the rating
-                            doc! {
-                                "$unwind": {
-                                    "path": "$rating",
-                                    "preserveNullAndEmptyArrays": true
-                                }
-                            },
-                        ]),
-                        AggregateOptions::builder().allow_disk_use(true).build()
-                    ).await {
-                        Ok(cursor) => cursor,
-                        Err(err) => {
-                            return Err(Message::Error(Error::DebugError(DebugError::new(err.to_string()))));
-                        }
-                    };
-
-                    let mut posts_vec = Self::get_from_cursor(&mut posts).await;
-                    let need = 100 - posts_vec.len();
-                    let uuids :Vec<Uuid>= posts_vec.iter().map(|post: &Post| post.id).collect();
-
-                    if posts_vec.len() < 100 {
-                        let mut posts = match db.collection::<Result<Document, mongodb::error::Error>>("posts").aggregate(
-                            vec![
-                                doc! {
-                                    "$match": {
-                                        "id": {
-                                            "$nin": uuids
-                                        }
-                                    }
-                                },
-                                doc! {
-                                    "$sample": {
-                                        "size": need as i32
-                                    }
-                                },
-                                doc! {
-                                    "$lookup": {
-                                        "from": "users",
-                                        "localField": "user_id",
-                                        "foreignField": "id",
-                                        "as": "user"
-                                    }
-                                },
-                                doc! {
-                                    "$unwind": "$user"
-                                },
-                                doc! {
-                                    "$lookup": {
-                                        "from": "posts",
-                                        "localField": "id",
-                                        "foreignField": "id",
-                                        "as": "post"
-                                    }
-                                },
-                                doc! {
-                                    "$unwind": "$post"
-                                },
-                                doc! {
-                                    "$lookup": {
-                                        "from": "ratings",
-                                        "localField": "id",
-                                        "foreignField": "post_id",
-                                        "pipeline": vec![
-                                            doc! {
-                                                "$match": {
-                                                    "$expr": {
-                                                        "$eq": [ "$user_id", user_id ]
-                                                    }
-                                                }
-                                            }
-                                        ],
-                                        "as": "rating"
-                                    }
-                                },
-                                doc! {
-                                    "$unwind": {
-                                        "path": "$rating",
-                                        "preserveNullAndEmptyArrays": true
-                                    }
-                                }
-                            ],
-                            AggregateOptions::builder().allow_disk_use(true).build()
-                        ).await {
-                            Ok(cursor) => cursor,
+                    let mut posts =
+                        match mongo::posts::get_recommendations(&db, user_id).await {
+                            Ok(posts) => posts,
                             Err(err) => {
-                                return Err(Message::Error(Error::DebugError(DebugError::new(err.to_string()))));
+                                return Err(err);
                             }
                         };
 
-                        let mut second_post_set = Self::get_from_cursor(&mut posts).await;
-                        posts_vec.append(&mut second_post_set);
+                    let need = 100 - posts.len();
+                    let uuids :Vec<Uuid>= posts.iter().map(|post: &Post| post.id).collect();
+
+                    if posts.len() < 100 {
+                        let mut posts_random =
+                            match mongo::posts::get_random_posts(
+                                &db,
+                                need,
+                                user_id,
+                                uuids
+                            ).await {
+                                Ok(posts) => posts,
+                                Err(err) => {
+                                    return Err(err);
+                                }
+                            };
+
+                        posts.append(&mut posts_random);
                     }
 
-                    Ok(posts_vec)
+                    Ok(posts)
                 },
-                |posts| {
-                    Message::DoAction(Box::new(PostsAction::LoadedPosts(posts.unwrap())))
+                |result| {
+                    match result {
+                        Ok(posts) => Message::DoAction(Box::new(PostsAction::LoadedPosts(posts))),
+                        Err(err) => Message::Error(err)
+                    }
                 }
             )
         )
@@ -1068,60 +702,33 @@ impl Scene for Posts {
                     if rating > 0 {
                         Command::perform(
                             async move {
-                                MongoRequest::send_requests(
-                                    db,
-                                    vec![
-                                        MongoRequest::new(
-                                            "ratings".into(),
-                                            MongoRequestType::Update {
-                                                filter: doc!{
-                                                    "post_id": post_id,
-                                                    "user_id": user_id
-                                                },
-                                                update: doc!{
-                                                    "$set": {
-                                                        "rating": rating as i32
-                                                    }
-                                                },
-                                                options: Some(UpdateOptions::builder()
-                                                    .upsert(Some(true))
-                                                    .build()
-                                                )
-                                            }
-                                        )
-                                    ]
+                                mongo::posts::update_rating(
+                                    &db,
+                                    post_id,
+                                    user_id,
+                                    rating as i32
                                 ).await
                             },
                             |result| {
                                 match result {
                                     Ok(_) => Message::None,
-                                    Err(message) => message
+                                    Err(err) => Message::Error(err)
                                 }
                             }
                         )
                     } else {
                         Command::perform(
                             async move {
-                                MongoRequest::send_requests(
-                                    db,
-                                    vec![
-                                        MongoRequest::new(
-                                            "ratings".into(),
-                                            MongoRequestType::Delete {
-                                                filter: doc! {
-                                                    "user_id": user_id,
-                                                    "post_id": post_id
-                                                },
-                                                options: None
-                                            }
-                                        )
-                                    ]
+                                mongo::posts::delete_rating(
+                                    &db,
+                                    post_id,
+                                    user_id
                                 ).await
                             },
                             |result| {
                                 match result {
                                     Ok(_) => Message::None,
-                                    Err(message) => message
+                                    Err(err) => Message::Error(err)
                                 }
                             }
                         )

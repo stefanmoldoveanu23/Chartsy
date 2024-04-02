@@ -7,7 +7,6 @@ use std::fmt::{Display, Formatter};
 use std::fs;
 use std::fs::{create_dir_all, File};
 use std::io::Write;
-use std::sync::Arc;
 
 use crate::canvas::canvas::Canvas;
 use iced::alignment::Horizontal;
@@ -24,7 +23,7 @@ use svg2webp::svg2webp;
 
 use crate::canvas::layer::CanvasAction;
 use crate::canvas::tool;
-use crate::canvas::tool::{Pending, Tool};
+use crate::canvas::tool::Pending;
 use crate::canvas::tools::{
     brush::BrushPending,
     brushes::{airbrush::Airbrush, eraser::Eraser, pen::Pen, pencil::Pencil},
@@ -33,7 +32,7 @@ use crate::canvas::tools::{
     circle::CirclePending, ellipse::EllipsePending, line::LinePending, polygon::PolygonPending,
     rect::RectPending, triangle::TrianglePending,
 };
-use crate::config;
+use crate::{config, mongo};
 use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
@@ -41,7 +40,6 @@ use crate::scenes::scenes::Scenes;
 
 use crate::theme::Theme;
 
-use crate::mongo::{MongoRequest, MongoRequestType, MongoResponse};
 use crate::serde::{Deserialize, Serialize};
 use crate::widgets::combo_box::ComboBox;
 use crate::widgets::modal_stack::ModalStack;
@@ -97,7 +95,7 @@ impl Serialize<Document> for Tag {
 }
 
 impl Deserialize<Document> for Tag {
-    fn deserialize(document: Document) -> Self where Self: Sized {
+    fn deserialize(document: &Document) -> Self where Self: Sized {
         let mut tag = Tag { name: "".into(), uses: 0 };
 
         if let Some(Bson::String(name)) = document.get("name") {
@@ -116,9 +114,6 @@ impl Deserialize<Document> for Tag {
 pub struct PostData {
     /// The description of the post.
     description: String,
-
-    /// The list of new tags the user has added.
-    new_tags: Vec<Tag>,
 
     /// The list of tags the user has chosen for the post.
     post_tags: Vec<Tag>,
@@ -150,7 +145,6 @@ impl PostData {
 
                 if self.post_tags.iter().find(|pos_tag| **pos_tag == tag).is_none() {
                     self.post_tags.push(tag.clone());
-                    self.new_tags.push(tag);
                 }
                 self.tag_input = "".into();
             }
@@ -169,8 +163,6 @@ impl PostData {
 /// The [Messages](Action) for the [Drawing] scene.
 #[derive(Clone)]
 pub(crate) enum DrawingAction {
-    None,
-
     /// Triggered when the user has interacted with the canvas.
     CanvasAction(CanvasAction),
 
@@ -207,7 +199,6 @@ impl Action for DrawingAction {
 
     fn get_name(&self) -> String {
         match self {
-            DrawingAction::None => String::from("None"),
             DrawingAction::CanvasAction(_) => String::from("Canvas action"),
             DrawingAction::PostDrawing => String::from("Post drawing"),
             DrawingAction::UpdatePostData(_) => String::from("Update post data"),
@@ -255,58 +246,21 @@ impl Drawing {
             if let Some(db) = globals.get_db() {
                 Command::perform(
                     async move {
-                        MongoRequest::send_requests(
-                            db,
-                            vec![
-                                MongoRequest::new(
-                                    "canvases".into(),
-                                    MongoRequestType::Get{
-                                        filter: doc! {"id": uuid},
-                                        options: None
-                                    },
-                                ),
-                                MongoRequest::new(
-                                    "tools".into(),
-                                    MongoRequestType::Get{
-                                        filter: doc! {"canvas_id": uuid},
-                                        options: None
-                                    },
-                                ),
-                            ]
+                        mongo::drawing::get_drawing(
+                            &db,
+                            uuid
                         ).await
                     },
                     move |res| {
                         match res {
-                            Ok(res) => {
-                                if let (Some(MongoResponse::Get(canvas)), Some(MongoResponse::Get(tools))) =
-                                    (res.get(0), res.get(1))
-                                {
-                                    let layer_count = canvas.get(0);
-                                    let layer_count = if let Some(document) = layer_count {
-                                        if let Some(Bson::Int32(layer_count)) = document.get("layers") {
-                                            *layer_count as usize
-                                        } else {
-                                            1
-                                        }
-                                    } else {
-                                        1
-                                    };
-
-                                    let mut tools_vec: Vec<(Arc<dyn Tool>, usize)> = vec![];
-                                    for tool in tools {
-                                        tools_vec.push(tool::get_deserialized(tool.clone()).unwrap());
-                                    }
-
-                                    Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Loaded {
-                                        layers: layer_count,
-                                        tools: tools_vec,
-                                        json_tools: None,
-                                    })))
-                                } else {
-                                    Message::DoAction(Box::new(DrawingAction::None))
-                                }
+                            Ok((layers, tools)) => {
+                                Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Loaded {
+                                    layers,
+                                    tools,
+                                    json_tools: None,
+                                })))
                             }
-                            Err(message) => message
+                            Err(err) => Message::Error(err)
                         }
                     }
                 )
@@ -322,23 +276,22 @@ impl Drawing {
 
                 Command::perform(
                     async move {
-                        MongoRequest::send_requests(
-                            db,
-                            vec![MongoRequest::new(
-                                "canvases".into(),
-                                MongoRequestType::Insert{
-                                    documents: vec![doc! {"id": uuid, "user_id": user_id, "layers": 1}],
-                                    options: None
-                                },
-                            )]
+                        mongo::drawing::create_drawing(
+                            &db,
+                            uuid,
+                            user_id
                         ).await
                     },
-                    move |_| {
-                        Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Loaded {
-                            layers: 1,
-                            tools: vec![],
-                            json_tools: None,
-                        })))
+                    move |result| {
+                        if let Err(err) = result {
+                            Message::Error(err)
+                        } else {
+                            Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Loaded {
+                                layers: 1,
+                                tools: vec![],
+                                json_tools: None,
+                            })))
+                        }
                     }
                 )
             } else {
@@ -379,7 +332,7 @@ impl Drawing {
 
                             for tool in tool_list {
                                 if let JsonValue::Object(tool) = tool {
-                                    if let Some(tool) = tool::get_json(tool.clone()) {
+                                    if let Some(tool) = tool::get_json(tool) {
                                         tools.push(tool);
                                     }
                                 }
@@ -518,11 +471,11 @@ impl Scene for Box<Drawing> {
                 let user_id = globals.get_user().unwrap().get_id();
                 let description = self.post_data.description.clone();
 
-                let tags :Vec<String>= self.post_data.post_tags.iter().map(|tag| tag.name.clone()).collect();
-                let new_tags: Vec<Tag> = self.post_data.new_tags.clone();
+                let tags :Vec<String>= self.post_data.post_tags.iter().map(
+                    |tag| tag.name.clone()
+                ).collect();
 
                 self.post_data.post_tags = vec![];
-                self.post_data.new_tags = vec![];
                 self.post_data.description = "".into();
                 self.post_data.tag_input = "".into();
 
@@ -560,44 +513,13 @@ impl Scene for Box<Drawing> {
                             }
                         }
 
-                        Ok(MongoRequest::send_requests(
-                            db,
-                            vec![
-                                MongoRequest::new(
-                                    "posts".into(),
-                                    MongoRequestType::Insert {
-                                        documents: vec![
-                                            doc!{
-                                                "id": post_id,
-                                                "user_id": user_id,
-                                                "description": description,
-                                                "tags": tags.clone()
-                                            }
-                                        ],
-                                        options: None
-                                    }
-                                ),
-                                MongoRequest::new(
-                                    "tags".into(),
-                                    MongoRequestType::Insert {
-                                        documents: new_tags.iter().map(Serialize::serialize).collect(),
-                                        options: None
-                                    }
-                                ),
-                                MongoRequest::new(
-                                    "tags".into(),
-                                    MongoRequestType::Update {
-                                        filter: doc! {
-                                            "name": { "$in": tags }
-                                        },
-                                        update: doc! {
-                                            "$inc": { "uses": 1 }
-                                        },
-                                        options: None
-                                    }
-                                )
-                            ]
-                        ).await)
+                        mongo::drawing::create_post(
+                            &db,
+                            Uuid::new(),
+                            user_id,
+                            description,
+                            tags
+                        ).await
                     },
                     |res| {
                         match res {
@@ -618,37 +540,16 @@ impl Scene for Box<Drawing> {
                             if let (Some(_), Some(db)) = (globals.get_user(), globals.get_db()) {
                                 Command::perform(
                                     async move {
-                                        MongoRequest::send_requests(
-                                            db,
-                                            vec![
-                                                MongoRequest::new(
-                                                    "tags".into(),
-                                                    MongoRequestType::Get {
-                                                        filter: doc![],
-                                                        options: None
-                                                    }
-                                                )
-                                            ]
-                                        ).await
+                                        mongo::drawing::get_tags(&db).await
                                     },
                                     |res| {
                                         match res {
-                                            Ok(responses) => {
-                                                if let Some(MongoResponse::Get(documents)) = responses.get(0) {
-                                                    Message::DoAction(Box::new(DrawingAction::UpdatePostData(UpdatePostData::AllTags(
-                                                        documents.iter().map(
-                                                            |document| {
-                                                                Tag::deserialize(document.clone())
-                                                            }
-                                                        ).collect()
-                                                    ))))
-                                                } else {
-                                                    Message::Error(Error::DebugError(
-                                                        DebugError::new("Request answered wrong type".into())
-                                                    ))
-                                                }
+                                            Ok(tags) => {
+                                                Message::DoAction(Box::new(DrawingAction::UpdatePostData(
+                                                    UpdatePostData::AllTags(tags)
+                                                )))
                                             }
-                                            Err(message) => message
+                                            Err(err) => Message::Error(err)
                                         }
                                     }
                                 )
@@ -666,7 +567,6 @@ impl Scene for Box<Drawing> {
                 Command::none()
             }
             DrawingAction::ErrorHandler(_) => Command::none(),
-            DrawingAction::None => Command::none(),
         }
     }
 

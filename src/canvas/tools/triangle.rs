@@ -180,7 +180,7 @@ impl Serialize<Document> for Triangle {
 }
 
 impl Deserialize<Document> for Triangle {
-    fn deserialize(document: Document) -> Self
+    fn deserialize(document: &Document) -> Self
     where
         Self: Sized,
     {
@@ -192,19 +192,19 @@ impl Deserialize<Document> for Triangle {
         };
 
         if let Some(Bson::Document(point1)) = document.get("point1") {
-            triangle.point1 = Point::deserialize(point1.clone());
+            triangle.point1 = Point::deserialize(point1);
         }
 
         if let Some(Bson::Document(point2)) = document.get("point2") {
-            triangle.point2 = Point::deserialize(point2.clone());
+            triangle.point2 = Point::deserialize(point2);
         }
 
         if let Some(Bson::Document(point3)) = document.get("point3") {
-            triangle.point3 = Point::deserialize(point3.clone());
+            triangle.point3 = Point::deserialize(point3);
         }
 
         if let Some(Bson::Document(style)) = document.get("style") {
-            triangle.style = Style::deserialize(style.clone());
+            triangle.style = Style::deserialize(style);
         }
 
         triangle
@@ -246,7 +246,7 @@ impl Serialize<Object> for Triangle {
 }
 
 impl Deserialize<Object> for Triangle {
-    fn deserialize(document: Object) -> Self
+    fn deserialize(document: &Object) -> Self
     where
         Self: Sized,
     {
@@ -258,16 +258,16 @@ impl Deserialize<Object> for Triangle {
         };
 
         if let Some(JsonValue::Object(point1)) = document.get("point1") {
-            triangle.point1 = Point::deserialize(point1.clone());
+            triangle.point1 = Point::deserialize(point1);
         }
         if let Some(JsonValue::Object(point2)) = document.get("point2") {
-            triangle.point2 = Point::deserialize(point2.clone());
+            triangle.point2 = Point::deserialize(point2);
         }
         if let Some(JsonValue::Object(point3)) = document.get("point3") {
-            triangle.point3 = Point::deserialize(point3.clone());
+            triangle.point3 = Point::deserialize(point3);
         }
         if let Some(JsonValue::Object(style)) = document.get("style") {
-            triangle.style = Style::deserialize(style.clone());
+            triangle.style = Style::deserialize(style);
         }
 
         triangle

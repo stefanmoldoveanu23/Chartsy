@@ -198,7 +198,7 @@ impl Serialize<Document> for Ellipse {
 }
 
 impl Deserialize<Document> for Ellipse {
-    fn deserialize(document: Document) -> Self
+    fn deserialize(document: &Document) -> Self
     where
         Self: Sized,
     {
@@ -210,19 +210,19 @@ impl Deserialize<Document> for Ellipse {
         };
 
         if let Some(Bson::Document(center)) = document.get("center") {
-            ellipse.center = Point::deserialize(center.clone());
+            ellipse.center = Point::deserialize(center);
         }
 
         if let Some(Bson::Document(radii)) = document.get("radii") {
-            ellipse.radii = Vector::deserialize(radii.clone());
+            ellipse.radii = Vector::deserialize(radii);
         }
 
         if let Some(Bson::Double(rotation)) = document.get("rotation") {
-            ellipse.rotation = rotation.clone() as f32;
+            ellipse.rotation = *rotation as f32;
         }
 
         if let Some(Bson::Document(style)) = document.get("style") {
-            ellipse.style = Style::deserialize(style.clone());
+            ellipse.style = Style::deserialize(style);
         }
 
         ellipse
@@ -289,7 +289,7 @@ impl Serialize<Object> for Ellipse {
 }
 
 impl Deserialize<Object> for Ellipse {
-    fn deserialize(document: Object) -> Self
+    fn deserialize(document: &Object) -> Self
     where
         Self: Sized,
     {
@@ -301,16 +301,16 @@ impl Deserialize<Object> for Ellipse {
         };
 
         if let Some(JsonValue::Object(center)) = document.get("center") {
-            ellipse.center = Point::deserialize(center.clone());
+            ellipse.center = Point::deserialize(center);
         }
         if let Some(JsonValue::Object(radii)) = document.get("radii") {
-            ellipse.radii = Vector::deserialize(radii.clone());
+            ellipse.radii = Vector::deserialize(radii);
         }
         if let Some(JsonValue::Number(rotation)) = document.get("rotation") {
             ellipse.rotation = f32::from(*rotation);
         }
         if let Some(JsonValue::Object(style)) = document.get("style") {
-            ellipse.style = Style::deserialize(style.clone());
+            ellipse.style = Style::deserialize(style);
         }
 
         ellipse

@@ -1,5 +1,5 @@
 pub mod auth;
 pub mod drawing;
-mod main;
+pub mod main;
 pub mod scenes;
-mod posts;
+pub mod posts;
