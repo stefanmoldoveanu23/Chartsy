@@ -4,7 +4,7 @@ use mongodb::options::{AggregateOptions, UpdateOptions};
 use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
 use crate::mongo;
-use crate::scenes::posts::{Comment, Post};
+use crate::scenes::data::posts::{Comment, Post};
 
 /// Gets a list of comments with the given filter, which will decide the parent of the comments.
 pub async fn get_comments(db: &Database, filter: Document) -> Result<Vec<Comment>, Error>

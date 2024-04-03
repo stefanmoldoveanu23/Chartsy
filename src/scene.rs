@@ -1,5 +1,5 @@
 use crate::errors::error::Error;
-use crate::scenes::auth::User;
+use crate::scenes::data::auth::User;
 use crate::scenes::scenes::Scenes;
 use crate::theme::Theme;
 use iced::{Command, Element, Renderer, Size};

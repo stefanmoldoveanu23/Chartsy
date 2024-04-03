@@ -1,5 +1,5 @@
 use std::any::Any;
-use std::{fs, io};
+use std::io;
 use std::ops::DerefMut;
 use dropbox_sdk::default_client::{NoauthDefaultClient, UserAuthDefaultClient};
 use dropbox_sdk::files;
@@ -8,351 +8,18 @@ use dropbox_sdk::oauth2::Authorization;
 use iced::advanced::image::Handle;
 use iced::{Alignment, Element, Length, Renderer, Command};
 use iced::widget::{Column, Row, Scrollable, Image, Text, TextInput, Button};
-use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
+use mongodb::bson::{doc, Uuid};
 use crate::widgets::closeable::Closeable;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::post_summary::PostSummary;
 use crate::{config, mongo};
 use crate::errors::error::Error;
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
-use crate::scenes::auth::User;
-use crate::serde::{Deserialize, Serialize};
+use crate::serde::Serialize;
 use crate::theme::Theme;
 use crate::widgets::rating::Rating;
 
-/// A comment on a post.
-#[derive(Clone)]
-pub struct Comment {
-    /// The id of the [Comment].
-    id: Uuid,
-
-    /// The [User] who sent the [Comment].
-    user: User,
-
-    /// The content of the [Comment].
-    content: String,
-
-    /// The id of the [Comment] this is a reply to.
-    reply_to: Option<Uuid>,
-
-    /// The input of a reply the user is currently writing.
-    reply_input: String,
-
-    /// The position of the [Comment] this is a reply to.
-    parent: Option<(usize, usize)>,
-
-    /// The index of the line with the replies to this comment in the comments vector of the [Post].
-    /// Is None if this comments replies are not loaded from the database.
-    replies: Option<usize>,
-
-    /// The index of the reply that is currently opened(absolute).
-    open_reply: Option<usize>
-}
-
-impl Default for Comment {
-    fn default() -> Self {
-        Comment {
-            id: Uuid::default(),
-            user: User::default(),
-            content: Default::default(),
-            reply_to: None,
-            reply_input: Default::default(),
-            parent: None,
-            replies: None,
-            open_reply: None
-        }
-    }
-}
-
-impl Serialize<Document> for Comment {
-    fn serialize(&self) -> Document {
-        if let Some(id) = self.reply_to {
-            doc! {
-                "id": self.id,
-                "user_id": self.user.get_id(),
-                "content": self.content.clone(),
-                "reply_to": id
-            }
-        } else {
-            doc! {
-                "id": self.id,
-                "user_id": self.user.get_id(),
-                "content": self.content.clone(),
-            }
-        }
-    }
-}
-
-impl Deserialize<Document> for Comment {
-    fn deserialize(document: &Document) -> Self where Self: Sized {
-        let mut comment = Comment::default();
-
-        if let Some(Bson::Binary(bin)) = document.get("id") {
-            comment.id = bin.to_uuid_with_representation(UuidRepresentation::Standard).unwrap();
-        }
-        if let Some(Bson::Document(user)) = document.get("user") {
-            comment.user = Deserialize::deserialize(user);
-        }
-        if let Some(Bson::String(content)) = document.get("content") {
-            comment.content = content.clone();
-        }
-
-        comment
-    }
-}
-
-#[derive(Clone)]
-enum CommentMessage {
-    /// Opens a [Comment].
-    Open{ post: usize, position: (usize, usize) },
-
-    /// Closes a [Comment] and all the replies to it that are opened.
-    Close{ post: usize, position: (usize, usize) },
-
-    /// Updates the content of a [Comment].
-    UpdateInput{ post: usize, position: Option<(usize, usize)>, input: String },
-
-    /// Adds a reply to a [Comment].
-    Add { post: usize, parent: Option<(usize, usize)> },
-
-    /// Loads the replies for a [Comment].
-    Load{ post: usize, parent: Option<(usize, usize)> },
-
-    /// Loads comments that are replies to another comment.
-    Loaded{ post: usize, parent: Option<(usize, usize)>, comments: Vec<Comment> },
-}
-
-impl CommentMessage {
-    fn update(&self, posts: &mut Posts, globals: &mut Globals) -> Command<Message>
-    {
-        match self {
-            CommentMessage::Open { post, position } => {
-                let (line, index) = position;
-
-                let comment = posts.posts[*post].comments[*line][*index].clone();
-                if let Some((parent_line, parent_index)) = comment.parent {
-                    posts.posts[*post].comments[parent_line][parent_index].open_reply = Some(*index);
-                } else {
-                    posts.posts[*post].open_comment = Some(*index);
-                }
-
-                if comment.replies.is_none() {
-                    CommentMessage::Load {
-                        post: *post,
-                        parent: Some((*line, *index))
-                    }.update(posts, globals)
-                } else {
-                    Command::none()
-                }
-            }
-            CommentMessage::Close {post, position} => {
-                let mut position = if position.0 != 0 {
-                    posts.posts[*post].comments[position.0][position.1].parent.clone()
-                } else {
-                    posts.posts[*post].open_comment = None;
-                    Some(*position)
-                };
-
-                while let Some((line, index)) = position {
-                    let reply_line = posts.posts[*post].comments[line][index].replies.clone();
-                    let reply_index = posts.posts[*post].comments[line][index].open_reply.clone();
-                    position = reply_line.zip(reply_index);
-
-                    posts.posts[*post].comments[line][index].open_reply = None;
-                }
-
-                Command::none()
-            }
-            CommentMessage::UpdateInput {post, position, input} => {
-                if let Some((line, index)) = position {
-                    posts.posts[*post].comments[*line][*index].reply_input = input.clone();
-                } else {
-                    posts.posts[*post].comment_input = input.clone();
-                }
-
-                Command::none()
-            }
-            CommentMessage::Add { post, parent } => {
-                let db = globals.get_db().unwrap();
-
-                let comment = if let Some((line, index)) = parent {
-                    let parent = &posts.posts[*post].comments[*line][*index];
-                    Comment {
-                        id: Uuid::new(),
-                        user: globals.get_user().unwrap(),
-                        content: parent.reply_input.clone(),
-                        reply_to: Some(parent.id.clone()),
-                        parent: Some((*line, *index)),
-                        ..Default::default()
-                    }
-                } else {
-                    Comment {
-                        id: Uuid::new(),
-                        user: globals.get_user().unwrap(),
-                        content: posts.posts[*post].comment_input.clone(),
-                        parent: None,
-                        ..Default::default()
-                    }
-                };
-
-                let mut document = comment.serialize();
-                if let Some((line, index)) = parent {
-                    posts.posts[*post].comments[*line][*index].reply_input = "".into();
-
-                    let line = &posts.posts[*post].comments[*line][*index].replies.unwrap();
-                    posts.posts[*post].comments[*line].push(comment);
-                } else {
-                    posts.posts[*post].comment_input = "".into();
-                    posts.posts[*post].comments[0].push(comment);
-
-                    document.insert("post_id", &posts.posts[*post].id.clone());
-                }
-
-                Command::perform(
-                    async move {
-                        mongo::posts::create_comment(&db, &document).await
-                    },
-                    |result| {
-                        match result {
-                            Ok(_) => Message::None,
-                            Err(err) => Message::Error(err)
-                        }
-                    }
-                )
-            }
-            CommentMessage::Load { post, parent } => {
-                let db = globals.get_db().unwrap();
-                let parent = parent.clone();
-                let post = post.clone();
-
-                let filter = if let Some((line, index)) = parent {
-                    doc! {
-                        "reply_to": &posts.posts[post].comments[line][index].id.clone()
-                    }
-                } else {
-                    doc! {
-                        "post_id": &posts.posts[post].id.clone()
-                    }
-                };
-
-                Command::perform(
-                    async move {
-                        mongo::posts::get_comments(&db, filter).await
-                    },
-                    move |result| {
-                        match result {
-                            Ok(comments) => {
-                                Message::DoAction(Box::new(PostsAction::CommentMessage(
-                                    CommentMessage::Loaded {
-                                        post,
-                                        parent,
-                                        comments
-                                    }
-                                )))
-                            }
-                            Err(err) => Message::Error(err)
-                        }
-                    }
-                )
-            }
-            CommentMessage::Loaded { post, parent, comments } => {
-                posts.posts[*post].comments.push(comments.clone());
-                let new_line = posts.posts[*post].comments.len() - 1;
-
-                for comment in &mut posts.posts[*post].comments[new_line] {
-                    comment.parent = *parent;
-                }
-
-                if let Some((line, index)) = parent {
-                    posts.posts[*post].comments[*line][*index].replies = Some(new_line);
-                }
-
-                Command::none()
-            }
-        }
-    }
-}
-
-/// The data for a loaded post.
-#[derive(Clone)]
-pub struct Post {
-    /// The id of the post.
-    id: Uuid,
-
-    /// The data of the image.
-    image: Vec<u8>,
-
-    /// The description of the [Post].
-    description: String,
-
-    /// The tags of the [Post].
-    tags: Vec<String>,
-
-    /// The [User] this [Post] belongs to.
-    user: User,
-
-    /// The rating of the post.
-    rating: usize,
-
-    /// The input of the comment the user is currently writing.
-    comment_input: String,
-
-    /// The comments of the post.
-    /// None if they haven't been loaded yet.
-    comments: Vec<Vec<Comment>>,
-
-    /// The index of the comment that is currently opened.
-    open_comment: Option<usize>
-}
-
-impl Default for Post {
-    fn default() -> Self {
-        Post {
-            id: Uuid::default(),
-            image: fs::read("./src/images/loading.png").unwrap(),
-            description: "".into(),
-            tags: vec![],
-            user: User::default(),
-            rating: 0,
-            comment_input: Default::default(),
-            comments: vec![],
-            open_comment: None,
-        }
-    }
-}
-
-impl Deserialize<Document> for Post {
-    fn deserialize(document: &Document) -> Self where Self: Sized {
-        let mut post :Post= Default::default();
-
-        if let Some(Bson::Document(post_data)) = document.get("post") {
-            if let Some(Bson::String(description)) = post_data.get("description") {
-                post.description = description.clone();
-            }
-            if let Some(Bson::Array(tags)) = post_data.get("tags") {
-                for tag in tags {
-                    if let Bson::String(tag) = tag {
-                        post.tags.push(tag.clone());
-                    }
-                }
-            }
-
-            if let Some(Bson::Binary(bin)) = post_data.get("id") {
-                post.id = bin.to_uuid_with_representation(UuidRepresentation::Standard).unwrap();
-            }
-        }
-        if let Some(Bson::Document(user)) = document.get("user") {
-            post.user = User::deserialize(user);
-        }
-        if let Some(Bson::Document(rating)) = document.get("rating") {
-            if let Some(Bson::Int32(rating)) = rating.get("rating") {
-                post.rating = *rating as usize;
-            }
-        }
-
-        post
-    }
-}
+use crate::scenes::data::posts::*;
 
 /// The [messages](Action) that can be triggered on the [Posts] scene.
 #[derive(Clone)]
@@ -409,49 +76,6 @@ impl Into<Box<dyn Action + 'static>> for Box<PostsAction>
     }
 }
 
-/// The types a modal can have on the [Posts] scene.
-#[derive(Clone)]
-enum ModalType {
-    /// Modal for displaying an image in the center of the screen.
-    ShowingImage(Vec<u8>),
-    
-    /// Modal for opening a post.
-    ShowingPost(usize),
-}
-
-impl ModalType {
-    /// Checks if its value is [ShowingImage](ModalType::ShowingImage).
-    fn is_showing_image(&self) -> bool {
-        match self {
-            ModalType::ShowingImage(_) => true,
-            _ => false,
-        }
-    }
-
-    /// Checks if its value is [ShowingPost](ModalType::ShowingPost).
-    fn is_showing_post(&self) -> bool {
-        match self {
-            ModalType::ShowingPost(_) => true,
-            _ => false
-        }
-    }
-}
-
-impl PartialEq for ModalType {
-    fn eq(&self, other: &Self) -> bool {
-        match self {
-            ModalType::ShowingImage(_) => {
-                other.is_showing_image()
-            }
-            ModalType::ShowingPost(_) => {
-                other.is_showing_post()
-            }
-        }
-    }
-}
-
-impl Eq for ModalType { }
-
 /// A scene that displays posts.
 #[derive(Clone)]
 pub struct Posts {
@@ -469,6 +93,157 @@ pub struct Posts {
 
     /// Tells whether images are being loaded
     loading: bool,
+}
+
+impl Posts {
+    fn update_comment(&mut self, comment_message: &CommentMessage, globals: &mut Globals) -> Command<Message>
+    {
+        match comment_message {
+            CommentMessage::Open { post, position } => {
+                let (line, index) = position;
+
+                let comment = self.posts[*post].get_comments()[*line][*index].clone();
+                if let Some((parent_line, parent_index)) = comment.get_parent() {
+                    self.posts[*post].get_comments_mut()[*parent_line][*parent_index].set_open_reply(*index);
+                } else {
+                    self.posts[*post].set_open_comment(*index);
+                }
+
+                if comment.replies_not_loaded() {
+                    self.update_comment(
+                        &CommentMessage::Load {
+                            post: *post,
+                            parent: Some((*line, *index))
+                        },
+                        globals
+                    )
+                } else {
+                    Command::none()
+                }
+            }
+            CommentMessage::Close {post, position} => {
+                let mut position = if position.0 != 0 {
+                    self.posts[*post].get_comments()[position.0][position.1].get_parent().clone()
+                } else {
+                    self.posts[*post].set_open_comment(None);
+                    Some(*position)
+                };
+
+                while let Some((line, index)) = position {
+                    let reply_line = self.posts[*post].get_comments()[line][index].get_replies().clone();
+                    let reply_index = self.posts[*post].get_comments()[line][index].get_open_reply().clone();
+                    position = reply_line.zip(reply_index);
+
+                    self.posts[*post].get_comments_mut()[line][index].set_open_reply(None);
+                }
+
+                Command::none()
+            }
+            CommentMessage::UpdateInput {post, position, input} => {
+                if let Some((line, index)) = position {
+                    self.posts[*post].get_comments_mut()[*line][*index].set_reply_input(input.clone());
+                } else {
+                    self.posts[*post].set_comment_input(input.clone());
+                }
+
+                Command::none()
+            }
+            CommentMessage::Add { post, parent } => {
+                let db = globals.get_db().unwrap();
+
+                let comment = if let Some((line, index)) = parent {
+                    let parent = &self.posts[*post].get_comments()[*line][*index];
+                    Comment::new_reply(
+                        Uuid::new(),
+                        globals.get_user().unwrap(),
+                        parent.get_reply_input().clone(),
+                        parent.get_id().clone(),
+                        (*line, *index)
+                    )
+                } else {
+                    Comment::new_comment(
+                        Uuid::new(),
+                        globals.get_user().unwrap(),
+                        self.posts[*post].get_comment_input().clone(),
+                    )
+                };
+
+                let mut document = comment.serialize();
+                if let Some((line, index)) = parent {
+                    self.posts[*post].get_comments_mut()[*line][*index].set_reply_input("");
+
+                    let line = self.posts[*post].get_comments()[*line][*index].get_replies().unwrap();
+                    self.posts[*post].get_comments_mut()[line].push(comment);
+                } else {
+                    self.posts[*post].set_comment_input("");
+                    self.posts[*post].get_comments_mut()[0].push(comment);
+
+                    document.insert("post_id", self.posts[*post].get_id().clone());
+                }
+
+                Command::perform(
+                    async move {
+                        mongo::posts::create_comment(&db, &document).await
+                    },
+                    |result| {
+                        match result {
+                            Ok(_) => Message::None,
+                            Err(err) => Message::Error(err)
+                        }
+                    }
+                )
+            }
+            CommentMessage::Load { post, parent } => {
+                let db = globals.get_db().unwrap();
+                let parent = parent.clone();
+                let post = post.clone();
+
+                let filter = if let Some((line, index)) = parent {
+                    doc! {
+                        "reply_to": self.posts[post].get_comments()[line][index].get_id().clone()
+                    }
+                } else {
+                    doc! {
+                        "post_id": self.posts[post].get_id().clone()
+                    }
+                };
+
+                Command::perform(
+                    async move {
+                        mongo::posts::get_comments(&db, filter).await
+                    },
+                    move |result| {
+                        match result {
+                            Ok(comments) => {
+                                Message::DoAction(Box::new(PostsAction::CommentMessage(
+                                    CommentMessage::Loaded {
+                                        post,
+                                        parent,
+                                        comments
+                                    }
+                                )))
+                            }
+                            Err(err) => Message::Error(err)
+                        }
+                    }
+                )
+            }
+            CommentMessage::Loaded { post, parent, comments } => {
+                self.posts[*post].get_comments_mut().push(comments.clone());
+                let new_line = self.posts[*post].get_comments().len() - 1;
+
+                for comment in &mut self.posts[*post].get_comments_mut()[new_line] {
+                    comment.set_parent(*parent);
+                }
+
+                if let Some((line, index)) = parent {
+                    self.posts[*post].get_comments_mut()[*line][*index].set_replies(new_line);
+                }
+
+                Command::none()
+            }
+        }
+    }
 }
 
 /// The [Posts] scene does not have any optional initialization values.
@@ -518,7 +293,7 @@ impl Scene for Posts {
                         };
 
                     let need = 100 - posts.len();
-                    let uuids :Vec<Uuid>= posts.iter().map(|post: &Post| post.id).collect();
+                    let uuids :Vec<Uuid>= posts.iter().map(|post: &Post| post.get_id().clone()).collect();
 
                     if posts.len() < 100 {
                         let mut posts_random =
@@ -568,8 +343,8 @@ impl Scene for Posts {
                 }
             }
             PostsAction::LoadedImage { image, index, limit, auth } => {
-                let post = self.posts.get_mut(*index).unwrap();
-                post.image = image.clone();
+                let post = &mut self.posts[*index];
+                post.set_image(image.clone());
 
                 let index = index.clone() + 1;
                 let limit = limit.clone();
@@ -581,8 +356,8 @@ impl Scene for Posts {
                 } else {
                     let auth = auth.clone();
 
-                    let post_user_id = self.posts[index].user.get_id().clone();
-                    let post_id = self.posts[index].id.clone();
+                    let post_user_id = self.posts[index].get_user().get_id().clone();
+                    let post_id = self.posts[index].get_id().clone();
                     let client = UserAuthDefaultClient::new(auth.clone());
 
                     Command::perform(
@@ -626,8 +401,8 @@ impl Scene for Posts {
                         let total = self.posts.len();
                         self.batched += 10.min(total - start);
 
-                        let post_user_id = self.posts[start].user.get_id().clone();
-                        let post_id = self.posts[start].id.clone();
+                        let post_user_id = self.posts[start].get_user().get_id().clone();
+                        let post_id = self.posts[start].get_id().clone();
 
                         Command::perform(
                             async move {
@@ -670,18 +445,21 @@ impl Scene for Posts {
                 }
             }
             PostsAction::CommentMessage(message) => {
-                message.update(self, globals)
+                self.update_comment(message, globals)
             }
             PostsAction::ToggleModal(modal) => {
                 self.modals.toggle_modal(modal.clone());
 
                 match modal {
                     ModalType::ShowingPost(post) => {
-                        if self.posts[*post].comments.len() == 0 {
-                            CommentMessage::Load {
-                                post: *post,
-                                parent: None
-                            }.update(self, globals)
+                        if self.posts[*post].get_comments().len() == 0 {
+                            self.update_comment(
+                                &CommentMessage::Load {
+                                    post: *post,
+                                    parent: None
+                                },
+                                globals
+                            )
                         } else {
                             Command::none()
                         }
@@ -693,9 +471,9 @@ impl Scene for Posts {
                 let post :Option<&mut Post>= self.posts.get_mut(*post_index);
                 if let Some(post) = post {
                     let rating = rating.clone();
-                    post.rating = rating;
+                    post.set_rating(rating);
 
-                    let post_id = post.id;
+                    let post_id = *post.get_id();
                     let user_id = globals.get_user().unwrap().get_id();
                     let db = globals.get_db().unwrap();
 
@@ -748,16 +526,16 @@ impl Scene for Posts {
                     |(post, index)| {
                         PostSummary::<Message, Theme, Renderer>::new(
                             Column::with_children(vec![
-                                Text::new(post.user.get_username()).size(20.0).into(),
-                                Text::new(post.description.clone()).into()
+                                Text::new(post.get_user().get_username()).size(20.0).into(),
+                                Text::new(post.get_description().clone()).into()
                             ]),
                             Image::new(
-                                Handle::from_memory(post.image.clone())
+                                Handle::from_memory(post.get_image().clone())
                             ).width(Length::Shrink)
                         )
                             .padding(40)
                             .on_click_image(Message::DoAction(Box::new(PostsAction::ToggleModal(
-                                ModalType::ShowingImage(post.image.clone())
+                                ModalType::ShowingImage(post.get_image().clone())
                             ))))
                             .on_click_data(Message::DoAction(Box::new(PostsAction::ToggleModal(
                                 ModalType::ShowingPost(index)
@@ -804,7 +582,7 @@ impl Scene for Posts {
                         vec![
                             Row::with_children(
                                 vec![
-                                    TextInput::new("Write comment here...", &*post.comment_input)
+                                    TextInput::new("Write comment here...", &*post.get_comment_input())
                                         .width(Length::Fill)
                                         .on_input(move |value| Message::DoAction(Box::new(
                                             PostsAction::CommentMessage(CommentMessage::UpdateInput {
@@ -828,8 +606,8 @@ impl Scene for Posts {
                         ]
                     );
 
-                    let mut position = if let Some(index) = post.open_comment {
-                        Ok((0usize, index))
+                    let mut position = if let Some(index) = post.get_open_comment() {
+                        Ok((0usize, *index))
                     } else {
                         Err(0usize)
                     };
@@ -839,24 +617,24 @@ impl Scene for Posts {
                         comment_chain = comment_chain.push(
                             match position {
                                 Ok((line, index)) => {
-                                    position = if let Some(reply_index) = post.comments[line][index].open_reply {
-                                        Ok((post.comments[line][index].replies.unwrap(), reply_index))
+                                    position = if let Some(reply_index) = post.get_comments()[line][index].get_open_reply() {
+                                        Ok((post.get_comments()[line][index].get_replies().unwrap(), *reply_index))
                                     } else {
-                                        Err(post.comments[line][index].replies.unwrap_or(post.comments.len()))
+                                        Err(post.get_comments()[line][index].get_replies().unwrap_or(post.get_comments().len()))
                                     };
 
                                     Into::<Element<Message, Theme, Renderer>>::into(
                                         Closeable::new(
                                             Column::with_children(vec![
-                                                Text::new(post.comments[line][index].user.get_username().clone())
+                                                Text::new(post.get_comments()[line][index].get_user().get_username().clone())
                                                     .size(17.0)
                                                     .into(),
-                                                Text::new(post.comments[line][index].content.clone())
+                                                Text::new(post.get_comments()[line][index].get_content().clone())
                                                     .into(),
                                                 Row::with_children(vec![
                                                     TextInput::new(
                                                         "Write reply here...",
-                                                        &*post.comments[line][index].reply_input
+                                                        &*post.get_comments()[line][index].get_reply_input()
                                                     )
                                                         .on_input(move |value| Message::DoAction(Box::new(
                                                             PostsAction::CommentMessage(CommentMessage::UpdateInput {
@@ -892,16 +670,16 @@ impl Scene for Posts {
                                 Err(line) => {
                                     done = true;
 
-                                    if line >= post.comments.len() {
+                                    if line >= post.get_comments().len() {
                                         Text::new("Loading").into()
                                     } else {
                                         Column::with_children(
-                                            post.comments[line].iter().zip(0..post.comments[line].len()).map(
+                                            post.get_comments()[line].iter().zip(0..post.get_comments()[line].len()).map(
                                                 |(comment, index)| Button::new(Column::with_children(vec![
-                                                    Text::new(comment.user.get_username().clone())
+                                                    Text::new(comment.get_user().get_username().clone())
                                                         .size(17.0)
                                                         .into(),
-                                                    Text::new(comment.content.clone())
+                                                    Text::new(comment.get_content().clone())
                                                         .into()
                                                 ]))
                                                     .style(crate::theme::button::Button::Transparent)
@@ -924,19 +702,19 @@ impl Scene for Posts {
                     Row::with_children(
                         vec![
                             Closeable::new(Image::new(
-                                Handle::from_memory(post.image.clone())
+                                Handle::from_memory(post.get_image().clone())
                             ).width(Length::Shrink))
                                 .width(Length::FillPortion(3))
                                 .height(Length::Fill)
                                 .style(crate::theme::closeable::Closeable::SpotLight)
-                                .on_click(Message::DoAction(Box::new(PostsAction::ToggleModal(ModalType::ShowingImage(post.image.clone())))))
+                                .on_click(Message::DoAction(Box::new(PostsAction::ToggleModal(ModalType::ShowingImage(post.get_image().clone())))))
                                 .into(),
                             Closeable::new(
                                 Column::with_children(vec![
-                                    Text::new(post.user.get_username())
+                                    Text::new(post.get_user().get_username())
                                         .size(20.0)
                                         .into(),
-                                    Text::new(post.description.clone())
+                                    Text::new(post.get_description().clone())
                                         .into(),
                                     Rating::new()
                                         .on_rate(move |value| Message::DoAction(Box::new(
@@ -951,7 +729,7 @@ impl Scene for Posts {
                                                 rating: 0
                                             }
                                         )))
-                                        .value(post.rating)
+                                        .value(*post.get_rating())
                                         .into(),
                                     comment_chain.into()
                                 ])

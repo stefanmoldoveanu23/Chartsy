@@ -7,7 +7,7 @@ use crate::canvas::tool::Tool;
 use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
 use crate::mongo;
-use crate::scenes::drawing::Tag;
+use crate::scenes::data::drawing::Tag;
 
 /// Gets the data for the drawing stored online with the given id.
 pub async fn get_drawing(db: &Database, id: Uuid)

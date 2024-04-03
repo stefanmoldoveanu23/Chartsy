@@ -3,33 +3,17 @@ use crate::errors::auth::AuthError;
 use crate::errors::error::Error;
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::scenes::scenes::Scenes;
-use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 use iced::widget::{Button, Column, Container, Row, Space, Text, TextInput};
 use iced::{Element, Length, Renderer, Command};
 use iced_aw::{TabLabel, Tabs};
 use lettre::message::MultiPart;
-use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
-use rand::{Rng};
+use rand::Rng;
 use regex::Regex;
 use std::any::Any;
 use crate::mongo;
-
-/// User account registration fields.
-#[derive(Clone)]
-enum RegisterField {
-    Email(String),
-    Username(String),
-    Password(String),
-    Code(String),
-}
-
-/// User account authentication fields.
-#[derive(Clone)]
-enum LogInField {
-    Email(String),
-    Password(String),
-}
+use crate::scenes::data::auth::*;
+use crate::serde::Serialize;
 
 /// Possible messages for the authentication page.
 #[derive(Clone)]
@@ -96,124 +80,6 @@ impl Into<Box<dyn Action + 'static>> for Box<AuthAction> {
     }
 }
 
-/// Structure for the user data.
-#[derive(Default, Debug, Clone)]
-pub struct User {
-    /// The database id of the [User].
-    id: Uuid,
-
-    /// The e-mail address of the [User].
-    email: String,
-
-    /// The username of the [User].
-    username: String,
-
-    /// The hashed password of the [User].
-    password_hash: String,
-}
-
-impl User {
-    /// Returns the id of the [user](User).
-    pub fn get_id(&self) -> Uuid {
-        self.id.clone()
-    }
-
-    /// Returns the email of the [user](User).
-    pub fn get_email(&self) -> String {
-        self.email.clone()
-    }
-
-    /// Returns the username of the [user](User).
-    pub fn get_username(&self) -> String {
-        self.username.clone()
-    }
-
-    /// Tests whether the given password is the same as the [users](User).
-    pub fn test_password(&self, password: &String) -> bool {
-        pwhash::bcrypt::verify(password, &*self.password_hash)
-    }
-}
-
-impl Deserialize<Document> for User {
-    fn deserialize(document: &Document) -> Self
-    where
-        Self: Sized,
-    {
-        let mut user: User = User::default();
-
-        if let Some(Bson::Binary(bin)) = document.get("id") {
-            if let Ok(uuid) = bin.to_uuid_with_representation(UuidRepresentation::Standard) {
-                user.id = uuid;
-            }
-        }
-        if let Ok(email) = document.get_str("email") {
-            user.email = email.into();
-        }
-        if let Ok(username) = document.get_str("username") {
-            user.username = username.into();
-        }
-        if let Ok(password) = document.get_str("password") {
-            user.password_hash = password.into();
-        }
-
-        user
-    }
-}
-
-/// The fields of a registration form.
-#[derive(Default, Clone)]
-pub struct RegisterForm {
-    /// The value of the e-mail field.
-    email: String,
-
-    /// The value of the username field.
-    username: String,
-
-    /// The value of the password field.
-    password: String,
-
-    /// The value of the e-mail validation code.
-    code: String,
-
-    /// Holds possible errors with the user input.
-    error: Option<AuthError>,
-}
-
-impl Serialize<Document> for RegisterForm {
-    fn serialize(&self) -> Document {
-        doc! {
-            "id": Uuid::new(),
-            "email": self.email.clone(),
-            "username": self.username.clone(),
-            "password": self.password.clone(),
-            "code": self.code.clone(),
-            "validated": false,
-        }
-    }
-}
-
-/// The fields of an authentication form.
-#[derive(Default, Clone)]
-struct LogInForm {
-    /// The e-mail field of the login form.
-    email: String,
-
-    /// The password field of the login form.
-    password: String,
-
-    /// Holds possible errors with the user input.
-    error: Option<AuthError>,
-}
-
-impl Serialize<Document> for LogInForm {
-    fn serialize(&self) -> Document {
-        doc! {
-            "email": self.email.clone(),
-            "validated": true,
-        }
-    }
-}
-
 /// A structure that represents the authentication scene.
 #[derive(Clone)]
 pub struct Auth {
@@ -268,7 +134,7 @@ impl Auth {
         let username_regex = Regex::new(r"^[a-zA-Z0-9]+$").unwrap();
 
         let mut password_good = true;
-        if self.register_form.password.len() < 8 {
+        if self.register_form.get_password().len() < 8 {
             password_good = false;
         }
 
@@ -276,16 +142,16 @@ impl Auth {
         let uppercase_regex = Regex::new(r"[A-Z]").unwrap();
         let digit_regex = Regex::new(r"\d").unwrap();
         let symbol_regex = Regex::new(r"[^\w\s]").unwrap();
-        if !lowercase_regex.is_match(&*self.register_form.password.clone())
-            | !uppercase_regex.is_match(&*self.register_form.password.clone())
-            | !digit_regex.is_match(&*self.register_form.password.clone())
-            | !symbol_regex.is_match(&*self.register_form.password.clone())
+        if !lowercase_regex.is_match(&*self.register_form.get_password().clone())
+            | !uppercase_regex.is_match(&*self.register_form.get_password().clone())
+            | !digit_regex.is_match(&*self.register_form.get_password().clone())
+            | !symbol_regex.is_match(&*self.register_form.get_password().clone())
         {
             password_good = false;
         }
 
-        let email_good = email_regex.is_match(&*self.register_form.email.clone());
-        let username_good = username_regex.is_match(&*self.register_form.username.clone());
+        let email_good = email_regex.is_match(&*self.register_form.get_email().clone());
+        let username_good = username_regex.is_match(&*self.register_form.get_username().clone());
 
         if !email_good | !username_good | !password_good {
             Some(Error::AuthError(AuthError::RegisterBadCredentials {
@@ -334,13 +200,13 @@ impl Scene for Auth {
         match message {
             AuthAction::RegisterTextFieldUpdate(field) => match field {
                 RegisterField::Email(email) => {
-                    self.register_form.email = email.clone();
+                    self.register_form.set_email(email.clone());
                 }
                 RegisterField::Username(username) => {
-                    self.register_form.username = username.clone();
+                    self.register_form.set_username(username.clone());
                 }
                 RegisterField::Password(password) => {
-                    self.register_form.password = password.clone();
+                    self.register_form.set_password(password.clone());
                 }
                 RegisterField::Code(code) => {
                     self.register_code = Some(code.clone());
@@ -348,23 +214,27 @@ impl Scene for Auth {
             },
             AuthAction::LogInTextFieldUpdate(field) => match field {
                 LogInField::Email(email) => {
-                    self.log_in_form.email = email.clone();
+                    self.log_in_form.set_email(email.clone());
                 }
                 LogInField::Password(password) => {
-                    self.log_in_form.password = password.clone();
+                    self.log_in_form.set_password(password.clone());
                 }
             },
             AuthAction::SendRegister(added_to_db) => {
-                self.register_form.error = None;
+                self.register_form.set_error(None);
 
                 return if *added_to_db {
                     let mail = lettre::Message::builder()
                         .from(format!("Chartsy <{}>", config::email_address()).parse().unwrap())
-                        .to(format!("{} <{}>", self.register_form.username.clone(), self.register_form.email.clone()).parse().unwrap())
+                        .to(format!(
+                            "{} <{}>",
+                            self.register_form.get_username().clone(),
+                            self.register_form.get_email().clone()
+                        ).parse().unwrap())
                         .subject("Code validation for Chartsy account")
                         .multipart(MultiPart::alternative_plain_html(
-                            String::from(format!("Use the following code to validate your email address:\n{}", self.register_form.code)),
-                            String::from(format!("<p>Use the following code to validate your email address:</p><h1>{}</h1>", self.register_form.code))
+                            String::from(format!("Use the following code to validate your email address:\n{}", self.register_form.get_code())),
+                            String::from(format!("<p>Use the following code to validate your email address:</p><h1>{}</h1>", self.register_form.get_code()))
                         )).unwrap();
 
                     self.register_code = Some("".into());
@@ -378,11 +248,12 @@ impl Scene for Auth {
                     }
 
                     let mut rng = rand::thread_rng();
-                    self.register_form.code =
-                        (0..6).map(|_| rng.gen_range(0..=9).to_string()).collect();
+                    self.register_form.set_code(
+                        (0..6).map(|_| rng.gen_range(0..=9).to_string()).collect::<String>()
+                    );
 
                     let mut register_form = self.register_form.clone();
-                    register_form.password = pwhash::bcrypt::hash(register_form.password).unwrap();
+                    register_form.set_password(pwhash::bcrypt::hash(register_form.get_password()).unwrap());
 
                     match globals.get_db() {
                         Some(db) => {
@@ -390,7 +261,7 @@ impl Scene for Auth {
                                 async move {
                                     mongo::auth::create_user(
                                         &db,
-                                        register_form.email.clone(),
+                                        register_form.get_email().clone(),
                                         register_form.serialize()
                                     ).await
                                 },
@@ -417,7 +288,7 @@ impl Scene for Auth {
                         async move {
                             mongo::auth::validate_email(
                                 &db,
-                                register_form.email,
+                                register_form.get_email().clone(),
                                 register_code.unwrap_or_default()
                             ).await
                         },
@@ -435,7 +306,7 @@ impl Scene for Auth {
                 self.active_tab = AuthTabIds::LogIn;
             }
             AuthAction::SendLogIn => {
-                self.log_in_form.error = None;
+                self.log_in_form.set_error(None);
                 let log_in_form = self.log_in_form.clone();
 
                 if let Some(db) = globals.get_db() {
@@ -455,7 +326,7 @@ impl Scene for Auth {
                 }
             }
             AuthAction::LoggedIn(user) => {
-                if !user.test_password(&self.log_in_form.password) {
+                if !user.test_password(self.log_in_form.get_password()) {
                     return self.update(globals, Box::new(AuthAction::HandleError(Error::AuthError(
                         AuthError::LogInUserDoesntExist,
                     ))));
@@ -463,7 +334,7 @@ impl Scene for Auth {
 
                 globals.set_user(Some(user.clone()));
                 let db = globals.get_db().unwrap();
-                let id = user.id;
+                let id = user.get_id();
 
                 return Command::perform(
                     async move {
@@ -482,13 +353,13 @@ impl Scene for Auth {
                             self.code_error = Some(error.clone());
                         }
                         AuthError::LogInUserDoesntExist => {
-                            self.log_in_form.error = Some(error.clone());
+                            self.log_in_form.set_error(error.clone());
                         }
                         AuthError::RegisterBadCredentials { .. } => {
-                            self.register_form.error = Some(error.clone());
+                            self.register_form.set_error(error.clone());
                         }
                         AuthError::RegisterUserAlreadyExists => {
-                            self.register_form.error = Some(error.clone());
+                            self.register_form.set_error(error.clone());
                         }
                     }
                 }
@@ -499,13 +370,13 @@ impl Scene for Auth {
     }
 
     fn view(&self, globals: &Globals) -> Element<'_, Message, Theme, Renderer> {
-        let register_error_text = Text::new(if let Some(error) = self.register_form.error.clone() {
+        let register_error_text = Text::new(if let Some(error) = self.register_form.get_error().clone() {
             error.to_string()
         } else {
             String::from("")
         });
 
-        let log_in_error_text = Text::new(if let Some(error) = self.log_in_form.error.clone() {
+        let log_in_error_text = Text::new(if let Some(error) = self.log_in_form.get_error().clone() {
             error.to_string()
         } else {
             String::from("")
@@ -546,7 +417,7 @@ impl Scene for Auth {
                                 Column::with_children([
                                     register_error_text.into(),
                                     Text::new("Email:").into(),
-                                    TextInput::new("Input email...", &*self.register_form.email)
+                                    TextInput::new("Input email...", &*self.register_form.get_email())
                                         .on_input(|value| {
                                             Message::DoAction(Box::new(
                                                 AuthAction::RegisterTextFieldUpdate(
@@ -555,7 +426,7 @@ impl Scene for Auth {
                                             ))
                                         }).into(),
                                     Text::new("Username:").into(),
-                                    TextInput::new("Input username...", &*self.register_form.username)
+                                    TextInput::new("Input username...", &*self.register_form.get_username())
                                         .on_input(|value| {
                                             Message::DoAction(Box::new(
                                                 AuthAction::RegisterTextFieldUpdate(
@@ -564,7 +435,7 @@ impl Scene for Auth {
                                             ))
                                         }).into(),
                                     Text::new("Password:").into(),
-                                    TextInput::new("Input password...", &*self.register_form.password)
+                                    TextInput::new("Input password...", &*self.register_form.get_password())
                                         .on_input(|value| {
                                             Message::DoAction(Box::new(
                                                 AuthAction::RegisterTextFieldUpdate(
@@ -591,7 +462,7 @@ impl Scene for Auth {
                             Column::with_children([
                                 log_in_error_text.into(),
                                 Text::new("Email:").into(),
-                                TextInput::new("Input email...", &*self.log_in_form.email).on_input(
+                                TextInput::new("Input email...", &*self.log_in_form.get_email()).on_input(
                                     |value| {
                                         Message::DoAction(Box::new(
                                             AuthAction::LogInTextFieldUpdate(LogInField::Email(
@@ -601,7 +472,7 @@ impl Scene for Auth {
                                     }
                                 ).into(),
                                 Text::new("Password:").into(),
-                                TextInput::new("Input password...", &*self.log_in_form.password)
+                                TextInput::new("Input password...", &*self.log_in_form.get_password())
                                     .on_input(|value| {
                                         Message::DoAction(Box::new(
                                             AuthAction::LogInTextFieldUpdate(LogInField::Password(
@@ -643,10 +514,4 @@ impl Scene for Auth {
     }
 
     fn clear(&self) {}
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum AuthTabIds {
-    Register,
-    LogIn,
 }

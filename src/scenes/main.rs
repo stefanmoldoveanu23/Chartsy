@@ -13,22 +13,16 @@ use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::card::Card;
 
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
-use crate::scenes::auth::{AuthOptions, AuthTabIds};
+use crate::scenes::auth::AuthOptions;
+use crate::scenes::data::auth::AuthTabIds;
 use crate::scenes::scenes::Scenes;
 
-use crate::scenes::drawing::{DrawingOptions, SaveMode};
+use crate::scenes::drawing::DrawingOptions;
+use crate::scenes::data::drawing::SaveMode;
 use crate::theme::Theme;
 use crate::widgets::closeable::Closeable;
 
-/// The modals that can be displayed on the [Main] [scene](Scene).
-#[derive(Clone, Eq, PartialEq)]
-enum ModalType {
-    /// This modal displays the list of drawings a user can draw on.
-    ShowingDrawings,
-
-    /// This modal allows a user to create a new drawing.
-    SelectingSaveMode,
-}
+use crate::scenes::data::main::*;
 
 /// The [Messages](Action) of the main [Scene].
 #[derive(Clone)]
@@ -524,11 +518,4 @@ impl Scene for Main {
     }
 
     fn clear(&self) {}
-}
-
-/// The tabs for the drawing list overlay.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum MainTabIds {
-    Offline,
-    Online,
 }

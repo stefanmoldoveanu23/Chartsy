@@ -3,7 +3,6 @@ use dropbox_sdk::default_client::{NoauthDefaultClient, UserAuthDefaultClient};
 use dropbox_sdk::files;
 use dropbox_sdk::files::WriteMode;
 use std::any::Any;
-use std::fmt::{Display, Formatter};
 use std::fs;
 use std::fs::{create_dir_all, File};
 use std::io::Write;
@@ -18,7 +17,7 @@ use iced_aw::tab_bar::TabLabel;
 use iced_aw::tabs::Tabs;
 use json::object::Object;
 use json::JsonValue;
-use mongodb::bson::{doc, Bson, Uuid, Document};
+use mongodb::bson::Uuid;
 use svg2webp::svg2webp;
 
 use crate::canvas::layer::CanvasAction;
@@ -40,125 +39,13 @@ use crate::scenes::scenes::Scenes;
 
 use crate::theme::Theme;
 
-use crate::serde::{Deserialize, Serialize};
 use crate::widgets::combo_box::ComboBox;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::card::Card;
 use crate::widgets::closeable::Closeable;
 use crate::widgets::grid::Grid;
 
-/// The types of the modals that can be opened.
-#[derive(Clone, Eq, PartialEq)]
-pub enum ModalTypes {
-    /// A prompt where the user can write data for a post they are creating.
-    PostPrompt
-}
-
-/// Data for a post tag.
-#[derive(Default, Clone)]
-pub struct Tag {
-    /// The name of the tag.
-    name: String,
-
-    /// The number of posts the tag has been used in.
-    uses: u32,
-}
-
-impl Tag {
-    /// Reduces the name of a new tag to a base tag form.
-    pub fn reduced(mut self) -> Self {
-        self.name = self.name.to_ascii_lowercase().split_whitespace().collect::<Vec<&str>>().join(" ");
-
-        self
-    }
-}
-
-impl PartialEq for Tag {
-    fn eq(&self, other: &Self) -> bool {
-        self.name.clone() == other.name
-    }
-}
-
-impl Display for Tag {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&*format!("{}({})", self.name, self.uses))
-    }
-}
-
-impl Serialize<Document> for Tag {
-    fn serialize(&self) -> Document {
-        doc![
-            "name": self.name.clone(),
-            "uses": self.uses
-        ]
-    }
-}
-
-impl Deserialize<Document> for Tag {
-    fn deserialize(document: &Document) -> Self where Self: Sized {
-        let mut tag = Tag { name: "".into(), uses: 0 };
-
-        if let Some(Bson::String(name)) = document.get("name") {
-           tag.name = name.clone();
-        }
-        if let Some(Bson::Int32(uses)) = document.get("uses") {
-            tag.uses = *uses as u32;
-        }
-
-        tag
-    }
-}
-
-/// The data of a post.
-#[derive(Default, Clone)]
-pub struct PostData {
-    /// The description of the post.
-    description: String,
-
-    /// The list of tags the user has chosen for the post.
-    post_tags: Vec<Tag>,
-
-    /// A list of all tags that have been applied to a post.
-    all_tags: Vec<Tag>,
-
-    /// The current input the user has written for a new tag.
-    tag_input: String,
-}
-
-/// Possible updates to a new post data.
-#[derive(Clone)]
-pub enum UpdatePostData {
-    Description(String),
-    NewTag(String),
-    SelectedTag(Tag),
-    AllTags(Vec<Tag>),
-    TagInput(String),
-}
-
-impl PostData {
-    /// Updates the new post data.
-    fn update(&mut self, update: UpdatePostData) {
-        match update {
-            UpdatePostData::Description(description) => self.description = description,
-            UpdatePostData::NewTag(name) => {
-                let tag = Tag { name, uses: 0 }.reduced();
-
-                if self.post_tags.iter().find(|pos_tag| **pos_tag == tag).is_none() {
-                    self.post_tags.push(tag.clone());
-                }
-                self.tag_input = "".into();
-            }
-            UpdatePostData::SelectedTag(tag) => {
-                if self.post_tags.iter().find(|pos_tag| **pos_tag == tag).is_none() {
-                    self.post_tags.push(tag);
-                }
-                self.tag_input = "".into();
-            }
-            UpdatePostData::AllTags(tags) => self.all_tags = tags,
-            UpdatePostData::TagInput(tag_input) => self.tag_input = tag_input,
-        }
-    }
-}
+use crate::scenes::data::drawing::*;
 
 /// The [Messages](Action) for the [Drawing] scene.
 #[derive(Clone)]
@@ -180,16 +67,6 @@ pub(crate) enum DrawingAction {
 
     /// Handles errors.
     ErrorHandler(Error),
-}
-
-/// The mode in which the progress will be saved.
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum SaveMode {
-    /// Saves the canvas locally.
-    Offline,
-
-    /// Saves the canvas in a database.
-    Online,
 }
 
 impl Action for DrawingAction {
@@ -469,15 +346,15 @@ impl Scene for Box<Drawing> {
                 let document = self.canvas.svg.as_document();
                 let db = globals.get_db().unwrap();
                 let user_id = globals.get_user().unwrap().get_id();
-                let description = self.post_data.description.clone();
+                let description = self.post_data.get_description().clone();
 
-                let tags :Vec<String>= self.post_data.post_tags.iter().map(
-                    |tag| tag.name.clone()
+                let tags :Vec<String>= self.post_data.get_post_tags().iter().map(
+                    |tag| tag.get_name().clone()
                 ).collect();
 
-                self.post_data.post_tags = vec![];
-                self.post_data.description = "".into();
-                self.post_data.tag_input = "".into();
+                self.post_data.set_post_tags(vec![]);
+                self.post_data.set_description("");
+                self.post_data.set_tag_input("");
 
                 Command::perform(
                     async move {
@@ -536,7 +413,7 @@ impl Scene for Box<Drawing> {
 
                 match modal {
                     ModalTypes::PostPrompt => {
-                        if self.post_data.all_tags.is_empty() {
+                        if self.post_data.no_tags() {
                             if let (Some(_), Some(db)) = (globals.get_user(), globals.get_db()) {
                                 Command::perform(
                                     async move {
@@ -732,14 +609,14 @@ impl Scene for Box<Drawing> {
                                     Text::new("Description:").into(),
                                     TextInput::new(
                                         "Write description here...",
-                                        &*self.post_data.description
+                                        &*self.post_data.get_description()
                                     )
                                         .on_input(|new_value| Message::DoAction(Box::new(DrawingAction::UpdatePostData(UpdatePostData::Description(new_value)))))
                                         .into(),
                                     Text::new("Tags:").into(),
-                                    Grid::new(self.post_data.post_tags.iter().map(
+                                    Grid::new(self.post_data.get_post_tags().iter().map(
                                         |tag| Badge::new(
-                                            Text::new(tag.name.clone())
+                                            Text::new(tag.get_name().clone())
                                         )
                                             .padding(3)
                                     ).collect())
@@ -749,9 +626,9 @@ impl Scene for Box<Drawing> {
                                     Row::with_children(
                                         vec![
                                             ComboBox::new(
-                                                self.post_data.all_tags.clone(),
+                                                self.post_data.get_all_tags().clone(),
                                                 "Add a new tag...",
-                                                &*self.post_data.tag_input,
+                                                &*self.post_data.get_tag_input(),
                                                 |tag| Message::DoAction(Box::new(
                                                     DrawingAction::UpdatePostData(UpdatePostData::SelectedTag(tag))
                                                 ))
@@ -769,7 +646,7 @@ impl Scene for Box<Drawing> {
                                                     .height(30.0)
                                             )
                                                 .on_press(Message::DoAction(Box::new(DrawingAction::UpdatePostData(
-                                                    UpdatePostData::NewTag(self.post_data.tag_input.clone())
+                                                    UpdatePostData::NewTag(self.post_data.get_tag_input().clone())
                                                 ))))
                                                 .padding(0)
                                                 .into()
@@ -807,11 +684,4 @@ impl Scene for Box<Drawing> {
     }
 
     fn clear(&self) {}
-}
-
-/// The tabs in the selection section.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum TabIds {
-    Tools,
-    Style,
 }
