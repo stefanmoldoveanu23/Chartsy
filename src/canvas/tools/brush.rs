@@ -153,6 +153,10 @@ where
         BrushPending::None
     }
 
+    fn dyn_default(&self) -> Box<dyn Pending> {
+        Box::new(BrushPending::None)
+    }
+    
     fn boxed_clone(&self) -> Box<dyn Pending> {
         Box::new((*self).clone())
     }

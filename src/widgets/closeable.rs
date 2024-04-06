@@ -6,7 +6,6 @@ use iced::advanced::widget::{Operation, Tree};
 use iced::event::Status;
 use iced::mouse::{Cursor, Interaction};
 use iced::theme::Palette;
-use iced::widget::image::Handle;
 use crate::widgets::close::Close;
 
 /// The default padding for the content.
@@ -18,7 +17,7 @@ const DEFAULT_CLOSE_PADDING :f32= 10.0;
 pub struct Closeable<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
-    Renderer: 'a + iced::advanced::Renderer+iced::advanced::image::Renderer<Handle=Handle>,
+    Renderer: 'a + iced::advanced::Renderer+iced::advanced::text::Renderer<Font=iced::Font>,
     Theme: 'a + StyleSheet
 {
     /// The width of the [Closeable].
@@ -55,7 +54,7 @@ where
 impl<'a, Message, Theme, Renderer> Closeable<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
-    Renderer: 'a + iced::advanced::Renderer+iced::advanced::image::Renderer<Handle=Handle>,
+    Renderer: 'a + iced::advanced::Renderer+iced::advanced::text::Renderer<Font=iced::Font>,
     Theme: 'a + StyleSheet
 {
     /// Instantiates a new [Closeable] with the given content.
@@ -153,7 +152,7 @@ where
 impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Closeable<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
-    Renderer: 'a + iced::advanced::Renderer+iced::advanced::image::Renderer<Handle=Handle>,
+    Renderer: 'a + iced::advanced::Renderer + iced::advanced::text::Renderer<Font=iced::Font>,
     Theme: 'a + StyleSheet
 {
     fn size(&self) -> Size<Length> {
@@ -415,7 +414,7 @@ where
 impl<'a, Message, Theme, Renderer> From<Closeable<'a, Message, Theme, Renderer>> for Element<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
-    Renderer: 'a + iced::advanced::Renderer+iced::advanced::image::Renderer<Handle=Handle>,
+    Renderer: 'a + iced::advanced::Renderer+iced::advanced::text::Renderer<Font=iced::Font>,
     Theme: 'a + StyleSheet
 {
     fn from(value: Closeable<'a, Message, Theme, Renderer>) -> Self {

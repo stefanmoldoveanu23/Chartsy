@@ -8,26 +8,146 @@ use iced::{event, keyboard, Color, Point, Rectangle, Renderer};
 use json::JsonValue;
 use std::sync::Arc;
 use iced::keyboard::Key;
+use mongodb::bson::Uuid;
 
 /// A layer in the [canvas](crate::canvas::canvas::Canvas).
-pub struct Layer<'a> {
-    /// The cache of the [Layer].
-    pub(crate) state: Option<&'a canvas::Cache>,
+pub struct Layer {
+    /// The cache memory of the [Layer].
+    cache: canvas::Cache,
 
-    /// The [tools](Tool) stored on the [Layer].
-    pub(crate) tools: &'a [Arc<dyn Tool>],
+    /// The tools drawn on the [Layer].
+    tools: Vec<Arc<dyn Tool>>,
 
-    /// The currently selected [Tool].
-    pub(crate) current_tool: &'a Box<dyn Pending>,
+    /// The name of the [Layer].
+    name: String,
 
-    /// The currently selected [Style].
-    pub(crate) style: &'a Style,
+    /// The new name for the [Layer]. Is None if it is not being edited.
+    new_name: Option<String>,
 
-    /// Tells whether this layer is currently being drawn on.
-    pub active: bool,
+    /// Tells whether the [Layer] is visible.
+    visible: bool,
 }
 
-impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for Layer<'a> {
+impl Layer {
+    pub fn new(name: String) -> Self {
+        Layer {
+            name,
+            ..Default::default()
+        }
+    }
+
+    pub fn clear_cache(&self) {
+        self.cache.clear()
+    }
+
+    pub fn get_cache(&self) -> &canvas::Cache {
+        &self.cache
+    }
+
+    pub fn get_tools(&self) -> &[Arc<dyn Tool>] {
+        self.tools.as_slice()
+    }
+
+    pub fn get_mut_tools(&mut self) -> &mut Vec<Arc<dyn Tool>> {
+        &mut self.tools
+    }
+
+    pub fn get_name(&self) -> &String {
+        &self.name
+    }
+
+    pub fn get_new_name(&self) -> &Option<String> {
+        &self.new_name
+    }
+
+    pub fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    pub fn toggle_visibility(&mut self) {
+        self.visible = !self.visible;
+    }
+
+    pub fn toggle_name(&mut self) -> Option<String> {
+        match self.new_name.clone() {
+            Some(new_name) => {
+                self.new_name = None;
+                self.name = new_name.clone();
+
+                Some(new_name)
+            }
+            None => {
+                self.new_name = Some(self.name.clone());
+
+                None
+            }
+        }
+    }
+
+    pub fn set_new_name(&mut self, new_name: impl Into<Option<String>>) {
+        self.new_name = new_name.into();
+    }
+}
+
+unsafe impl Send for Layer { }
+unsafe impl Sync for Layer { }
+
+impl Default for Layer {
+    fn default() -> Self {
+        Layer {
+            cache: Default::default(),
+            tools: vec![],
+            name: "New layer".to_string(),
+            new_name: None,
+            visible: true,
+
+        }
+    }
+}
+
+/// A structure used to render a layer.
+pub struct LayerVessel<'a> {
+    /// The cache of the [LayerVessel].
+    state: &'a canvas::Cache,
+
+    /// The [tools](Tool) stored on the [LayerVessel].
+    tools: &'a [Arc<dyn Tool>],
+
+    /// The currently selected [Tool].
+    current_tool: &'a Box<dyn Pending>,
+
+    /// The currently selected [Style].
+    style: &'a Style,
+
+    /// Tells whether this layer is currently being drawn on.
+    active: bool,
+
+    /// Tells whether this layer is visible or not.
+    visible: bool,
+}
+
+impl<'a> LayerVessel<'a>
+{
+    pub fn new(
+        state: &'a canvas::Cache,
+        tools: &'a [Arc<dyn Tool>],
+        current_tool: &'a Box<dyn Pending>,
+        style: &'a Style,
+        active: bool,
+        visible: bool
+    ) -> Self {
+        LayerVessel {
+            state,
+            tools,
+            current_tool,
+            style,
+            active,
+            visible
+        }
+    }
+}
+
+impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for LayerVessel<'a> {
     type State = Option<Box<dyn Pending>>;
 
     fn update(
@@ -117,16 +237,11 @@ impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for Layer<'a> {
             frame.into_geometry()
         };
 
-        let content = match self.state {
-            None => {
-                return vec![base];
-            }
-            Some(state) => state.draw(renderer, bounds.size(), |frame| {
+        let content = self.state.draw(renderer, bounds.size(), |frame| {
                 for tool in self.tools {
                     tool.add_to_frame(frame);
                 }
-            }),
-        };
+        });
 
         if !self.active {
             return vec![base, content];
@@ -156,17 +271,7 @@ impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for Layer<'a> {
     }
 }
 
-/// Scene messages that relate to the [canvas](crate::canvas::canvas::Canvas):
-/// - [UseTool](CanvasAction::UseTool), to add a tool to the drawing;
-/// - [ChangeTool](CanvasAction::ChangeTool), to select a new drawing tool;
-/// - [UpdateStyle](CanvasAction::UpdateStyle), to modify the drawing style parameters;
-/// - [AddLayer](CanvasAction::AddLayer), to add a new layer to the drawing;
-/// - [ActivateLayer](CanvasAction::ActivateLayer), to select the layer on which the tools will be added;
-/// - [Save](CanvasAction::Save), to save the progress since the last save;
-/// - [Saved](CanvasAction::Saved), which triggers when a save is complete;
-/// - [Loaded](CanvasAction::Loaded), which triggers when the drawing data is received;
-/// - [Undo](CanvasAction::Undo), to undo the last tool addition;
-/// - [Redo](CanvasAction::Redo), to redo the last undo.
+/// Scene messages that relate to the [canvas](crate::canvas::canvas::Canvas).
 #[derive(Clone)]
 pub enum CanvasAction {
     /// Adds a [Tool] to the active [Layer].
@@ -182,7 +287,16 @@ pub enum CanvasAction {
     AddLayer,
 
     /// Sets the currently active [Layer].
-    ActivateLayer(usize),
+    ActivateLayer(Uuid),
+
+    /// Toggles the visibility of a [Layer].
+    ToggleLayer(Uuid),
+
+    /// Toggles the editing of the [Layer] name.
+    ToggleEditLayerName(Uuid),
+
+    /// Updates the [Layer] name when user inputs.
+    UpdateLayerName(Uuid, String),
 
     /// Saves the state of the drawing.
     Save,
@@ -192,8 +306,8 @@ pub enum CanvasAction {
 
     /// Triggered when the drawing data is successfully loaded.
     Loaded {
-        layers: usize,
-        tools: Vec<(Arc<dyn Tool>, usize)>,
+        layers: Vec<(Uuid, String)>,
+        tools: Vec<(Arc<dyn Tool>, Uuid)>,
         json_tools: Option<Vec<JsonValue>>,
     },
 

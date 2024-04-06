@@ -20,14 +20,13 @@ mod scenes;
 mod serde;
 mod theme;
 mod widgets;
+mod icons;
 
 use scene::{Globals, Message};
 use scenes::scenes::SceneLoader;
 use theme::Theme;
 
-use iced::{
-    executor, window, Application, Command, Element, Renderer, Settings, Subscription,
-};
+use iced::{executor, window, Application, Command, Element, Renderer, Settings, Subscription};
 use lettre::{AsyncSmtpTransport, AsyncStd1Executor, AsyncTransport};
 
 pub fn main() -> iced::Result {
@@ -63,6 +62,7 @@ impl Application for Chartsy {
             },
             Command::batch(vec![
                 window::change_mode(window::Id::MAIN, window::Mode::Fullscreen),
+                iced::font::load(icons::ICON_BYTES).map(|_| Message::None),
                 Command::perform(mongo::base::connect_to_mongodb(), Message::DoneDatabaseInit),
             ]),
         )

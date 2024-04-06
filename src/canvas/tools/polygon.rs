@@ -167,6 +167,10 @@ impl Pending for PolygonPending {
         PolygonPending::None
     }
 
+    fn dyn_default(&self) -> Box<dyn Pending> {
+        Box::new(PolygonPending::None)
+    }
+
     fn boxed_clone(&self) -> Box<dyn Pending> {
         Box::new((*self).clone())
     }

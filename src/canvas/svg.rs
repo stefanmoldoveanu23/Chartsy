@@ -1,5 +1,6 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
+use mongodb::bson::Uuid;
 use svg::node::element::{Group, Rectangle};
 use svg::Document;
 
@@ -7,10 +8,10 @@ use svg::Document;
 #[derive(Debug, Clone)]
 pub struct SVG {
     /// The list of tools organized by layer.
-    tools: Vec<Vec<(Group, usize)>>,
+    tools: HashMap<Uuid, Vec<(Group, usize)>>,
 
     /// Used to get the latest added tool for undo-ing.
-    group_order: BTreeMap<usize, usize>,
+    group_order: BTreeMap<usize, Uuid>,
 
     /// The total amount of tools.
     tool_count: usize,
@@ -18,30 +19,29 @@ pub struct SVG {
 
 impl SVG {
     /// Create a new svg with the given amount of layers.
-    pub fn new(cnt_layers: usize) -> Self {
+    pub fn new(layers: &Vec<Uuid>) -> Self {
         Self {
-            tools: vec![vec![]; cnt_layers],
+            tools: HashMap::from_iter(layers.iter().map(|id| (*id, vec![]))),
             group_order: BTreeMap::new(),
             tool_count: 0,
         }
     }
-
-    /// Add a new layer.
-    pub fn add_layer(&mut self) {
-        self.tools.push(vec![]);
+    
+    pub fn add_layer(&mut self, layer_id: Uuid) {
+        self.tools.insert(layer_id, vec![]);
     }
 
     /// Add a new tool serialized as a [Group] to the given layer.
-    pub fn add_tool(&mut self, layer: usize, data: Group) {
+    pub fn add_tool(&mut self, layer: &Uuid, data: Group) {
 
         let last_order = self.tools[layer].last();
         if let Some(last_order) = last_order {
             self.group_order.remove(&last_order.1);
         }
 
-        self.group_order.insert(self.tool_count, layer);
+        self.group_order.insert(self.tool_count, *layer);
 
-        self.tools[layer].push((data, self.tool_count));
+        self.tools.get_mut(layer).unwrap().push((data, self.tool_count));
         self.tool_count += 1;
     }
 
@@ -63,11 +63,11 @@ impl SVG {
         }
 
         let (_, layer) = last.unwrap();
-        self.tools[layer].pop();
+        self.tools.get_mut(&layer).unwrap().pop();
 
-        if self.tools[layer].len() > 0 {
+        if self.tools[&layer].len() > 0 {
             self.group_order
-                .insert(self.tools[layer].last().unwrap().1, layer);
+                .insert(self.tools[&layer].last().unwrap().1, layer);
         }
 
         self.tool_count -= 1;
@@ -98,7 +98,7 @@ impl SVG {
         for layer in &self.tools {
             let mut group = Group::new();
 
-            for (tool, _) in layer {
+            for (tool, _) in layer.1 {
                 group = group.add(tool.clone());
             }
             tools = tools.add(group);

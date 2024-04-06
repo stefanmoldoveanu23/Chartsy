@@ -9,7 +9,7 @@ use iced::widget::canvas::{event, Event, Frame, Geometry};
 use iced::{mouse, Point, Rectangle, Renderer};
 use json::object::Object;
 use json::JsonValue;
-use mongodb::bson::{Bson, Document};
+use mongodb::bson::{Bson, Document, Uuid, UuidRepresentation};
 use std::fmt::Debug;
 use std::sync::Arc;
 use svg::node::element::Group;
@@ -36,10 +36,10 @@ pub trait Tool:
 }
 
 /// Returns the list of [tools](Tool) stored in the given [Document].
-pub fn get_deserialized(document: &Document) -> Option<(Arc<dyn Tool>, usize)> {
-    let mut layer: usize = 0;
-    if let Some(Bson::Int32(layer_count)) = document.get("layer") {
-        layer = *layer_count as usize;
+pub fn get_deserialized(document: &Document) -> Option<(Arc<dyn Tool>, Uuid)> {
+    let mut layer :Uuid= Uuid::default();
+    if let Some(Bson::Binary(bin)) = document.get("layer") {
+        layer = bin.to_uuid_with_representation(UuidRepresentation::Standard).unwrap();
     }
 
     if let Some(Bson::String(name)) = document.get("name") {
@@ -62,10 +62,10 @@ pub fn get_deserialized(document: &Document) -> Option<(Arc<dyn Tool>, usize)> {
 }
 
 /// Returns the list of [tools](Tool) stored in the given [json](Object).
-pub fn get_json(value: &Object) -> Option<(Arc<dyn Tool>, usize)> {
-    let mut layer: usize = 0;
-    if let Some(JsonValue::Number(layer_count)) = value.get("layer") {
-        layer = f32::from(*layer_count) as usize;
+pub fn get_json(value: &Object) -> Option<(Arc<dyn Tool>, Uuid)> {
+    let mut layer :Uuid= Uuid::default();
+    if let Some(JsonValue::String(layer_count)) = value.get("layer") {
+        layer = Uuid::parse_str(&*layer_count).unwrap();
     }
 
     if let Some(JsonValue::Short(name)) = value.get("name") {
@@ -112,6 +112,7 @@ impl Clone for Box<dyn Tool> {
 /// ```
 ///
 pub trait Pending: Send + Sync {
+
     /// Handles an [Event] on the [canvas](crate::canvas::canvas::Canvas). To be used in the
     /// Programs' [update function](iced::widget::canvas::Program::update).
     fn update(
@@ -141,6 +142,9 @@ pub trait Pending: Send + Sync {
     fn default() -> Self
     where
         Self: Sized;
+
+    /// Returns a default version of the [pending tool](Pending) given an object.
+    fn dyn_default(&self) -> Box<dyn Pending>;
 
     /// Returns a clone of the [pending tool](Pending) enclosed in a [Box].
     fn boxed_clone(&self) -> Box<dyn Pending>;

@@ -1,56 +1,38 @@
-use std::fs;
 use iced::advanced::layout::{Limits, Node};
-use iced::advanced::renderer::{Quad, Style};
-use iced::advanced::{Clipboard, Layout, Shell, Widget};
+use iced::advanced::renderer::Style;
+use iced::advanced::{Clipboard, Layout, Shell, Text, Widget};
 use iced::advanced::widget::Tree;
-use iced::{Background, Border, Color, Element, Event, Length, mouse, Rectangle, Size};
+use iced::{Element, Event, Length, mouse, Point, Rectangle, Size};
+use iced::alignment::{Horizontal, Vertical};
 use iced::event::Status;
 use iced::mouse::{Cursor, Interaction};
-use iced::widget::image::Handle;
+use crate::icons::{Icon, ICON};
 
 /// The default size of a close button.
 const DEFAULT_SIZE :f32= 40.0;
 
 /// A [Widget] for a close button. Will be displayed using an [image](Handle). It can be resized.
-pub struct Close<'a, Message, Theme, Renderer>
+pub struct Close<Message>
 where
-    Message: 'a + Clone,
-    Renderer: 'a + iced::advanced::Renderer + iced::advanced::image::Renderer<Handle = Handle>
+    Message: Clone,
 {
     /// The size of the button.
     size: f32,
     
     /// The [Message] which will be triggered when the button is pressed.
-    on_trigger: Message,
-    
-    /// The [Handle] which stores the X image. Necessary for resizing the image.
-    handle: Handle,
-    
-    /// The [Element] which stores the [Handle].
-    image: Element<'a, Message, Theme, Renderer>
+    on_trigger: Message
 }
 
-impl<'a, Message, Theme, Renderer> Close<'a, Message, Theme, Renderer>
+impl<Message> Close<Message>
 where
-    Message: 'a + Clone,
-    Renderer: 'a + iced::advanced::Renderer + iced::advanced::image::Renderer<Handle = Handle>
+    Message: Clone
 {
     /// Creates a new [Close] instance with the given trigger [Message].
     pub fn new(on_trigger: impl Into<Message>) -> Self
     {
-        let image = fs::read("src/images/close.png").unwrap();
-        let handle = Handle::from_memory(image);
-
         Close {
             size: DEFAULT_SIZE,
-            on_trigger: on_trigger.into(),
-            handle: handle.clone(),
-            image: iced::widget::image::Image::new(
-                handle.clone()
-            )
-                .width(DEFAULT_SIZE)
-                .height(DEFAULT_SIZE)
-                .into()
+            on_trigger: on_trigger.into()
         }
     }
 
@@ -58,21 +40,14 @@ where
     pub fn size(mut self, size: impl Into<f32>) -> Self
     {
         self.size = size.into();
-        self.image = iced::widget::image::Image::new(
-            self.handle.clone()
-        )
-            .width(self.size)
-            .height(self.size)
-            .into();
-
         self
     }
 }
 
-impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Close<'a, Message, Theme, Renderer>
+impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Close<Message>
 where
     Message: 'a + Clone,
-    Renderer: 'a + iced::advanced::Renderer + iced::advanced::image::Renderer<Handle = Handle>
+    Renderer: 'a + iced::advanced::renderer::Renderer + iced::advanced::text::Renderer<Font=iced::Font>
 {
     fn size(&self) -> Size<Length> {
         Size::new(
@@ -81,68 +56,35 @@ where
         )
     }
 
-    fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
-        let limits = limits.loose().width(self.size).height(self.size);
-        let image_layout = self.image.as_widget().layout(&mut tree.children[0], renderer, &limits);
-
-        Node::with_children(
-            Size::new(self.size, self.size),
-            vec![image_layout]
-        )
+    fn layout(&self, _tree: &mut Tree, _renderer: &Renderer, _limits: &Limits) -> Node {
+        Node::new(Size::new(self.size, self.size))
     }
 
     fn draw(
         &self,
-        state: &Tree,
+        _state: &Tree,
         renderer: &mut Renderer,
-        theme: &Theme,
-        style: &Style,
+        _theme: &Theme,
+        _style: &Style,
         layout: Layout<'_>,
-        cursor: Cursor,
+        _cursor: Cursor,
         viewport: &Rectangle
     ) {
-        let bounds = layout.bounds();
-
-        let background = Background::Color(
-            if cursor.is_over(bounds) {
-                Color::from_rgba(0.5, 0.5, 0.5, 0.5)
-            } else {
-                Color::TRANSPARENT
-            }
-        );
-
-        let mut children = layout.children();
-
-        self.image.as_widget().draw(
-            &state.children[0],
-            renderer,
-            theme,
-            style,
-            children.next().expect("Close button needs to have image."),
-            cursor,
-            viewport
-        );
-
-        renderer.fill_quad(
-            Quad {
-                bounds,
-                border: Border {
-                    color: Color::from_rgb(0.5, 0.5, 0.5),
-                    width: 2.0,
-                    radius: 45.0.into(),
-                },
-                shadow: Default::default(),
+        renderer.fill_text(
+            Text {
+                content: &*Icon::X.to_string(),
+                bounds: layout.bounds().size(),
+                size: self.size.into(),
+                line_height: Default::default(),
+                font: ICON,
+                horizontal_alignment: Horizontal::Left,
+                vertical_alignment: Vertical::Top,
+                shaping: Default::default(),
             },
-            background
+            Point::new(layout.bounds().x, layout.bounds().y),
+            crate::theme::pallete::DANGER,
+            *viewport
         );
-    }
-
-    fn children(&self) -> Vec<Tree> {
-        vec![Tree::new(&self.image)]
-    }
-
-    fn diff(&self, tree: &mut Tree) {
-        tree.diff_children(&[&self.image])
     }
 
     fn on_event(
@@ -188,13 +130,13 @@ where
     }
 }
 
-impl<'a, Message, Theme, Renderer> From<Close<'a, Message, Theme, Renderer>> for Element<'a, Message, Theme, Renderer>
+impl<'a, Message, Theme, Renderer> From<Close<Message>> for Element<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
     Theme: 'a,
-    Renderer: 'a + iced::advanced::Renderer + iced::advanced::image::Renderer<Handle = Handle>
+    Renderer: 'a + iced::advanced::Renderer + iced::advanced::text::Renderer<Font=iced::Font>
 {
-    fn from(value: Close<'a, Message, Theme, Renderer>) -> Self {
+    fn from(value: Close<Message>) -> Self {
         Element::new(value)
     }
 }

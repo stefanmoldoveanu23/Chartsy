@@ -110,6 +110,10 @@ impl Pending for LinePending {
         LinePending::None
     }
 
+    fn dyn_default(&self) -> Box<dyn Pending> {
+        Box::new(LinePending::None)
+    }
+
     fn boxed_clone(&self) -> Box<dyn Pending> {
         Box::new((*self).clone())
     }

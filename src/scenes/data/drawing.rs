@@ -160,10 +160,3 @@ pub enum SaveMode {
     /// Saves the canvas in a database.
     Online,
 }
-
-/// The tabs in the selection section.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum TabIds {
-    Tools,
-    Style,
-}

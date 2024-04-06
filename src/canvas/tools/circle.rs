@@ -128,6 +128,10 @@ impl Pending for CirclePending {
         CirclePending::None
     }
 
+    fn dyn_default(&self) -> Box<dyn Pending> {
+        Box::new(CirclePending::None)
+    }
+
     fn boxed_clone(&self) -> Box<dyn Pending> {
         Box::new((*self).clone())
     }

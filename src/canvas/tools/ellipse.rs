@@ -173,6 +173,10 @@ impl Pending for EllipsePending {
         EllipsePending::None
     }
 
+    fn dyn_default(&self) -> Box<dyn Pending> {
+        Box::new(EllipsePending::None)
+    }
+
     fn boxed_clone(&self) -> Box<dyn Pending> {
         Box::new((*self).clone())
     }

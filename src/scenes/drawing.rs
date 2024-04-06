@@ -8,13 +8,11 @@ use std::fs::{create_dir_all, File};
 use std::io::Write;
 
 use crate::canvas::canvas::Canvas;
-use iced::alignment::Horizontal;
-use iced::widget::{Container, Row, Column, Text, Button, TextInput, Image};
+use iced::alignment::{Horizontal, Vertical};
+use iced::widget::{Container, Row, Column, Text, Button, TextInput, Image, Scrollable};
 use iced::{Alignment, Command, Element, Length, Padding, Renderer};
 use iced::widget::image::Handle;
 use iced_aw::Badge;
-use iced_aw::tab_bar::TabLabel;
-use iced_aw::tabs::Tabs;
 use json::object::Object;
 use json::JsonValue;
 use mongodb::bson::Uuid;
@@ -47,6 +45,8 @@ use crate::widgets::grid::Grid;
 
 use crate::scenes::data::drawing::*;
 
+use crate::icons::{Icon, ICON};
+
 /// The [Messages](Action) for the [Drawing] scene.
 #[derive(Clone)]
 pub(crate) enum DrawingAction {
@@ -61,9 +61,6 @@ pub(crate) enum DrawingAction {
 
     /// Toggles a [Modal](ModalTypes).
     ToggleModal(ModalTypes),
-
-    /// Opens the given tab.
-    TabSelection(TabIds),
 
     /// Handles errors.
     ErrorHandler(Error),
@@ -80,7 +77,6 @@ impl Action for DrawingAction {
             DrawingAction::PostDrawing => String::from("Post drawing"),
             DrawingAction::UpdatePostData(_) => String::from("Update post data"),
             DrawingAction::ToggleModal(_) => String::from("Toggle modal"),
-            DrawingAction::TabSelection(_) => String::from("Tab selected"),
             DrawingAction::ErrorHandler(_) => String::from("Handle error"),
         }
     }
@@ -100,9 +96,6 @@ impl Into<Box<dyn Action + 'static>> for Box<DrawingAction> {
 pub struct Drawing {
     /// The canvas where the user can draw.
     canvas: Canvas,
-
-    ///The currently active tab that displays the possible tools or styles.
-    active_tab: TabIds,
 
     /// The new post data.
     post_data: PostData,
@@ -160,14 +153,17 @@ impl Drawing {
                         ).await
                     },
                     move |result| {
-                        if let Err(err) = result {
-                            Message::Error(err)
-                        } else {
-                            Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Loaded {
-                                layers: 1,
-                                tools: vec![],
-                                json_tools: None,
-                            })))
+                        match result {
+                            Ok(layer) => {
+                                Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Loaded {
+                                    layers: vec![layer],
+                                    tools: vec![],
+                                    json_tools: None,
+                                })))
+                            }
+                            Err(err) => {
+                                Message::Error(err)
+                            }
                         }
                     }
                 )
@@ -180,8 +176,13 @@ impl Drawing {
     /// Initialize the drawing scene from the user's computer.
     /// If the uuid is 0, then create a new directory.
     fn init_offline(self: &mut Box<Self>, globals: &mut Globals) -> Command<Message> {
+        let default_id = Uuid::new();
+        let mut default_layer = Object::new();
+        default_layer.insert("id", JsonValue::String(default_id.to_string()));
+        default_layer.insert("name", JsonValue::String("New layer".into()));
+
         let mut default_json = Object::new();
-        default_json.insert("layers", JsonValue::Number(1.into()));
+        default_json.insert("layers", JsonValue::Array(vec![JsonValue::Object(default_layer)]));
         default_json.insert("tools", JsonValue::Array(vec![]));
 
         let mut uuid = self.canvas.id.clone();
@@ -197,12 +198,23 @@ impl Drawing {
                     let data = json::parse(&*data).unwrap();
 
                     if let JsonValue::Object(data) = data.clone() {
-                        let mut layers = 1;
+                        let mut layers = vec![];
                         let mut tools = vec![];
                         let mut json_tools = vec![];
 
-                        if let Some(JsonValue::Number(cnt_layers)) = data.get("layers") {
-                            layers = f32::from(*cnt_layers) as usize;
+                        if let Some(JsonValue::Array(layer_array)) = data.get("layers") {
+                            layers = layer_array.iter().filter_map(
+                                |json| {
+                                    if let JsonValue::Object(object) = json {
+                                        Some((
+                                            Uuid::parse_str(object.get("id").unwrap().as_str().unwrap()).unwrap(),
+                                            object.get("name").unwrap().as_str().unwrap().to_string()
+                                        ))
+                                    } else {
+                                        None
+                                    }
+                                }
+                            ).collect();
                         }
                         if let Some(JsonValue::Array(tool_list)) = data.get("tools") {
                             json_tools = tool_list.clone();
@@ -218,13 +230,13 @@ impl Drawing {
 
                         (layers, tools, json_tools)
                     } else {
-                        (1, vec![], vec![])
+                        (vec![], vec![], vec![])
                     }
                 },
-                |(layer_count, tools, json_tools)| {
+                |(layers, tools, json_tools)| {
                     Message::DoAction(Box::new(DrawingAction::CanvasAction(
                         CanvasAction::Loaded {
-                            layers: layer_count,
+                            layers,
                             tools,
                             json_tools: Some(json_tools),
                         },
@@ -248,7 +260,7 @@ impl Drawing {
 
             self.update(globals, Box::new(DrawingAction::CanvasAction(
                 CanvasAction::Loaded {
-                    layers: 1,
+                    layers: vec![(default_id, "New layer".to_string())],
                     tools: vec![],
                     json_tools: Some(vec![]),
                 },
@@ -302,7 +314,6 @@ impl Scene for Box<Drawing> {
             canvas: Canvas::new()
                 .width(Length::Fixed(800.0))
                 .height(Length::Fixed(600.0)),
-            active_tab: TabIds::Tools,
             post_data: Default::default(),
             save_mode: SaveMode::Online,
             modal_stack: ModalStack::new(),
@@ -392,7 +403,7 @@ impl Scene for Box<Drawing> {
 
                         mongo::drawing::create_post(
                             &db,
-                            Uuid::new(),
+                            post_id,
                             user_id,
                             description,
                             tags
@@ -439,10 +450,6 @@ impl Scene for Box<Drawing> {
                     }
                 }
             }
-            DrawingAction::TabSelection(tab_id) => {
-                self.active_tab = *tab_id;
-                Command::none()
-            }
             DrawingAction::ErrorHandler(_) => Command::none(),
         }
     }
@@ -484,94 +491,157 @@ impl Scene for Box<Drawing> {
             .padding(10.0)
             .into();
 
-        let layers_section :Element<Message, Theme, Renderer>= Row::with_children((|layers: usize| {
-            let mut buttons = vec![];
-            for layer in 0..layers.clone() {
-                buttons.push(
-                    Button::new(Text::new(format!("Layer {}", layer + 1)))
-                        .on_press(Message::DoAction(Box::new(
-                            DrawingAction::CanvasAction(CanvasAction::ActivateLayer(
-                                layer,
-                            )),
-                        )))
+        let tools_section = Container::new(Scrollable::new(
+            Column::with_children(
+                vec![
+                    Text::new("Geometry")
+                        .horizontal_alignment(Horizontal::Center)
+                        .size(20.0)
                         .into(),
-                );
-            }
+                    geometry_section,
+                    Text::new("Brushes")
+                        .horizontal_alignment(Horizontal::Center)
+                        .size(20.0)
+                        .into(),
+                    brushes_section,
+                    Text::new("Eraser")
+                        .horizontal_alignment(Horizontal::Center)
+                        .size(20.0)
+                        .into(),
+                    eraser_section,
+                ]
+            )
+                .padding(8.0)
+                .spacing(15.0)
+                .width(Length::Fill)
+        ))
+            .padding(2.0)
+            .width(Length::Fill)
+            .style(crate::theme::container::Container::Bordered)
+            .height(Length::FillPortion(1));
 
-            buttons
-        })(self.canvas.get_layer_count()))
-            .into();
+        let style_section = Container::new(Scrollable::new(
+            self.canvas
+                .style
+                .view()
+                .map(|update| Message::DoAction(Box::new(
+                    DrawingAction::CanvasAction(CanvasAction::UpdateStyle(update))
+                )))
+        ))
+            .padding(2.0)
+            .width(Length::Fill)
+            .style(crate::theme::container::Container::Bordered)
+            .height(Length::FillPortion(1));
 
-        let buttons_section :Element<Message, Theme, Renderer>= Row::with_children(vec![
-            Button::new(Text::new("Back"))
-                .on_press(Message::ChangeScene(Scenes::Main(None)))
-                .into(),
-            if globals.get_db().is_some() && globals.get_user().is_some() {
-                Button::new(Text::new("Post"))
-                    .on_press(Message::DoAction(Box::new(DrawingAction::ToggleModal(ModalTypes::PostPrompt))))
-            } else {
-                Button::new(Text::new("Post"))
-            }
-                .into(),
-            Button::new(Text::new("Save"))
-                .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Save))))
-                .into(),
-            Button::new(Text::new("Add layer"))
-                .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::AddLayer))))
-                .into(),
-            layers_section,
-        ])
-            .spacing(8.0)
-            .into();
+        let layers_section = Container::new(Scrollable::new(
+            Column::with_children(
+                self.canvas.layer_order.iter().map(
+                    |id| {
+                        let style = if *id == self.canvas.current_layer {
+                            crate::theme::button::Button::SelectedLayer
+                        } else {
+                            crate::theme::button::Button::UnselectedLayer
+                        };
+                        let layer = &self.canvas.layers.get(id).unwrap();
+
+                        Button::new(
+                            Row::with_children(vec![
+                                if let Some(new_name) = layer.get_new_name() {
+                                    TextInput::new(
+                                        "Write layer name...",
+                                        &*new_name.clone()
+                                    )
+                                        .on_input(|input|
+                                            Message::DoAction(Box::new(DrawingAction::CanvasAction(
+                                                CanvasAction::UpdateLayerName(*id, input)
+                                            )))
+                                        )
+                                        .on_submit(Message::DoAction(Box::new(DrawingAction::CanvasAction(
+                                            CanvasAction::ToggleEditLayerName(*id)
+                                        ))))
+                                        .into()
+                                } else {
+                                    Row::with_children(vec![
+                                        Text::new(layer.get_name().clone())
+                                            .width(Length::Fill)
+                                            .into(),
+                                        Button::new(
+                                            Text::new(Icon::Edit.to_string()).font(ICON)
+                                        )
+                                            .style(crate::theme::button::Button::Transparent)
+                                            .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
+                                                CanvasAction::ToggleEditLayerName(*id)
+                                            ))))
+                                            .into()
+                                    ])
+                                        .align_items(Alignment::Center)
+                                        .into()
+                                },
+                                Button::new(
+                                    Text::new(
+                                        if layer.is_visible() { Icon::Visible } else { Icon::Hidden }
+                                            .to_string()
+                                    )
+                                        .font(ICON)
+                                )
+                                    .style(crate::theme::button::Button::Transparent)
+                                    .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
+                                        CanvasAction::ToggleLayer(*id)
+                                    ))))
+                                    .into()
+                            ])
+                                .align_items(Alignment::Center)
+                        )
+                            .width(Length::Fill)
+                            .style(style)
+                            .on_press(Message::DoAction(Box::new(
+                                DrawingAction::CanvasAction(CanvasAction::ActivateLayer(*id))
+                            )))
+                            .into()
+                    }
+                ).collect::<Vec<Element<Message, Theme, Renderer>>>()
+            )
+                .padding(8.0)
+                .spacing(5.0)
+        ))
+            .padding(2.0)
+            .width(Length::Fill)
+            .style(crate::theme::container::Container::Bordered)
+            .height(Length::FillPortion(1));
+
+        let menu_section = Container::new(
+            Column::with_children(vec![
+                Button::new(Text::new("Save"))
+                    .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Save))))
+                    .into(),
+                if globals.get_db().is_some() && globals.get_user().is_some() {
+                    Button::new(Text::new("Post"))
+                        .on_press(Message::DoAction(Box::new(DrawingAction::ToggleModal(ModalTypes::PostPrompt))))
+                } else {
+                    Button::new(Text::new("Post"))
+                }
+                    .into(),
+                Button::new(Text::new("Back"))
+                    .on_press(Message::ChangeScene(Scenes::Main(None)))
+                    .into(),
+            ])
+                .spacing(8.0)
+                .align_items(Alignment::Center)
+        )
+            .padding(10.0)
+            .style(crate::theme::container::Container::Bordered)
+            .align_x(Horizontal::Center)
+            .width(Length::Fill)
+            .height(Length::FillPortion(1));
 
         let underlay = Row::with_children(
             vec![
-                Tabs::new_with_tabs(
-                    vec![
-                        (
-                            TabIds::Tools,
-                            TabLabel::Text("Tools".into()),
-                            Column::with_children(
-                                vec![
-                                    Text::new("Geometry")
-                                        .horizontal_alignment(Horizontal::Center)
-                                        .size(20.0)
-                                        .into(),
-                                    geometry_section,
-                                    Text::new("Brushes")
-                                        .horizontal_alignment(Horizontal::Center)
-                                        .size(20.0)
-                                        .into(),
-                                    brushes_section,
-                                    Text::new("Eraser")
-                                        .horizontal_alignment(Horizontal::Center)
-                                        .size(20.0)
-                                        .into(),
-                                    eraser_section,
-                                ]
-                            )
-                                .spacing(15.0)
-                                .height(Length::Fill)
-                                .width(Length::Fixed(250.0))
-                                .into()
-                        ),
-                        (
-                            TabIds::Style,
-                            TabLabel::Text("Style".into()),
-                            self.canvas
-                                .style
-                                .view()
-                                .map(|update| Message::DoAction(Box::new(
-                                    DrawingAction::CanvasAction(CanvasAction::UpdateStyle(update))
-                                ))),
-                        )
-                    ],
-                    |tab_id| Message::DoAction(Box::new(DrawingAction::TabSelection(tab_id))),
-                )
-                    .tab_bar_height(Length::Fixed(35.0))
+                Column::with_children(vec![
+                    tools_section.into(),
+                    style_section.into()
+                ])
                     .width(Length::Fixed(250.0))
-                    .height(Length::Fixed(800.0))
-                    .set_active_tab(&self.active_tab)
+                    .height(Length::Fill)
                     .into(),
                 Column::with_children(vec![
                     Text::new(format!("{}", self.get_title()))
@@ -583,10 +653,16 @@ impl Scene for Box<Drawing> {
                         .height(Length::Fill)
                         .center_x()
                         .center_y()
-                        //.style(container::Container::Canvas),
                         .into(),
-                    buttons_section
                 ])
+                    .height(Length::Fill)
+                    .into(),
+                Column::with_children(vec![
+                    layers_section.into(),
+                    menu_section.into()
+                ])
+                    .align_items(Alignment::Center)
+                    .width(Length::Fixed(250.0))
                     .height(Length::Fill)
                     .into()
             ]

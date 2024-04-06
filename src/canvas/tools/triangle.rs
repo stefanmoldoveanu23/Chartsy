@@ -155,6 +155,10 @@ impl Pending for TrianglePending {
         TrianglePending::None
     }
 
+    fn dyn_default(&self) -> Box<dyn Pending> {
+        Box::new(TrianglePending::None)
+    }
+
     fn boxed_clone(&self) -> Box<dyn Pending> {
         Box::new((*self).clone())
     }

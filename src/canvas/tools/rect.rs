@@ -129,6 +129,10 @@ impl Pending for RectPending {
         RectPending::None
     }
 
+    fn dyn_default(&self) -> Box<dyn Pending> {
+        Box::new(RectPending::None)
+    }
+
     fn boxed_clone(&self) -> Box<dyn Pending> {
         Box::new((*self).clone())
     }

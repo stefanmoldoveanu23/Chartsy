@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use mongodb::bson::{doc, Document, Uuid};
+use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
 use mongodb::Database;
 use mongodb::options::UpdateOptions;
 use crate::canvas::tool;
@@ -11,19 +11,36 @@ use crate::scenes::data::drawing::Tag;
 
 /// Gets the data for the drawing stored online with the given id.
 pub async fn get_drawing(db: &Database, id: Uuid)
-     -> Result<(usize, Vec<(Arc<dyn Tool>, usize)>), Error>
+     -> Result<(Vec<(Uuid, String)>, Vec<(Arc<dyn Tool>, Uuid)>), Error>
 {
     let layers = match db.collection::<Document>("canvases").find_one(
         doc!{
-                "id": id
-            },
+            "id": id
+        },
         None
     ).await {
         Ok(Some(document)) => {
-            if let Ok(layers) = document.get_i32("layers") {
-                layers as usize
+            if let Ok(layers) = document.get_array("layers") {
+               layers.iter().filter_map(
+                   |document| {
+                       document.as_document().map(
+                           |document| {
+                               (
+                                   if let Some(Bson::Binary(bin)) = document.get("id") {
+                                       bin.to_uuid_with_representation(UuidRepresentation::Standard).unwrap()
+                                   } else {
+                                       Uuid::default()
+                                   },
+                                   document.get_str("name").unwrap().to_string()
+                               )
+                           }
+                       )
+                   }
+               ).collect()
             } else {
-                1
+                return Err(Error::DebugError(DebugError::new(
+                    "Error retrieving layers from database!".to_string()
+                )));
             }
         }
         Ok(None) => {
@@ -38,8 +55,8 @@ pub async fn get_drawing(db: &Database, id: Uuid)
 
     let tools = match db.collection::<Document>("tools").find(
         doc! {
-                "canvas_id": id
-            },
+            "canvas_id": id
+        },
         None
     ).await {
         Ok(mut documents) => {
@@ -57,17 +74,22 @@ pub async fn get_drawing(db: &Database, id: Uuid)
 
 /// Creates a new drawing with the given id, owned by the given user.
 pub async fn create_drawing(db: &Database, id: Uuid, user_id: Uuid)
-    -> Result<(), Error>
+    -> Result<(Uuid, String), Error>
 {
+    let layer_id = Uuid::new();
+
     match db.collection::<Document>("canvases").insert_one(
         doc! {
                 "id": id,
                 "user_id": user_id,
-                "layers": 1
+                "layers": [doc!{
+                    "id": layer_id,
+                    "name": "New layer"
+                }]
             },
         None
     ).await {
-        Ok(_) => Ok(()),
+        Ok(_) => Ok((layer_id, "New layer".into())),
         Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
     }
 }
@@ -99,9 +121,6 @@ pub async fn create_post(db: &Database, id: Uuid, user_id: Uuid, description: St
                 }
             },
         doc! {
-                "$setOnInsert": {
-                    "uses": 0
-                },
                 "$inc": {
                     "uses": 1
                 }
@@ -128,20 +147,51 @@ pub async fn get_tags(db: &Database) -> Result<Vec<Tag>, Error>
 }
 
 /// Updates the amount of layers that there are in the drawing of the given id.
-pub async fn update_layer_count(db: &Database, id: Uuid, layers: u32) -> Result<(), Error>
+pub async fn add_layer(db: &Database, id: Uuid, layer_id: Uuid) -> Result<(), Error>
 {
     match db.collection::<Document>("canvases").update_one(
         doc! {
                 "id": id
             },
         doc! {
-                "$set": {
-                    "layers": layers
+                "push": {
+                    "layers": doc! {
+                        "id": layer_id,
+                        "name": "New layer"
+                    }
                 }
             },
         None
     ).await {
         Ok(_) => Ok(()),
+        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+    }
+}
+
+/// Change the name of a layer.
+pub async fn update_layer_name(db: &Database, drawing_id: &Uuid, id: &Uuid, name: &String)
+    -> Result<(), Error> {
+    match db.collection::<Document>("canvases").update_one(
+        doc! {
+            "id": *drawing_id,
+            "layers.id": &id
+        },
+        doc! {
+            "$set": {
+                "layers.$.name": name.clone()
+            }
+        },
+        None
+    ).await {
+        Ok(result) => {
+            if result.modified_count > 0 {
+                Ok(())
+            } else {
+                Err(Error::DebugError(DebugError::new(format!(
+                    "Couldn't find drawing with id {}!", *drawing_id
+                ))))
+            }
+        }
         Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
     }
 }

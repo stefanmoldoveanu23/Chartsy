@@ -8,6 +8,7 @@ use iced::widget::{Column, Container, Scrollable, Space, Row, Button, Text};
 use iced::{Alignment, Command, Element, Length, Renderer};
 use iced_aw::{Tabs, TabLabel};
 use mongodb::bson::{Bson, Uuid, UuidRepresentation, Document};
+use crate::icons::{Icon, ICON};
 use crate::mongo;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::card::Card;
@@ -464,6 +465,7 @@ impl Scene for Main {
                         )
                             .width(Length::Fixed(500.0))
                             .height(Length::Fixed(300.0))
+                            .footer(Text::new(Icon::X.to_string()).font(ICON).size(30.0))
                     )
                         .style(crate::theme::closeable::Closeable::Transparent)
                         .on_close(

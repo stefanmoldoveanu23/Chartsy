@@ -1,7 +1,6 @@
 use std::fs;
 use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
 use crate::scenes::data::auth::User;
-use crate::scenes::posts::Posts;
 use crate::serde::{Deserialize, Serialize};
 
 /// A comment on a post.

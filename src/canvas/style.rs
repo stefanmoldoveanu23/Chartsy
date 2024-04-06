@@ -165,7 +165,7 @@ impl Style {
         }
 
         Column::with_children(column)
-            .width(Length::Fixed(200.0))
+            .padding(8.0)
             .into()
     }
 }
