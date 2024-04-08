@@ -8,8 +8,8 @@ use std::fs::{create_dir_all, File};
 use std::io::Write;
 
 use crate::canvas::canvas::Canvas;
-use iced::alignment::{Horizontal, Vertical};
-use iced::widget::{Container, Row, Column, Text, Button, TextInput, Image, Scrollable};
+use iced::alignment::Horizontal;
+use iced::widget::{Container, Row, Column, Text, Button, TextInput, Image, Scrollable, Space};
 use iced::{Alignment, Command, Element, Length, Padding, Renderer};
 use iced::widget::image::Handle;
 use iced_aw::Badge;
@@ -534,75 +534,121 @@ impl Scene for Box<Drawing> {
             .height(Length::FillPortion(1));
 
         let layers_section = Container::new(Scrollable::new(
-            Column::with_children(
-                self.canvas.layer_order.iter().map(
-                    |id| {
-                        let style = if *id == self.canvas.current_layer {
-                            crate::theme::button::Button::SelectedLayer
-                        } else {
-                            crate::theme::button::Button::UnselectedLayer
-                        };
-                        let layer = &self.canvas.layers.get(id).unwrap();
+            Column::with_children(vec![
+                Row::with_children(vec![
+                    Text::new("Layers")
+                        .size(20.0)
+                        .width(Length::Fill)
+                        .into(),
+                    Button::new(
+                        Text::new(Icon::Add.to_string())
+                            .size(20.0)
+                            .font(ICON)
+                    )
+                        .padding(0.0)
+                        .style(crate::theme::button::Button::Transparent)
+                        .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
+                            CanvasAction::AddLayer
+                        ))))
+                        .into()
+                ])
+                    .padding(8.0)
+                    .width(Length::Fill)
+                    .into(),
+                Column::with_children(
+                    self.canvas.layer_order.iter().map(
+                        |id| {
+                            let style = if *id == self.canvas.current_layer {
+                                crate::theme::button::Button::SelectedLayer
+                            } else {
+                                crate::theme::button::Button::UnselectedLayer
+                            };
+                            let text_style = || if *id == self.canvas.current_layer {
+                                crate::theme::text::Text::Dark
+                            } else {
+                                crate::theme::text::Text::Light
+                            };
 
-                        Button::new(
-                            Row::with_children(vec![
-                                if let Some(new_name) = layer.get_new_name() {
-                                    TextInput::new(
-                                        "Write layer name...",
-                                        &*new_name.clone()
-                                    )
-                                        .on_input(|input|
-                                            Message::DoAction(Box::new(DrawingAction::CanvasAction(
-                                                CanvasAction::UpdateLayerName(*id, input)
-                                            )))
+                            let layer = &self.canvas.layers.get(id).unwrap();
+                            let layer_count = self.canvas.layers.len();
+
+                            Button::new(
+                                Row::with_children(vec![
+                                    if let Some(new_name) = layer.get_new_name() {
+                                        TextInput::new(
+                                            "Write layer name...",
+                                            &*new_name.clone()
                                         )
-                                        .on_submit(Message::DoAction(Box::new(DrawingAction::CanvasAction(
-                                            CanvasAction::ToggleEditLayerName(*id)
-                                        ))))
-                                        .into()
-                                } else {
-                                    Row::with_children(vec![
-                                        Text::new(layer.get_name().clone())
-                                            .width(Length::Fill)
-                                            .into(),
-                                        Button::new(
-                                            Text::new(Icon::Edit.to_string()).font(ICON)
-                                        )
-                                            .style(crate::theme::button::Button::Transparent)
-                                            .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
+                                            .on_input(|input|
+                                                Message::DoAction(Box::new(DrawingAction::CanvasAction(
+                                                    CanvasAction::UpdateLayerName(*id, input)
+                                                )))
+                                            )
+                                            .on_submit(Message::DoAction(Box::new(DrawingAction::CanvasAction(
                                                 CanvasAction::ToggleEditLayerName(*id)
                                             ))))
                                             .into()
-                                    ])
-                                        .align_items(Alignment::Center)
-                                        .into()
-                                },
-                                Button::new(
-                                    Text::new(
-                                        if layer.is_visible() { Icon::Visible } else { Icon::Hidden }
-                                            .to_string()
+                                    } else {
+                                        Row::with_children(vec![
+                                            Text::new(layer.get_name().clone())
+                                                .width(Length::Fill)
+                                                .into(),
+                                            Button::new(
+                                                Text::new(Icon::Edit.to_string()).font(ICON)
+                                                    .style(text_style())
+                                            )
+                                                .style(crate::theme::button::Button::Transparent)
+                                                .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
+                                                    CanvasAction::ToggleEditLayerName(*id)
+                                                ))))
+                                                .into()
+                                        ])
+                                            .align_items(Alignment::Center)
+                                            .into()
+                                    },
+                                    Button::new(
+                                        Text::new(
+                                            if layer.is_visible() { Icon::Visible } else { Icon::Hidden }
+                                                .to_string()
+                                        )
+                                            .style(text_style())
+                                            .font(ICON)
                                     )
-                                        .font(ICON)
-                                )
-                                    .style(crate::theme::button::Button::Transparent)
-                                    .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
-                                        CanvasAction::ToggleLayer(*id)
-                                    ))))
-                                    .into()
-                            ])
-                                .align_items(Alignment::Center)
-                        )
-                            .width(Length::Fill)
-                            .style(style)
-                            .on_press(Message::DoAction(Box::new(
-                                DrawingAction::CanvasAction(CanvasAction::ActivateLayer(*id))
-                            )))
-                            .into()
-                    }
-                ).collect::<Vec<Element<Message, Theme, Renderer>>>()
-            )
-                .padding(8.0)
-                .spacing(5.0)
+                                        .style(crate::theme::button::Button::Transparent)
+                                        .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
+                                            CanvasAction::ToggleLayer(*id)
+                                        ))))
+                                        .into(),
+                                    if layer_count > 1 {
+                                        Button::new(
+                                            Text::new(Icon::X.to_string()).font(ICON)
+                                                .style(text_style())
+                                        )
+                                            .style(crate::theme::button::Button::Transparent)
+                                            .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
+                                                CanvasAction::RemoveLayer(*id)
+                                            ))))
+                                            .into()
+                                    } else {
+                                        Space::with_width(Length::Shrink)
+                                            .into()
+                                    }
+                                ])
+                                    .align_items(Alignment::Center)
+                            )
+                                .width(Length::Fill)
+                                .style(style)
+                                .on_press(Message::DoAction(Box::new(
+                                    DrawingAction::CanvasAction(CanvasAction::ActivateLayer(*id))
+                                )))
+                                .into()
+                        }
+                    ).collect::<Vec<Element<Message, Theme, Renderer>>>()
+                )
+                    .padding(8.0)
+                    .spacing(5.0)
+                    .into()
+            ])
         ))
             .padding(2.0)
             .width(Length::Fill)

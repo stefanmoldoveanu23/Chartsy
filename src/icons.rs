@@ -14,7 +14,8 @@ pub enum Icon {
     X,
     Edit,
     Visible,
-    Hidden
+    Hidden,
+    Add
 }
 
 impl Display for Icon {
@@ -24,7 +25,8 @@ impl Display for Icon {
                 Icon::X => '\u{F057}',
                 Icon::Edit => '\u{F044}',
                 Icon::Visible => '\u{F06E}',
-                Icon::Hidden => '\u{F070}'
+                Icon::Hidden => '\u{F070}',
+                Icon::Add => '\u{F055}'
             }
         )
     }

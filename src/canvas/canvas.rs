@@ -255,6 +255,67 @@ impl Canvas {
             CanvasAction::UpdateLayerName(id, name) => {
                 self.layers.get_mut(&id).unwrap().set_new_name(name);
             }
+            CanvasAction::RemoveLayer(id) => {
+                if let Some(ref mut json_tools) = self.json_tools {
+                    json_tools.retain(
+                        |tool| {
+                            if let JsonValue::Object(object) = tool {
+                                if let Some(json_value) = object.get("id") {
+                                    if let JsonValue::String(layer_id) = json_value {
+                                        return layer_id.clone() != id.to_string();
+                                    }
+                                }
+                            }
+
+                            false
+                        }
+                    );
+                }
+
+                self.tools.retain(|(_, layer_id)| *layer_id != id);
+
+                self.undo_stack.retain(|(_, layer_id)| *layer_id != id);
+
+                self.layers.remove(&id);
+
+                self.layer_order.retain(|layer_id| *layer_id != id);
+
+                let mut commands = vec![];
+
+                if self.current_layer == id {
+                    commands.push(self.update(
+                        globals,
+                        CanvasAction::ActivateLayer(self.layer_order[0])
+                    ));
+                }
+
+                if self.json_tools.is_none() {
+                    let db = globals.get_db().unwrap();
+                    let drawing_id = self.id.clone();
+
+                    commands.push(
+                        Command::perform(
+                            async move {
+                                mongo::drawing::delete_layer(
+                                    &db,
+                                    drawing_id,
+                                    id
+                                ).await
+                            },
+                            |result| {
+                                match result {
+                                    Ok(()) => Message::None,
+                                    Err(err) => Message::Error(err)
+                                }
+                            }
+                        )
+                    );
+                }
+
+                if commands.len() > 0 {
+                    return Command::batch(commands);
+                }
+            }
             CanvasAction::Save => {
                 let tools_svg = self.get_tools_svg();
                 if tools_svg.is_empty() && self.count_saved == self.last_saved {

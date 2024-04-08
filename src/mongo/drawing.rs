@@ -154,7 +154,7 @@ pub async fn add_layer(db: &Database, id: Uuid, layer_id: Uuid) -> Result<(), Er
                 "id": id
             },
         doc! {
-                "push": {
+                "$push": {
                     "layers": doc! {
                         "id": layer_id,
                         "name": "New layer"
@@ -192,6 +192,44 @@ pub async fn update_layer_name(db: &Database, drawing_id: &Uuid, id: &Uuid, name
                 ))))
             }
         }
+        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+    }
+}
+
+/// Deletes a layer from a drawing.
+pub async fn delete_layer(db: &Database, canvas_id: Uuid, id: Uuid) -> Result<(), Error> {
+    match db.collection::<Document>("canvases").update_one(
+        doc!{
+            "id": canvas_id
+        },
+        doc! {
+            "$pull": {
+                "layers": {
+                    "id": id
+                }
+            }
+        },
+        None
+    ).await {
+        Ok(result) => {
+            if result.modified_count == 0 {
+                return Err(Error::DebugError(DebugError::new(
+                    format!("Database could not find drawing with id {}.", canvas_id)
+                )));
+            }
+        }
+        Err(err) => {
+            return Err(Error::DebugError(DebugError::new(err.to_string())));
+        }
+    };
+
+    match db.collection::<Document>("tools").delete_many(
+        doc! {
+            "layer": id
+        },
+        None
+    ).await {
+        Ok(_) => Ok(()),
         Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
     }
 }

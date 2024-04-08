@@ -217,26 +217,6 @@ impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for LayerVessel<'a> {
         bounds: Rectangle,
         cursor: Cursor,
     ) -> Vec<canvas::Geometry> {
-        let base = {
-            let mut frame = canvas::Frame::new(renderer, bounds.size());
-
-            frame.fill_rectangle(
-                Point::ORIGIN,
-                frame.size(),
-                canvas::Fill {
-                    style: canvas::Style::Solid(Color::TRANSPARENT),
-                    rule: Rule::NonZero,
-                },
-            );
-
-            frame.stroke(
-                &canvas::Path::rectangle(Point::ORIGIN, frame.size()),
-                canvas::Stroke::default().with_width(2.0),
-            );
-
-            frame.into_geometry()
-        };
-
         let content = self.state.draw(renderer, bounds.size(), |frame| {
                 for tool in self.tools {
                     tool.add_to_frame(frame);
@@ -244,17 +224,17 @@ impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for LayerVessel<'a> {
         });
 
         if !self.active {
-            return vec![base, content];
+            return vec![content];
         }
 
         let pending = match state {
             None => {
-                return vec![base, content];
+                return vec![content];
             }
             Some(state) => state.draw(renderer, bounds, cursor, self.style.clone()),
         };
 
-        vec![base, content, pending]
+        vec![content, pending]
     }
 
     fn mouse_interaction(
@@ -297,6 +277,9 @@ pub enum CanvasAction {
 
     /// Updates the [Layer] name when user inputs.
     UpdateLayerName(Uuid, String),
+
+    /// Deletes a [Layer].
+    RemoveLayer(Uuid),
 
     /// Saves the state of the drawing.
     Save,

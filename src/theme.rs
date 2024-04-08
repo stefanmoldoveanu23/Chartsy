@@ -28,13 +28,30 @@ pub mod pallete {
 pub(crate) mod text {
     use crate::theme::Theme;
     use iced::widget::text::{Appearance, StyleSheet};
-    use iced::theme::Text;
+
+    #[derive(Clone, Default)]
+    pub enum Text {
+        #[default]
+        Default,
+        Light,
+        Dark
+    }
 
     impl StyleSheet for Theme {
         type Style = Text;
 
         fn appearance(&self, style: Self::Style) -> Appearance {
-            iced::Theme::CatppuccinMacchiato.appearance(style)
+            match style { 
+                Text::Default => Appearance {
+                    color: None
+                },
+                Text::Light => Appearance {
+                    color: Some(super::pallete::TEXT)
+                },
+                Text::Dark => Appearance {
+                    color: Some(super::pallete::BACKGROUND)
+                }
+            }
         }
     }
 }
