@@ -14,3 +14,16 @@ A desktop application where users can create drawings and share them.
 8. As a user, I want a recommended page, so that I will have access to posts I am more likely to enjoy.
 9. As an artist, I want to be able to save my work both online and offline, so that I can resume my work if I lose internet connection.
 10. As a user, I want to be able to download a drawing so that I can view it outside the application.
+
+
+## Plans
+- Implement settings page(profile picture, change data)
+- Complete posts page(profile page, tag search page, maybe notifications)
+- Finishing touches on drawing page(remove tags, fix style section, allow download in different filetypes, drawing name)
+- Stylize pages(details maybe later)
+- App icon
+- As time constraints may allow
+    - more tooling functionality
+    - translate+scale drawing
+    - add reference images(+ text notes)
+    - TBA
