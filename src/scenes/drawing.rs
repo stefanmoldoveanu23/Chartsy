@@ -45,7 +45,7 @@ use crate::widgets::grid::Grid;
 
 use crate::scenes::data::drawing::*;
 
-use crate::icons::{Icon, ICON};
+use crate::icons::{Icon, ICON, ToolIcon};
 
 /// The [Messages](Action) for the [Drawing] scene.
 #[derive(Clone)]
@@ -454,41 +454,45 @@ impl Scene for Box<Drawing> {
         }
     }
 
-    fn view(&self, globals: &Globals) -> Element<'_, Message, Theme, Renderer> {
-        let tool_button = |name: String, pending: Box<dyn Pending>| {
-            Button::new(Text::new(name))
-                .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
-                    CanvasAction::ChangeTool(pending)
-                ))))
-                .into()
-        };
+    fn view<'a>(&'a self, globals: &Globals) -> Element<'a, Message, Theme, Renderer> {
+        let tool_button :fn(String, Box<dyn Pending>) -> Element<'a, Message, Theme, Renderer>=
+            |name, pending| {
+                Button::<Message, Theme, Renderer>::new(
+                    Text::new(name).font(ICON).line_height(1.0).size(25.0)
+                )
+                    .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
+                        CanvasAction::ChangeTool(pending)
+                    ))))
+                    .padding(10.0)
+                    .into()
+            };
 
-        let geometry_section :Element<Message, Theme, Renderer>= Column::with_children(vec![
-            tool_button("Line".into(), Box::new(LinePending::None)),
-            tool_button("Rectangle".into(), Box::new(RectPending::None)),
-            tool_button("Triangle".into(), Box::new(TrianglePending::None)),
-            tool_button("Polygon".into(), Box::new(PolygonPending::None)),
-            tool_button("Circle".into(), Box::new(CirclePending::None)),
-            tool_button("Ellipse".into(), Box::new(EllipsePending::None)),
+        let geometry_section :Element<Message, Theme, Renderer>= Grid::new(vec![
+            tool_button(ToolIcon::Line.to_string(), Box::new(LinePending::None)),
+            tool_button(ToolIcon::Rectangle.to_string(), Box::new(RectPending::None)),
+            tool_button(ToolIcon::Triangle.to_string(), Box::new(TrianglePending::None)),
+            tool_button(ToolIcon::Polygon.to_string(), Box::new(PolygonPending::None)),
+            tool_button(ToolIcon::Circle.to_string(), Box::new(CirclePending::None)),
+            tool_button(ToolIcon::Ellipse.to_string(), Box::new(EllipsePending::None)),
         ])
-            .spacing(5.0)
-            .padding(10.0)
+            .spacing(25.0)
+            .padding(18.0)
             .into();
 
-        let brushes_section :Element<Message, Theme, Renderer>= Column::with_children(vec![
-            tool_button("Pencil".into(), Box::new(BrushPending::<Pencil>::None)),
-            tool_button("Fountain Pen".into(), Box::new(BrushPending::<Pen>::None)),
-            tool_button("Airbrush".into(), Box::new(BrushPending::<Airbrush>::None))
+        let brushes_section :Element<Message, Theme, Renderer>= Grid::new(vec![
+            tool_button(ToolIcon::Pencil.to_string(), Box::new(BrushPending::<Pencil>::None)),
+            tool_button(ToolIcon::FountainPen.to_string(), Box::new(BrushPending::<Pen>::None)),
+            tool_button(ToolIcon::Airbrush.to_string(), Box::new(BrushPending::<Airbrush>::None))
         ])
-            .spacing(5.0)
-            .padding(10.0)
+            .spacing(25.0)
+            .padding(18.0)
             .into();
 
-        let eraser_section :Element<Message, Theme, Renderer>= Column::with_children(vec![
-            tool_button("Eraser".into(), Box::new(BrushPending::<Eraser>::None))
+        let eraser_section :Element<Message, Theme, Renderer>= Grid::new(vec![
+            tool_button(ToolIcon::Eraser.to_string(), Box::new(BrushPending::<Eraser>::None))
         ])
-            .spacing(5.0)
-            .padding(10.0)
+            .spacing(25.0)
+            .padding(18.0)
             .into();
 
         let tools_section = Container::new(Scrollable::new(

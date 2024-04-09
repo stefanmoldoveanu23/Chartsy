@@ -186,12 +186,11 @@ where
         };
 
         if let Some(close_node) = close_node.as_mut() {
-            let close_size = close_node.size();
-            close_node.align_mut(Alignment::End, Alignment::Start, size);
             close_node.move_to_mut(Point::new(
-                size.width - self.close_padding.right - close_size.width,
+                -self.close_padding.right,
                 self.close_padding.top
             ));
+            close_node.align_mut(Alignment::End, Alignment::Start, size);
         }
 
         content_node.move_to_mut(Point::new(self.padding.left, self.padding.top));

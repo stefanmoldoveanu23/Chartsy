@@ -81,7 +81,7 @@ where
                 vertical_alignment: Vertical::Top,
                 shaping: Default::default(),
             },
-            Point::new(layout.bounds().x, layout.bounds().y),
+            Point::new(layout.bounds().x, layout.bounds().y - 1.0),
             crate::theme::pallete::DANGER,
             *viewport
         );
