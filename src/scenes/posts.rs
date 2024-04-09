@@ -28,7 +28,7 @@ enum PostsAction {
     LoadedPosts(Vec<Post>),
 
     /// Triggers when the given amount of images from the posts have been loaded.
-    LoadedImage{ image: Vec<u8>, index: usize, limit: usize, auth: Authorization },
+    LoadedImage{ image: Vec<u8>, index: usize },
 
     /// Loads a batch of images.
     LoadBatch,
@@ -85,14 +85,8 @@ pub struct Posts {
     /// The list of available posts.
     posts: Vec<Post>,
 
-    /// The amount of loaded images
-    loaded: usize,
-
     /// The amount of posts to be shown
     batched: usize,
-
-    /// Tells whether images are being loaded
-    loading: bool,
 }
 
 impl Posts {
@@ -269,9 +263,7 @@ impl Scene for Posts {
         let mut posts = Posts {
             modals: ModalStack::new(),
             posts: vec![],
-            loaded: 0,
             batched: 0,
-            loading: false,
         };
 
         if let Some(options) = options {
@@ -342,107 +334,69 @@ impl Scene for Posts {
                     Command::none()
                 }
             }
-            PostsAction::LoadedImage { image, index, limit, auth } => {
+            PostsAction::LoadedImage { image, index } => {
                 let post = &mut self.posts[*index];
                 post.set_image(image.clone());
 
-                let index = index.clone() + 1;
-                let limit = limit.clone();
-
-                if index == limit {
-                    self.loaded = limit;
-                    self.loading = false;
-                    Command::none()
-                } else {
-                    let auth = auth.clone();
-
-                    let post_user_id = self.posts[index].get_user().get_id().clone();
-                    let post_id = self.posts[index].get_id().clone();
-                    let client = UserAuthDefaultClient::new(auth.clone());
-
-                    Command::perform(
-                        async move {
-                            let mut data = vec![];
-
-                            match files::download(
-                                &client,
-                                &DownloadArg::new(format!("/{}/{}.webp", post_user_id, post_id)),
-                                None,
-                                None
-                            ) {
-                                Ok(Ok(result)) => {
-                                    let mut read = result.body.unwrap();
-
-                                    let _ = io::copy(read.deref_mut(), &mut data).unwrap();
-                                },
-                                _ => {}
-                            }
-
-                            data
-                        },
-                        move |data| Message::DoAction(Box::new(PostsAction::LoadedImage {
-                            image: data,
-                            index,
-                            limit,
-                            auth
-                        }))
-                    )
-                }
+                Command::none()
             }
             PostsAction::LoadBatch => {
-                if self.loading {
-                    Command::none()
-                } else {
-                    if self.loaded == self.posts.len() {
-                        Command::none()
-                    } else {
-                        self.loading = true;
-                        let start = self.loaded;
-                        let total = self.posts.len();
-                        self.batched += 10.min(total - start);
+                let start = self.batched;
+                let total = self.posts.len();
 
-                        let post_user_id = self.posts[start].get_user().get_id().clone();
-                        let post_id = self.posts[start].get_id().clone();
+                self.batched += 10.min(total - start);
 
-                        Command::perform(
-                            async move {
-                                let mut auth = Authorization::from_refresh_token(
-                                    config::dropbox_id().into(),
-                                    config::dropbox_refresh_token().into()
-                                );
+                let posts_data = self.posts[start..self.batched].iter().enumerate().map(
+                    |(index, post)| (
+                        index,
+                        post.get_id().clone(),
+                        post.get_user().get_id().clone(),
+                    )
+                ).collect::<Vec<(usize, Uuid, Uuid)>>();
 
-                                let _token = auth
-                                    .obtain_access_token(NoauthDefaultClient::default())
-                                    .unwrap();
+                Command::batch(
+                    posts_data.into_iter().map(
+                        |(index, post_id, user_id)| {
+                            Command::perform(
+                                async move {
+                                    let mut auth = Authorization::from_refresh_token(
+                                        config::dropbox_id().into(),
+                                        config::dropbox_refresh_token().into()
+                                    );
 
-                                let client = UserAuthDefaultClient::new(auth.clone());
-                                let mut data = vec![];
+                                    let _token = auth
+                                        .obtain_access_token(NoauthDefaultClient::default())
+                                        .unwrap();
 
-                                match files::download(
-                                    &client,
-                                    &DownloadArg::new(format!("/{}/{}.webp", post_user_id, post_id)),
-                                    None,
-                                    None
-                                ) {
-                                    Ok(Ok(result)) => {
-                                        let mut read = result.body.unwrap();
+                                    let client = UserAuthDefaultClient::new(auth.clone());
+                                    let mut data = vec![];
 
-                                        let _ = io::copy(read.deref_mut(), &mut data).unwrap();
-                                    },
-                                    _ => {}
-                                }
+                                    match files::download(
+                                        &client,
+                                        &DownloadArg::new(format!("/{}/{}.webp", user_id, post_id)),
+                                        None,
+                                        None
+                                    ) {
+                                        Ok(Ok(result)) => {
+                                            let mut read = result.body.unwrap();
 
-                                (data, auth)
-                            },
-                            move |(data, auth)| Message::DoAction(Box::new(PostsAction::LoadedImage {
-                                image: data,
-                                index: start,
-                                limit: (start + 10).min(total),
-                                auth
-                            }))
-                        )
-                    }
-                }
+                                            let _ = io::copy(read.deref_mut(), &mut data).unwrap();
+                                        },
+                                        _ => {}
+                                    }
+
+                                    data
+                                },
+                                move |data| Message::DoAction(
+                                    Box::new(PostsAction::LoadedImage {
+                                        image: data,
+                                        index,
+                                    })
+                                )
+                            )
+                        }
+                    )
+                )
             }
             PostsAction::CommentMessage(message) => {
                 self.update_comment(message, globals)
@@ -549,7 +503,7 @@ impl Scene for Posts {
                 .spacing(50)
         )
             .on_scroll(|viewport| {
-                if viewport.relative_offset().y == 1.0 {
+                if viewport.relative_offset().y == 1.0 && self.batched != self.posts.len() {
                     Message::DoAction(Box::new(PostsAction::LoadBatch))
                 } else {
                     Message::None
