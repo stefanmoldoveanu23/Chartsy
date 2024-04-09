@@ -82,7 +82,7 @@ impl Pending for PolygonPending {
                     ..
                 } => {
                     let value = key.as_str();
-                    if value == "S" {
+                    if value == "S" || value == "s" {
                         *self = PolygonPending::None;
 
                         (Status::Captured, None)

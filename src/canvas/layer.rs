@@ -3,8 +3,8 @@ use crate::canvas::tool::{Pending, Tool};
 use crate::theme::Theme;
 use iced::advanced::mouse;
 use iced::mouse::Cursor;
-use iced::widget::canvas::{self, fill::Rule};
-use iced::{event, keyboard, Color, Point, Rectangle, Renderer};
+use iced::widget::canvas::{self};
+use iced::{event, keyboard, Rectangle, Renderer};
 use json::JsonValue;
 use std::sync::Arc;
 use iced::keyboard::Key;
@@ -170,12 +170,12 @@ impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for LayerVessel<'a> {
                 } => {
                     let value :&str= key.as_str();
 
-                    if value == "Z" && modifiers == keyboard::Modifiers::CTRL {
+                    if (value == "Z" || value == "z") && modifiers == keyboard::Modifiers::CTRL {
                         return (event::Status::Captured, Some(CanvasAction::Undo));
-                    } else if value == "S" && modifiers == keyboard::Modifiers::CTRL
+                    } else if (value == "S" || value == "s") && modifiers == keyboard::Modifiers::CTRL
                     {
                         return (event::Status::Captured, Some(CanvasAction::Save));
-                    } else if value == "Y" && modifiers == keyboard::Modifiers::CTRL
+                    } else if (value == "Y" || value == "y") && modifiers == keyboard::Modifiers::CTRL
                     {
                         return (event::Status::Captured, Some(CanvasAction::Redo));
                     } else {

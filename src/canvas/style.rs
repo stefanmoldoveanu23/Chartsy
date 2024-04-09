@@ -3,7 +3,7 @@ use crate::scene::Message;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 use iced::widget::{Button, Column, Slider, Text};
-use iced::{Color, Command, Element, Length, Renderer};
+use iced::{Color, Command, Element, Renderer};
 use json::object::Object;
 use json::JsonValue;
 use mongodb::bson::{doc, Bson, Document};

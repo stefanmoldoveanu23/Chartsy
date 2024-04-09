@@ -146,94 +146,6 @@ pub async fn get_tags(db: &Database) -> Result<Vec<Tag>, Error>
     }
 }
 
-/// Updates the amount of layers that there are in the drawing of the given id.
-pub async fn add_layer(db: &Database, id: Uuid, layer_id: Uuid) -> Result<(), Error>
-{
-    match db.collection::<Document>("canvases").update_one(
-        doc! {
-                "id": id
-            },
-        doc! {
-                "$push": {
-                    "layers": doc! {
-                        "id": layer_id,
-                        "name": "New layer"
-                    }
-                }
-            },
-        None
-    ).await {
-        Ok(_) => Ok(()),
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
-    }
-}
-
-/// Change the name of a layer.
-pub async fn update_layer_name(db: &Database, drawing_id: &Uuid, id: &Uuid, name: &String)
-    -> Result<(), Error> {
-    match db.collection::<Document>("canvases").update_one(
-        doc! {
-            "id": *drawing_id,
-            "layers.id": &id
-        },
-        doc! {
-            "$set": {
-                "layers.$.name": name.clone()
-            }
-        },
-        None
-    ).await {
-        Ok(result) => {
-            if result.modified_count > 0 {
-                Ok(())
-            } else {
-                Err(Error::DebugError(DebugError::new(format!(
-                    "Couldn't find drawing with id {}!", *drawing_id
-                ))))
-            }
-        }
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
-    }
-}
-
-/// Deletes a layer from a drawing.
-pub async fn delete_layer(db: &Database, canvas_id: Uuid, id: Uuid) -> Result<(), Error> {
-    match db.collection::<Document>("canvases").update_one(
-        doc!{
-            "id": canvas_id
-        },
-        doc! {
-            "$pull": {
-                "layers": {
-                    "id": id
-                }
-            }
-        },
-        None
-    ).await {
-        Ok(result) => {
-            if result.modified_count == 0 {
-                return Err(Error::DebugError(DebugError::new(
-                    format!("Database could not find drawing with id {}.", canvas_id)
-                )));
-            }
-        }
-        Err(err) => {
-            return Err(Error::DebugError(DebugError::new(err.to_string())));
-        }
-    };
-
-    match db.collection::<Document>("tools").delete_many(
-        doc! {
-            "layer": id
-        },
-        None
-    ).await {
-        Ok(_) => Ok(()),
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
-    }
-}
-
 /// Updates the tool data of the drawing, by deleting everything that was undone and inserting
 /// everything in the given "tools" parameter.
 pub async fn update_drawing(
@@ -241,16 +153,27 @@ pub async fn update_drawing(
     canvas_id: Uuid,
     delete_lower_bound: u32,
     delete_upper_bound: u32,
-    tools: Vec<Document>
+    tools: Vec<Document>,
+    removed_layers: Vec<Uuid>,
+    layer_data: Vec<(Uuid, String)>
 ) -> Result<(), Error> {
     match db.collection::<Document>("tools").delete_many(
         doc! {
-                "canvas_id": canvas_id,
-                "order": {
-                    "$gte": delete_lower_bound,
-                    "$lte": delete_upper_bound
+            "canvas_id": canvas_id,
+            "$or": [
+                {
+                    "order": {
+                        "$gte": delete_lower_bound,
+                        "$lte": delete_upper_bound
+                    }
+                },
+                {
+                    "layer": {
+                        "$in": removed_layers
+                    }
                 }
-            },
+            ],
+        },
         None
     ).await {
         Ok(_) => { },
@@ -259,11 +182,45 @@ pub async fn update_drawing(
         }
     }
 
-    match db.collection::<Document>("tools").insert_many(
-        tools,
+    if tools.len() > 0 {
+        match db.collection::<Document>("tools").insert_many(
+            tools,
+            None
+        ).await {
+            Ok(_) => { },
+            Err(err) => {
+                return Err(Error::DebugError(DebugError::new(err.to_string())));
+            }
+        }
+    }
+
+    match db.collection::<Document>("canvases").update_one(
+        doc! {
+            "id": canvas_id
+        },
+        doc! {
+            "$set": {
+                "layers": layer_data.into_iter().map(
+                    |(id, name)| doc! {
+                        "id": id,
+                        "name": name
+                    }
+                ).collect::<Vec<Document>>()
+            }
+        },
         None
     ).await {
-        Ok(_) => Ok(()),
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+        Ok(result) => {
+            if result.modified_count > 0 {
+                Ok(())
+            } else {
+                Err(Error::DebugError(DebugError::new(
+                    format!("Drawing with id {} not found!", canvas_id)
+                )))
+            }
+        }
+        Err(err) => {
+            Err(Error::DebugError(DebugError::new(err.to_string())))
+        }
     }
 }

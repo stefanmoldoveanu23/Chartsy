@@ -62,7 +62,7 @@ impl Pending for RectPending {
                     ..
                 } => {
                     let value = key.as_str();
-                    if value == "S" {
+                    if value == "S" || value == "s" {
                         *self = RectPending::None;
 
                         (Status::Captured, None)

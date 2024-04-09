@@ -30,46 +30,52 @@ use crate::mongo;
 /// The canvas structure.
 pub struct Canvas {
     /// The id of the drawing.
-    pub id: Uuid,
+    id: Uuid,
 
     /// The width of the [Canvas].
-    pub width: Length,
+    width: Length,
 
     /// The height of the [Canvas].
-    pub height: Length,
+    height: Length,
 
     /// The ids of layers ordered.
-    pub layer_order: Vec<Uuid>,
+    layer_order: Vec<Uuid>,
 
     /// The list of caches corresponding to each [Layer].
-    pub layers: Box<HashMap<Uuid, Layer>>,
+    layers: Box<HashMap<Uuid, Layer>>,
 
     /// The index of currently active layer.
-    pub current_layer: Uuid,
+    current_layer: Uuid,
 
     /// A list of all the [tools](Tool).
-    pub tools: Box<Vec<(Arc<dyn Tool>, Uuid)>>,
+    tools: Box<Vec<(Arc<dyn Tool>, Uuid)>>,
 
     /// A list of the removed [tools](Tool).
-    pub undo_stack: Box<Vec<(Arc<dyn Tool>, Uuid)>>,
+    undo_stack: Box<Vec<(Arc<dyn Tool>, Uuid)>>,
 
     /// The index where the [Tool] list was last saved.
-    pub last_saved: usize,
+    last_saved: usize,
 
     /// The amount of [tools](Tool) that were saved in total.
-    pub count_saved: usize,
+    count_saved: usize,
+
+    /// Tells whether the layers layout has been modified.
+    edited_layers: bool,
+
+    /// Holds the ids of the removed layers; useful for online updates.
+    removed_layers: Vec<Uuid>,
 
     /// A [SVG] that holds the same drawing; used when making a post.
-    pub svg: SVG,
+    svg: SVG,
 
     /// A list of the tools held in [json](JsonValue) form. Used when the drawing is stored locally.
-    pub json_tools: Option<Vec<JsonValue>>,
+    json_tools: Option<Vec<JsonValue>>,
 
     /// The currently selected [Tool].
-    pub current_tool: Box<dyn Pending>,
+    current_tool: Box<dyn Pending>,
 
     /// The [Style] applied to the current [Tool].
-    pub style: Style,
+    style: Style,
 }
 
 impl Canvas {
@@ -86,6 +92,8 @@ impl Canvas {
             undo_stack: Box::new(vec![]),
             last_saved: 0,
             count_saved: 0,
+            edited_layers: false,
+            removed_layers: vec![],
             svg: SVG::new(&vec![]),
             json_tools: None,
             current_tool: Box::new(LinePending::None),
@@ -96,6 +104,35 @@ impl Canvas {
     /// Returns the number of layers.
     pub fn get_layer_count(&self) -> usize {
         self.layers.len()
+    }
+
+    pub fn get_id(&self) -> &Uuid {
+        &self.id
+    }
+
+    pub fn get_svg(&self) -> &SVG {
+        &self.svg
+    }
+
+    pub fn get_style(&self) -> &Style {
+        &self.style
+    }
+
+    pub fn get_layer_order(&self) -> &Vec<Uuid> {
+        &self.layer_order
+    }
+
+    pub fn get_current_layer(&self) -> &Uuid {
+        &self.current_layer
+    }
+
+    pub fn get_layers(&self) -> &Box<HashMap<Uuid, Layer>>
+    {
+        &self.layers
+    }
+
+    pub fn set_id(&mut self, id: impl Into<Uuid>) {
+        self.id = id.into();
     }
 
     /// Returns the new unsaved tools as mongodb [documents](Document).
@@ -165,19 +202,19 @@ impl Canvas {
     }
 
     /// Sets the width of the canvas.
-    pub(crate) fn width(mut self, width: Length) -> Self {
+    pub fn width(mut self, width: Length) -> Self {
         self.width = width;
         self
     }
 
     /// Sets the height of the canvas.
-    pub(crate) fn height(mut self, height: Length) -> Self {
+    pub fn height(mut self, height: Length) -> Self {
         self.height = height;
         self
     }
 
     /// Update function, all canvas related messages are handled here.
-    pub(crate) fn update(&mut self, globals: &mut Globals, message: CanvasAction) -> Command<Message> {
+    pub fn update(&mut self, globals: &mut Globals, message: CanvasAction) -> Command<Message> {
         match message {
             CanvasAction::UseTool(tool) => {
                 self.tools.push((tool.clone(), self.current_layer));
@@ -196,29 +233,7 @@ impl Canvas {
                 self.layers.insert(layer_id, Default::default());
                 self.current_tool = self.current_tool.dyn_default();
                 self.current_layer = layer_id;
-
-                if self.json_tools.is_none() {
-                    let id = self.id.clone();
-                    let db = globals.get_db();
-
-                    if let Some(db) = db {
-                        return Command::perform(
-                            async move {
-                                mongo::drawing::add_layer(
-                                    &db,
-                                    id,
-                                    layer_id
-                                ).await
-                            },
-                            |responses| {
-                                match responses {
-                                    Ok(_) => Message::None,
-                                    Err(err) => Message::Error(err)
-                                }
-                            }
-                        );
-                    }
-                }
+                self.edited_layers = true;
             }
             CanvasAction::ActivateLayer(layer) => {
                 self.current_tool = self.current_tool.dyn_default();
@@ -228,29 +243,8 @@ impl Canvas {
                 self.layers.get_mut(&layer).unwrap().toggle_visibility();
             }
             CanvasAction::ToggleEditLayerName(layer) => {
-                if let Some(new_name) = self.layers.get_mut(&layer).unwrap().toggle_name() {
-                    let drawing_id = self.id;
-                    let db = globals.get_db().unwrap();
-
-                    if self.json_tools.is_none() {
-                        return Command::perform(
-                            async move {
-                                mongo::drawing::update_layer_name(
-                                    &db,
-                                    &drawing_id,
-                                    &layer,
-                                    &new_name
-                                ).await
-                            },
-                            |result| {
-                                match result {
-                                    Ok(_) => Message::None,
-                                    Err(err) => Message::Error(err)
-                                }
-                            }
-                        );
-                    }
-                }
+                self.layers.get_mut(&layer).unwrap().toggle_name();
+                self.edited_layers = true;
             }
             CanvasAction::UpdateLayerName(id, name) => {
                 self.layers.get_mut(&id).unwrap().set_new_name(name);
@@ -273,52 +267,23 @@ impl Canvas {
                 }
 
                 self.tools.retain(|(_, layer_id)| *layer_id != id);
-
                 self.undo_stack.retain(|(_, layer_id)| *layer_id != id);
-
                 self.layers.remove(&id);
-
                 self.layer_order.retain(|layer_id| *layer_id != id);
 
-                let mut commands = vec![];
+                self.edited_layers = true;
+                self.removed_layers.push(id);
 
                 if self.current_layer == id {
-                    commands.push(self.update(
+                    return self.update(
                         globals,
                         CanvasAction::ActivateLayer(self.layer_order[0])
-                    ));
-                }
-
-                if self.json_tools.is_none() {
-                    let db = globals.get_db().unwrap();
-                    let drawing_id = self.id.clone();
-
-                    commands.push(
-                        Command::perform(
-                            async move {
-                                mongo::drawing::delete_layer(
-                                    &db,
-                                    drawing_id,
-                                    id
-                                ).await
-                            },
-                            |result| {
-                                match result {
-                                    Ok(()) => Message::None,
-                                    Err(err) => Message::Error(err)
-                                }
-                            }
-                        )
                     );
-                }
-
-                if commands.len() > 0 {
-                    return Command::batch(commands);
                 }
             }
             CanvasAction::Save => {
                 let tools_svg = self.get_tools_svg();
-                if tools_svg.is_empty() && self.count_saved == self.last_saved {
+                if tools_svg.is_empty() && self.count_saved == self.last_saved && !self.edited_layers {
                     return Command::none();
                 }
 
@@ -379,6 +344,15 @@ impl Canvas {
                     )
                 } else {
                     let tools_mongo = self.get_tools_serialized();
+                    let removed_layers = self.removed_layers.clone();
+                    let layer_data = self.layers.iter().map(
+                        |(id, layer)| {
+                            (
+                                *id,
+                                layer.get_name().clone()
+                            )
+                        }
+                    ).collect::<Vec<(Uuid, String)>>();
                     let db = globals.get_db();
 
                     if let Some(db) = db {
@@ -389,7 +363,9 @@ impl Canvas {
                                 canvas_id,
                                 delete_lower_bound as u32,
                                 delete_upper_bound as u32,
-                                tools_mongo
+                                tools_mongo,
+                                removed_layers,
+                                layer_data,
                             ).await
                         },
                         move |result| {

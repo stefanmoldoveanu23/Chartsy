@@ -111,7 +111,7 @@ impl Drawing {
     /// Initialize the drawing scene from the mongo database.
     /// If the uuid is 0, then insert a new drawing in the database.
     fn init_online(self: &mut Box<Self>, globals: &mut Globals) -> Command<Message> {
-        let mut uuid = self.canvas.id.clone();
+        let mut uuid = *self.canvas.get_id();
         if uuid != Uuid::from_bytes([0; 16]) {
             if let Some(db) = globals.get_db() {
                 Command::perform(
@@ -139,7 +139,7 @@ impl Drawing {
             }
         } else {
             uuid = Uuid::new();
-            self.canvas.id = Uuid::from(uuid.clone());
+            self.canvas.set_id(uuid.clone());
 
             if let Some(db) = globals.get_db() {
                 let user_id = globals.get_user().unwrap().get_id();
@@ -185,7 +185,7 @@ impl Drawing {
         default_json.insert("layers", JsonValue::Array(vec![JsonValue::Object(default_layer)]));
         default_json.insert("tools", JsonValue::Array(vec![]));
 
-        let mut uuid = self.canvas.id.clone();
+        let mut uuid = *self.canvas.get_id();
         if uuid != Uuid::from_bytes([0; 16]) {
             Command::perform(
                 async move {
@@ -245,7 +245,7 @@ impl Drawing {
             )
         } else {
             uuid = Uuid::new();
-            self.canvas.id = Uuid::from(uuid.clone());
+            self.canvas.set_id(uuid.clone());
 
             let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
             let dir_path = proj_dirs
@@ -289,7 +289,7 @@ impl DrawingOptions {
 impl SceneOptions<Box<Drawing>> for DrawingOptions {
     fn apply_options(&self, scene: &mut Box<Drawing>) {
         if let Some(uuid) = self.uuid {
-            scene.canvas.id = uuid;
+            scene.canvas.set_id(uuid);
         }
 
         if let Some(save_mode) = self.save_mode {
@@ -354,7 +354,7 @@ impl Scene for Box<Drawing> {
                 Command::none()
             }
             DrawingAction::PostDrawing => {
-                let document = self.canvas.svg.as_document();
+                let document = self.canvas.get_svg().as_document();
                 let db = globals.get_db().unwrap();
                 let user_id = globals.get_user().unwrap().get_id();
                 let description = self.post_data.get_description().clone();
@@ -522,7 +522,7 @@ impl Scene for Box<Drawing> {
 
         let style_section = Container::new(Scrollable::new(
             self.canvas
-                .style
+                .get_style()
                 .view()
                 .map(|update| Message::DoAction(Box::new(
                     DrawingAction::CanvasAction(CanvasAction::UpdateStyle(update))
@@ -556,21 +556,21 @@ impl Scene for Box<Drawing> {
                     .width(Length::Fill)
                     .into(),
                 Column::with_children(
-                    self.canvas.layer_order.iter().map(
+                    self.canvas.get_layer_order().iter().map(
                         |id| {
-                            let style = if *id == self.canvas.current_layer {
+                            let style = if *id == *self.canvas.get_current_layer() {
                                 crate::theme::button::Button::SelectedLayer
                             } else {
                                 crate::theme::button::Button::UnselectedLayer
                             };
-                            let text_style = || if *id == self.canvas.current_layer {
+                            let text_style = || if *id == *self.canvas.get_current_layer() {
                                 crate::theme::text::Text::Dark
                             } else {
                                 crate::theme::text::Text::Light
                             };
 
-                            let layer = &self.canvas.layers.get(id).unwrap();
-                            let layer_count = self.canvas.layers.len();
+                            let layer = &self.canvas.get_layers().get(id).unwrap();
+                            let layer_count = self.canvas.get_layers().len();
 
                             Button::new(
                                 Row::with_children(vec![
