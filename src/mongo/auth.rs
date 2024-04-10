@@ -2,11 +2,10 @@ use std::fs;
 use std::fs::File;
 use std::io::Write;
 use directories::ProjectDirs;
-use mongodb::bson::{Binary, Bson, doc, Document, Uuid};
+use mongodb::bson::{Binary, Bson, DateTime, doc, Document, Uuid};
 use mongodb::bson::spec::BinarySubtype;
 use mongodb::Database;
 use mongodb::options::UpdateOptions;
-use rand::random;
 use sha2::{Digest, Sha256};
 use crate::errors::auth::AuthError;
 use crate::errors::debug::DebugError;
@@ -24,6 +23,10 @@ pub async fn get_user_from_token(database: &Database) -> Result<User, Error>
     let token = fs::read(file_path);
 
     if let Ok(token) = token {
+        if token.len() != 32 {
+            return Err(Error::DebugError(DebugError::new("Auth token should have 32 bytes!")));
+        }
+
         let mut sha = Sha256::new();
         Digest::update(&mut sha, token);
         let hash = sha.finalize();
@@ -31,10 +34,14 @@ pub async fn get_user_from_token(database: &Database) -> Result<User, Error>
             bytes: Vec::from(hash.as_slice()),
             subtype: BinarySubtype::Generic,
         });
+        println!("{}", bin);
 
         match database.collection::<Document>("users").find_one(
             doc! {
-                "code": bin
+                "auth_token": bin,
+                "token_expiration": {
+                    "$gt": Bson::DateTime(DateTime::now())
+                }
             },
             None
         ).await {
@@ -53,14 +60,7 @@ pub async fn get_user_from_token(database: &Database) -> Result<User, Error>
 /// to increase security.
 pub async fn update_user_token(database: &Database, user_id: Uuid)
 {
-    let code = random::<[u8; 32]>();
-    let mut sha = Sha256::new();
-    Digest::update(&mut sha, code);
-    let hash = sha.finalize();
-    let bin = Bson::Binary(Binary {
-        bytes: Vec::from(hash.as_slice()),
-        subtype: BinarySubtype::Generic,
-    });
+    let (code, token) = User::gen_auth_token();
 
     let result = database.collection::<Document>("users").update_one(
         doc! {
@@ -68,7 +68,10 @@ pub async fn update_user_token(database: &Database, user_id: Uuid)
         },
         doc! {
             "$set": {
-                "code": bin
+                "auth_token": token.clone(),
+                "token_expiration": Bson::DateTime(
+                    DateTime::from_millis(DateTime::now().timestamp_millis() + 30 * 24 * 60 * 60 * 1000)
+                )
             }
         },
         None
@@ -119,7 +122,10 @@ pub async fn validate_email(db: &Database, email: String, code: String)
     match db.collection::<Document>("users").update_one(
         doc! {
                 "email": email.clone(),
-                "code": code.clone()
+                "register_code": code.clone(),
+                "code_expiration": {
+                    "$gt": Bson::DateTime(DateTime::now())
+                }
             },
         doc! {
                 "$set": {
@@ -138,6 +144,36 @@ pub async fn validate_email(db: &Database, email: String, code: String)
         Err(err) => {
             Err(Error::DebugError(DebugError::new(err.to_string())))
         }
+    }
+}
+
+/// Generates a new e-mail verification code.
+pub async fn reset_register_code(db: &Database, email: String, code: String) -> Result<(), Error>
+{
+    match db.collection::<Document>("users").update_one(
+        doc! {
+            "email": email.clone()
+        },
+        doc! {
+            "$set": {
+                "register_code": code,
+                "code_expiration": Bson::DateTime(
+                    DateTime::from_millis(DateTime::now().timestamp_millis() + 5 * 60 * 1000)
+                ),
+            }
+        },
+        None
+    ).await {
+        Ok(result) => {
+            if result.modified_count > 0 {
+                Ok(())
+            } else {
+                Err(Error::DebugError(DebugError::new(
+                    format!("Database could not find user with email {}!", email)
+                )))
+            }
+        }
+        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
     }
 }
 

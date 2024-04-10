@@ -146,6 +146,7 @@ impl Application for Chartsy {
                     scene.update(&mut self.globals, scene.get_error_handler(error))
                 }
             }
+            Message::Quit => window::close(window::Id::MAIN)
         }
     }
 

@@ -300,87 +300,112 @@ impl Scene for Main {
     }
 
     fn view(&self, globals: &Globals) -> Element<Message, Theme, Renderer> {
-        let container_auth: Element<Message, Theme, Renderer> =
+        let container_auth =
             if let Some(user) = globals.get_user() {
+                let welcome_message =
+                    Text::new(format!("Welcome, {}!", user.get_username()))
+                        .vertical_alignment(Vertical::Bottom);
+                let logout_button =
+                    Button::new("Log Out")
+                        .padding(8)
+                        .on_press(Message::DoAction(Box::new(MainAction::LogOut)));
+
                 Row::with_children(vec![
                     Space::with_width(Length::Fill).into(),
                     Row::with_children(vec![
-                        Text::new(format!("Welcome, {}!", user.get_username()))
-                            .vertical_alignment(Vertical::Bottom)
-                            .into(),
-                        Button::new("Log Out")
-                            .padding(8)
-                            .on_press(Message::DoAction(Box::new(MainAction::LogOut)))
-                            .into(),
+                        welcome_message.into(),
+                        logout_button.into()
                     ])
                         .align_items(Alignment::Center)
                         .width(Length::Shrink)
                         .spacing(20)
                         .into()
                 ])
-                .into()
             } else {
+                let register_button =
+                    Button::new("Register")
+                        .padding(8)
+                        .on_press(Message::ChangeScene(Scenes::Auth(Some(Box::new(
+                            AuthOptions::new(AuthTabIds::Register)
+                        )))));
+                let login_button =
+                    Button::new("Log In")
+                        .padding(8)
+                        .on_press(Message::ChangeScene(Scenes::Auth(Some(Box::new(
+                            AuthOptions::new(AuthTabIds::LogIn)
+                        )))));
+
                 Row::with_children(vec![
                     Space::with_width(Length::Fill).into(),
                     Row::with_children(vec![
-                        Button::new("Register")
-                            .padding(8)
-                            .on_press(Message::ChangeScene(Scenes::Auth(Some(Box::new(
-                                AuthOptions::new(AuthTabIds::Register)
-                            )))))
-                            .into(),
-                        Button::new("Log In")
-                            .padding(8)
-                            .on_press(Message::ChangeScene(Scenes::Auth(Some(Box::new(
-                                AuthOptions::new(AuthTabIds::LogIn)
-                            )))))
-                            .into(),
+                        register_button.into(),
+                        login_button.into()
                     ])
                         .width(Length::Shrink)
                         .spacing(10)
                         .into()
                 ])
-                .into()
             };
+
+        let title =
+            Container::new(
+                Text::new("Chartsy")
+                    .width(Length::Shrink)
+                    .size(50)
+            )
+                .height(Length::FillPortion(2))
+                .width(Length::Fill)
+                .align_x(Horizontal::Center)
+                .align_y(Vertical::Center);
+
+        let start_drawing_button =
+            Button::new("Start new Drawing")
+                .padding(8)
+                .on_press(Message::DoAction(Box::new(
+                    MainAction::ToggleModal(ModalType::SelectingSaveMode)
+                )));
+        let continue_drawing_button =
+            Button::new("Continue drawing")
+                .padding(8)
+                .on_press(Message::DoAction(Box::new(
+                    MainAction::ToggleModal(ModalType::ShowingDrawings)
+                )));
+        let browse_posts_button =
+            Button::new("Browse posts")
+                .padding(8)
+                .on_press(Message::ChangeScene(Scenes::Posts(None)));
+        let quit_button =
+            Button::new("Quit")
+                .padding(8)
+                .on_press(Message::Quit);
+
+        let column_buttons =
+            Column::with_children(
+                if globals.get_db().is_some() && globals.get_user().is_some() {
+                    vec![
+                        start_drawing_button.into(),
+                        continue_drawing_button.into(),
+                        browse_posts_button.into(),
+                        quit_button.into()
+                    ]
+                } else {
+                    vec![
+                        start_drawing_button.into(),
+                        continue_drawing_button.into(),
+                        quit_button.into()
+                    ]
+                }
+            )
+                .spacing(20)
+                .height(Length::FillPortion(3))
+                .width(Length::Fill)
+                .align_items(Alignment::Center);
 
         let container_entrance: Container<Message, Theme, Renderer> = Container::new(
             Column::with_children(vec![
-                container_auth,
-                Column::with_children(vec![
-                    Text::new("Chartsy")
-                        .width(Length::Shrink)
-                        .size(50)
-                        .into()
-                ])
-                    .height(Length::FillPortion(2))
-                    .width(Length::Fill)
-                    .align_items(Alignment::Center)
-                    .into(),
-                Column::with_children(vec![
-                    Button::new("Start new Drawing")
-                        .padding(8)
-                        .on_press(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::SelectingSaveMode))))
-                        .into(),
-                    Button::new("Continue drawing")
-                        .padding(8)
-                        .on_press(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::ShowingDrawings))))
-                        .into(),
-                    if globals.get_db().is_some() && globals.get_user().is_some() {
-                        Element::<Message, Theme, Renderer>::from(
-                            Button::new("Browse posts")
-                                .padding(8)
-                                .on_press(Message::ChangeScene(Scenes::Posts(None)))
-                        )
-                    } else {
-                        Space::with_height(Length::Shrink)
-                            .into()
-                    }
-                ])
-                    .spacing(20)
-                    .height(Length::FillPortion(3))
-                    .width(Length::Fill)
-                    .align_items(Alignment::Center)
-                    .into()
+                container_auth.into(),
+                title.into(),
+                column_buttons.into()
             ])
                 .spacing(20)
                 .padding(20)
@@ -438,30 +463,32 @@ impl Scene for Main {
                         .align_x(Horizontal::Center)
                         .align_y(Vertical::Top);
 
-                    Closeable::<Message, Theme, Renderer>::new(
-                        Card::new(
-                            Text::new("Your drawings")
-                                .horizontal_alignment(Horizontal::Center)
-                                .size(25),
-                            Tabs::new_with_tabs(
-                                vec![
-                                    (
-                                        MainTabIds::Offline,
-                                        TabLabel::Text("Offline".into()),
-                                        offline_tab.into()
-                                    ),
-                                    (
-                                        MainTabIds::Online,
-                                        TabLabel::Text("Online".into()),
-                                        online_tab.into()
-                                    )
-                                ],
-                                |tab| Message::DoAction(Box::new(MainAction::SelectTab(tab)))
-                            )
-                                .set_active_tab(&self.active_tab)
-                                .width(Length::Fill)
-                                .height(Length::Fixed(300.0))
+                    let title =
+                        Text::new("Your drawings")
+                            .horizontal_alignment(Horizontal::Center)
+                            .size(25);
+                    let tabs =
+                        Tabs::new_with_tabs(
+                            vec![
+                                (
+                                    MainTabIds::Offline,
+                                    TabLabel::Text("Offline".into()),
+                                    offline_tab.into()
+                                ),
+                                (
+                                    MainTabIds::Online,
+                                    TabLabel::Text("Online".into()),
+                                    online_tab.into()
+                                )
+                            ],
+                            |tab| Message::DoAction(Box::new(MainAction::SelectTab(tab)))
                         )
+                            .set_active_tab(&self.active_tab)
+                            .width(Length::Fill)
+                            .height(Length::Fixed(300.0));
+
+                    Closeable::<Message, Theme, Renderer>::new(
+                        Card::new(title, tabs)
                             .width(Length::Fixed(500.0))
                             .height(Length::Fixed(300.0))
                     )
@@ -473,38 +500,47 @@ impl Scene for Main {
                         .into()
                 }
                 ModalType::SelectingSaveMode => {
-                    Container::<Message, Theme, Renderer>::new(
+                    let offline_button =
+                        Button::new("Offline")
+                            .padding(8)
+                            .width(Length::FillPortion(1))
+                            .on_press(Message::ChangeScene(Scenes::Drawing(Some(
+                                Box::new(DrawingOptions::new(None, Some(SaveMode::Offline)))
+                            ))));
+                    let online_button =
+                        if globals.get_db().is_some() && globals.get_user().is_some() {
+                            Button::new("Online")
+                                .on_press(Message::ChangeScene(Scenes::Drawing(Some(
+                                    Box::new(DrawingOptions::new(None, Some(SaveMode::Online)))
+                                ))))
+                        } else {
+                            Button::new("Online")
+                        }
+                            .padding(8)
+                            .width(Length::FillPortion(1));
+                    
+                    Closeable::<Message, Theme, Renderer>::new(
                         Card::new(
                             Text::new("Create new drawing"),
                             Column::with_children(vec![
                                 Space::with_height(Length::Fill).into(),
                                 Row::with_children(vec![
-                                    Button::new("Offline")
-                                        .padding(8)
-                                        .width(Length::FillPortion(1))
-                                        .on_press(Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(None, Some(SaveMode::Offline)))))))
-                                        .into(),
+                                    offline_button.into(),
                                     Space::with_width(Length::FillPortion(2)).into(),
-                                    if globals.get_db().is_some() && globals.get_user().is_some() {
-                                        Button::new("Online")
-                                            .padding(8)
-                                            .width(Length::FillPortion(1))
-                                            .on_press(Message::ChangeScene(Scenes::Drawing(Some(Box::new(DrawingOptions::new(None, Some(SaveMode::Online)))))))
-                                            .into()
-                                    } else {
-                                        Button::new("Online")
-                                            .padding(8)
-                                            .width(Length::FillPortion(1))
-                                            .into()
-                                    }
+                                    online_button.into()
                                 ])
                                     .into()
                             ])
                                 .height(Length::Fixed(150.0))
                         )
                             .width(Length::Fixed(300.0))
-                            //.on_close(Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::SelectingSaveMode))))
                     )
+                        .on_close(
+                            Message::DoAction(Box::new(
+                                MainAction::ToggleModal(ModalType::SelectingSaveMode)
+                            )),
+                            25.0
+                        )
                         .into()
                 }
             }

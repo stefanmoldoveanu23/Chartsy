@@ -97,6 +97,8 @@ pub enum Message {
     AutoLoggedIn(User),
     /// Sends en e-mail.
     SendSmtpMail(lettre::Message),
+    /// Quits the application.
+    Quit
 }
 
 /// The [Applications](crate::Chartsy) global values.

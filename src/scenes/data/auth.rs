@@ -1,4 +1,10 @@
-use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
+use lettre::Message;
+use lettre::message::MultiPart;
+use mongodb::bson::{Binary, Bson, DateTime, doc, Document, Uuid, UuidRepresentation};
+use mongodb::bson::spec::BinarySubtype;
+use rand::{random, Rng};
+use sha2::{Digest, Sha256};
+use crate::config;
 use crate::errors::auth::AuthError;
 use crate::serde::{Deserialize, Serialize};
 
@@ -34,6 +40,9 @@ pub struct User {
 
     /// The hashed password of the [User].
     password_hash: String,
+
+    /// Tells whether the e-mail address has been validated.
+    validated: bool,
 }
 
 impl User {
@@ -55,6 +64,32 @@ impl User {
     /// Tests whether the given password is the same as the [users](User).
     pub fn test_password(&self, password: &String) -> bool {
         pwhash::bcrypt::verify(password, &*self.password_hash)
+    }
+
+    pub fn gen_register_code() -> String {
+        let mut rng = rand::thread_rng();
+        (0..6).map(|_| rng.gen_range(0..=9).to_string()).collect::<String>()
+    }
+
+    /// Generates a random authentication token.
+    pub fn gen_auth_token() -> ([u8; 32], Binary) {
+        let code = random::<[u8; 32]>();
+        let mut sha = Sha256::new();
+        Digest::update(&mut sha, code);
+        let hash = sha.finalize();
+
+        (
+            code,
+            Binary {
+                bytes: Vec::from(hash.as_slice()),
+                subtype: BinarySubtype::Generic,
+            }
+        )
+    }
+
+    /// Tells whether this users email address has been validated.
+    pub fn is_validated(&self) -> bool {
+        self.validated
     }
 }
 
@@ -78,6 +113,9 @@ impl Deserialize<Document> for User {
         }
         if let Ok(password) = document.get_str("password") {
             user.password_hash = password.into();
+        }
+        if let Ok(validated) = document.get_bool("validated") {
+            user.validated = validated;
         }
 
         user
@@ -110,8 +148,15 @@ impl Serialize<Document> for RegisterForm {
             "email": self.email.clone(),
             "username": self.username.clone(),
             "password": self.password.clone(),
-            "code": self.code.clone(),
+            "register_code": self.code.clone(),
+            "auth_token": "",
             "validated": false,
+            "token_expiration": Bson::DateTime(
+                DateTime::from_millis(DateTime::now().timestamp_millis() + 30 * 24 * 60 * 60 * 1000)
+            ),
+            "code_expiration": Bson::DateTime(
+                DateTime::from_millis(DateTime::now().timestamp_millis() + 5 * 60 * 1000)
+            )
         }
     }
 }
@@ -156,6 +201,23 @@ impl RegisterForm {
     pub fn set_code(&mut self, code: impl Into<String>) {
         self.code = code.into();
     }
+
+    /// Generates a code verification email.
+    pub fn gen_register_email(&self) -> Message
+    {
+        Message::builder()
+            .from(format!("Chartsy <{}>", config::email_address()).parse().unwrap())
+            .to(format!(
+                "{} <{}>",
+                self.username,
+                self.email
+            ).parse().unwrap())
+            .subject("Code validation for Chartsy account")
+            .multipart(MultiPart::alternative_plain_html(
+                String::from(format!("Use the following code to validate your email address:\n{}", self.code)),
+                String::from(format!("<p>Use the following code to validate your email address:</p><h1>{}</h1>", self.code))
+            )).unwrap()
+    }
 }
 
 /// The fields of an authentication form.
@@ -175,7 +237,6 @@ impl Serialize<Document> for LogInForm {
     fn serialize(&self) -> Document {
         doc! {
             "email": self.email.clone(),
-            "validated": true,
         }
     }
 }

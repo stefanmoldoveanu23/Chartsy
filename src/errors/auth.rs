@@ -35,7 +35,7 @@ impl Display for AuthError {
 
                     &*message
                 }
-                AuthError::RegisterBadCode => "The provided code is incorrect!",
+                AuthError::RegisterBadCode => "The provided code is incorrect or has expired!",
                 AuthError::RegisterUserAlreadyExists => "An account with this email already exists!",
                 AuthError::LogInUserDoesntExist => "An account with this email and password doesn't exist!",
             }

@@ -1,4 +1,3 @@
-use crate::config;
 use crate::errors::auth::AuthError;
 use crate::errors::error::Error;
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
@@ -7,8 +6,6 @@ use crate::theme::Theme;
 use iced::widget::{Button, Column, Container, Row, Space, Text, TextInput};
 use iced::{Element, Length, Renderer, Command};
 use iced_aw::{TabLabel, Tabs};
-use lettre::message::MultiPart;
-use rand::Rng;
 use regex::Regex;
 use std::any::Any;
 use crate::mongo;
@@ -31,6 +28,9 @@ enum AuthAction {
 
     /// Checks whether the validation code that the user added is correct.
     ValidateEmail,
+
+    /// Resets the email validation code.
+    ResetRegisterCode,
 
     /// Triggered when the registration process is complete.
     DoneRegistration,
@@ -61,6 +61,7 @@ impl Action for AuthAction {
             AuthAction::LogInTextFieldUpdate(_) => String::from("Modified log in text input field"),
             AuthAction::SendRegister(_) => String::from("Register attempt"),
             AuthAction::ValidateEmail => String::from("Validate email address"),
+            AuthAction::ResetRegisterCode => String::from("Reset email validation code"),
             AuthAction::DoneRegistration => String::from("Successful registration"),
             AuthAction::SendLogIn => String::from("Log In attempt"),
             AuthAction::LoggedIn(_) => String::from("Logged in successfully"),
@@ -224,19 +225,7 @@ impl Scene for Auth {
                 self.register_form.set_error(None);
 
                 return if *added_to_db {
-                    let mail = lettre::Message::builder()
-                        .from(format!("Chartsy <{}>", config::email_address()).parse().unwrap())
-                        .to(format!(
-                            "{} <{}>",
-                            self.register_form.get_username().clone(),
-                            self.register_form.get_email().clone()
-                        ).parse().unwrap())
-                        .subject("Code validation for Chartsy account")
-                        .multipart(MultiPart::alternative_plain_html(
-                            String::from(format!("Use the following code to validate your email address:\n{}", self.register_form.get_code())),
-                            String::from(format!("<p>Use the following code to validate your email address:</p><h1>{}</h1>", self.register_form.get_code()))
-                        )).unwrap();
-
+                    let mail = self.register_form.gen_register_email();
                     self.register_code = Some("".into());
 
                     Command::perform(async {}, |_| Message::SendSmtpMail(mail))
@@ -247,10 +236,7 @@ impl Scene for Auth {
                         return self.update(globals, Box::new(AuthAction::HandleError(error)));
                     }
 
-                    let mut rng = rand::thread_rng();
-                    self.register_form.set_code(
-                        (0..6).map(|_| rng.gen_range(0..=9).to_string()).collect::<String>()
-                    );
+                    self.register_form.set_code(User::gen_register_code());
 
                     let mut register_form = self.register_form.clone();
                     register_form.set_password(pwhash::bcrypt::hash(register_form.get_password()).unwrap());
@@ -301,6 +287,29 @@ impl Scene for Auth {
                     );
                 }
             }
+            AuthAction::ResetRegisterCode => {
+                let db = globals.get_db().unwrap();
+                let email = self.register_form.get_email().clone();
+                let code = User::gen_register_code();
+
+                self.register_form.set_code(code.clone());
+
+                return Command::perform(
+                    async move {
+                        mongo::auth::reset_register_code(
+                            &db,
+                            email,
+                            code
+                        ).await
+                    },
+                    |result| {
+                        match result {
+                            Ok(()) => Message::DoAction(Box::new(AuthAction::SendRegister(true))),
+                            Err(err) => Message::Error(err)
+                        }
+                    }
+                );
+            }
             AuthAction::DoneRegistration => {
                 self.register_code = None;
                 self.active_tab = AuthTabIds::LogIn;
@@ -330,6 +339,21 @@ impl Scene for Auth {
                     return self.update(globals, Box::new(AuthAction::HandleError(Error::AuthError(
                         AuthError::LogInUserDoesntExist,
                     ))));
+                }
+
+                if !user.is_validated() {
+                    let email = user.get_email().clone();
+                    let username = user.get_username().clone();
+
+                    self.register_form.set_email(email);
+                    self.register_form.set_username(username);
+                    self.register_code = Some("".into());
+
+                    let _ = self.update(globals, Box::new(AuthAction::TabSelection(
+                        AuthTabIds::Register
+                    )));
+
+                    return self.update(globals, Box::new(AuthAction::ResetRegisterCode));
                 }
 
                 globals.set_user(Some(user.clone()));
@@ -408,10 +432,14 @@ impl Scene for Auth {
                                             ),
                                         ))
                                     }).into(),
+                                    Button::new("Reset code").on_press(Message::DoAction(Box::new(
+                                        AuthAction::ResetRegisterCode
+                                    ))).into(),
                                     Button::new("Validate").on_press(Message::DoAction(Box::new(
                                         AuthAction::ValidateEmail
                                     ))).into()
                                 ])
+                                    .spacing(10.0)
                                     .into()
                             } else {
                                 Column::with_children([
