@@ -305,6 +305,10 @@ impl Scene for Main {
                 let welcome_message =
                     Text::new(format!("Welcome, {}!", user.get_username()))
                         .vertical_alignment(Vertical::Bottom);
+                let settings_button =
+                    Button::new("Settings")
+                        .padding(8)
+                        .on_press(Message::ChangeScene(Scenes::Settings(None)));
                 let logout_button =
                     Button::new("Log Out")
                         .padding(8)
@@ -314,6 +318,7 @@ impl Scene for Main {
                     Space::with_width(Length::Fill).into(),
                     Row::with_children(vec![
                         welcome_message.into(),
+                        settings_button.into(),
                         logout_button.into()
                     ])
                         .align_items(Alignment::Center)

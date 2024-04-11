@@ -34,7 +34,6 @@ pub async fn get_user_from_token(database: &Database) -> Result<User, Error>
             bytes: Vec::from(hash.as_slice()),
             subtype: BinarySubtype::Generic,
         });
-        println!("{}", bin);
 
         match database.collection::<Document>("users").find_one(
             doc! {

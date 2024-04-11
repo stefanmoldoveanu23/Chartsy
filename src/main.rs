@@ -27,7 +27,7 @@ use scenes::scenes::SceneLoader;
 use theme::Theme;
 
 use iced::{executor, window, Application, Command, Element, Renderer, Settings, Subscription};
-use lettre::{AsyncSmtpTransport, AsyncStd1Executor, AsyncTransport};
+use lettre::{AsyncSmtpTransport, Tokio1Executor, AsyncTransport};
 
 pub fn main() -> iced::Result {
     Chartsy::run(Settings {
@@ -119,7 +119,7 @@ impl Application for Chartsy {
             }
             Message::SendSmtpMail(mail) => Command::perform(
                 async {
-                    let connection = AsyncSmtpTransport::<AsyncStd1Executor>::from_url(&*format!(
+                    let connection = AsyncSmtpTransport::<Tokio1Executor>::from_url(&*format!(
                         "smtps://{}:{}@smtp.gmail.com:465/",
                         config::email_username(), config::email_pass()
                     ))

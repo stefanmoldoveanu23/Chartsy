@@ -9,10 +9,12 @@ use iced::advanced::image::Handle;
 use iced::{Alignment, Element, Length, Renderer, Command};
 use iced::widget::{Column, Row, Scrollable, Image, Text, TextInput, Button};
 use mongodb::bson::{doc, Uuid};
+use tokio::task::spawn_blocking;
 use crate::widgets::closeable::Closeable;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::post_summary::PostSummary;
 use crate::{config, mongo};
+use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::serde::Serialize;
@@ -369,30 +371,42 @@ impl Scene for Posts {
                                         .unwrap();
 
                                     let client = UserAuthDefaultClient::new(auth.clone());
-                                    let mut data = vec![];
 
-                                    match files::download(
-                                        &client,
-                                        &DownloadArg::new(format!("/{}/{}.webp", user_id, post_id)),
-                                        None,
-                                        None
-                                    ) {
-                                        Ok(Ok(result)) => {
-                                            let mut read = result.body.unwrap();
+                                    spawn_blocking(
+                                        move || {
+                                            let mut data = vec![];
 
-                                            let _ = io::copy(read.deref_mut(), &mut data).unwrap();
+                                            match files::download(
+                                                &client,
+                                                &DownloadArg::new(format!("/{}/{}.webp", user_id, post_id)),
+                                                None,
+                                                None
+                                            ) {
+                                                Ok(Ok(result)) => {
+                                                    let mut read = result.body.unwrap();
+
+                                                    let _ = io::copy(read.deref_mut(), &mut data).unwrap();
+                                                },
+                                                _ => {}
+                                            }
+
+                                            data
                                         },
-                                        _ => {}
-                                    }
-
-                                    data
+                                    ).await
                                 },
-                                move |data| Message::DoAction(
-                                    Box::new(PostsAction::LoadedImage {
-                                        image: data,
-                                        index,
-                                    })
-                                )
+                                move |data| {
+                                    match data {
+                                        Ok(data) => Message::DoAction(
+                                            Box::new(PostsAction::LoadedImage {
+                                                image: data,
+                                                index,
+                                            })
+                                        ),
+                                        Err(err) => Message::Error(Error::DebugError(
+                                            DebugError::new(err.to_string())
+                                        ))
+                                    }
+                                }
                             )
                         }
                     )

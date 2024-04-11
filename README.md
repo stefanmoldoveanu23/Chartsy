@@ -17,7 +17,6 @@ A desktop application where users can create drawings and share them.
 
 
 ## Plans
-- Better code handling for auth page
 - Implement settings page(profile picture, change data)
 - Complete posts page(profile page, tag search page, maybe notifications)
 - Finishing touches on drawing page(remove tags, fix style section, allow download in different filetypes, drawing name)
