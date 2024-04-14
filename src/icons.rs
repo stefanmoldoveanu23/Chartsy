@@ -15,7 +15,8 @@ pub enum Icon {
     Edit,
     Visible,
     Hidden,
-    Add
+    Add,
+    Leave
 }
 
 pub enum ToolIcon {
@@ -39,7 +40,8 @@ impl Display for Icon {
                 Icon::Edit => '\u{F044}',
                 Icon::Visible => '\u{F06E}',
                 Icon::Hidden => '\u{F070}',
-                Icon::Add => '\u{F0FE}'
+                Icon::Add => '\u{F0FE}',
+                Icon::Leave => '\u{F0A8}'
             }
         )
     }

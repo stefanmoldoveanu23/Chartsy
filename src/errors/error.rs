@@ -2,12 +2,13 @@ use crate::errors::auth::AuthError;
 use crate::errors::debug::DebugError;
 use std::fmt::{Debug, Display, Formatter};
 
-/// Error types:
-/// - [DebugError](Error::DebugError), which provides a [DebugError];
-/// - [AuthError](Error::AuthError), which provides an [AuthError].
-#[derive(Clone)]
+/// Error types.
+#[derive(Clone, Eq, PartialEq)]
 pub enum Error {
+    /// An error to be displayed on console, for debug purposes.
     DebugError(DebugError),
+
+    /// An error that the user has encountered while creating or updating their data.
     AuthError(AuthError),
 }
 

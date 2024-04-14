@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Display, Formatter};
 
 /// Debug error to be printed on the screen.
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct DebugError {
     message: String,
 }

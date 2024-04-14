@@ -8,7 +8,7 @@ use iced::widget::{Column, Container, Scrollable, Space, Row, Button, Text};
 use iced::{Alignment, Command, Element, Length, Renderer};
 use iced_aw::{Tabs, TabLabel};
 use mongodb::bson::{Bson, Uuid, UuidRepresentation, Document};
-use crate::mongo;
+use crate::database;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::card::Card;
 
@@ -210,7 +210,7 @@ impl Main {
 
                 Command::perform(
                     async move {
-                        mongo::main::get_drawings(&db, user_id).await
+                        database::main::get_drawings(&db, user_id).await
                     },
                     |result| {
                         match result {

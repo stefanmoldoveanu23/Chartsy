@@ -34,7 +34,8 @@ pub(crate) mod text {
         #[default]
         Default,
         Light,
-        Dark
+        Dark,
+        Error
     }
 
     impl StyleSheet for Theme {
@@ -50,6 +51,9 @@ pub(crate) mod text {
                 },
                 Text::Dark => Appearance {
                     color: Some(super::pallete::BACKGROUND)
+                },
+                Text::Error => Appearance {
+                    color: Some(super::pallete::DANGER)
                 }
             }
         }

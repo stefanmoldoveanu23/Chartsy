@@ -2,7 +2,7 @@ use mongodb::bson::{doc, Document, Uuid};
 use mongodb::Database;
 use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
-use crate::mongo;
+use crate::database;
 
 /// Gets a list of drawings owned by the user with the given id.
 pub async fn get_drawings(db: &Database, user_id: Uuid) -> Result<Vec<Document>, Error>
@@ -13,7 +13,7 @@ pub async fn get_drawings(db: &Database, user_id: Uuid) -> Result<Vec<Document>,
         },
         None
     ).await {
-        Ok(ref mut cursor) => Ok(mongo::base::resolve_cursor::<Document>(cursor).await),
+        Ok(ref mut cursor) => Ok(database::base::resolve_cursor::<Document>(cursor).await),
         Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
     }
 }

@@ -3,9 +3,11 @@ use lettre::message::MultiPart;
 use mongodb::bson::{Binary, Bson, DateTime, doc, Document, Uuid, UuidRepresentation};
 use mongodb::bson::spec::BinarySubtype;
 use rand::{random, Rng};
+use regex::Regex;
 use sha2::{Digest, Sha256};
 use crate::config;
 use crate::errors::auth::AuthError;
+use crate::errors::error::Error;
 use crate::serde::{Deserialize, Serialize};
 
 /// User account registration fields.
@@ -24,8 +26,6 @@ pub enum LogInField {
     Password(String),
 }
 
-
-
 /// Structure for the user data.
 #[derive(Default, Debug, Clone)]
 pub struct User {
@@ -43,6 +43,9 @@ pub struct User {
 
     /// Tells whether the e-mail address has been validated.
     validated: bool,
+
+    /// Tells whether the user has a profile picture set.
+    profile_picture: bool,
 }
 
 impl User {
@@ -61,11 +64,18 @@ impl User {
         self.username.clone()
     }
 
+    /// Sets the username of the [user](User).
+    pub fn set_username(&mut self, username: impl Into<String>)
+    {
+        self.username = username.into();
+    }
+
     /// Tests whether the given password is the same as the [users](User).
     pub fn test_password(&self, password: &String) -> bool {
         pwhash::bcrypt::verify(password, &*self.password_hash)
     }
 
+    /// Generates a registration code.
     pub fn gen_register_code() -> String {
         let mut rng = rand::thread_rng();
         (0..6).map(|_| rng.gen_range(0..=9).to_string()).collect::<String>()
@@ -90,6 +100,69 @@ impl User {
     /// Tells whether this users email address has been validated.
     pub fn is_validated(&self) -> bool {
         self.validated
+    }
+
+    /// Checks whether the provided username is valid.
+    pub fn check_username(username: &String) -> bool {
+        let regex = Regex::new(r"^[a-zA-Z0-9]+$").unwrap();
+
+        regex.is_match(&*username.clone())
+    }
+
+    /// Checks whether the provided email is valid.
+    pub fn check_email(email: &String) -> bool {
+        let regex = Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap();
+
+        regex.is_match(&*email.clone())
+    }
+
+    /// Checks whether the provided password is valid.
+    pub fn check_password(password: &String) -> bool {
+        if password.len() < 8 {
+            return false;
+        }
+
+        let lowercase_regex = Regex::new(r"[a-z]").unwrap();
+        let uppercase_regex = Regex::new(r"[A-Z]").unwrap();
+        let digit_regex = Regex::new(r"\d").unwrap();
+        let symbol_regex = Regex::new(r"[^\w\s]").unwrap();
+        if !lowercase_regex.is_match(&*password.clone())
+            | !uppercase_regex.is_match(&*password.clone())
+            | !digit_regex.is_match(&*password.clone())
+            | !symbol_regex.is_match(&*password.clone())
+        {
+            false
+        } else {
+            true
+        }
+    }
+
+    /// Checks the provided credentials in the registration form; if there is an issue, then it will return the error;
+    /// otherwise, it will return [None].
+    pub fn check_credentials(username: &String, email: &String, password: &String) -> Option<Error> {
+        let email_good = Self::check_email(email);
+        let username_good = Self::check_username(username);
+        let password_good = Self::check_password(password);
+
+        if !email_good | !username_good | !password_good {
+            Some(Error::AuthError(AuthError::RegisterBadCredentials {
+                email: !email_good,
+                username: !username_good,
+                password: !password_good,
+            }))
+        } else {
+            None
+        }
+    }
+
+    /// Tells whether the user has set their own profile picture, or the default one should be used.
+    pub fn has_profile_picture(&self) -> bool {
+        self.profile_picture
+    }
+
+    /// Sets the profile picture argument as true when the user has selected a profile picture.
+    pub fn set_profile_picture(&mut self) {
+        self.profile_picture = true;
     }
 }
 
@@ -116,6 +189,9 @@ impl Deserialize<Document> for User {
         }
         if let Ok(validated) = document.get_bool("validated") {
             user.validated = validated;
+        }
+        if let Ok(profile_picture) = document.get_bool("profile_picture") {
+            user.profile_picture = profile_picture;
         }
 
         user
@@ -156,7 +232,8 @@ impl Serialize<Document> for RegisterForm {
             ),
             "code_expiration": Bson::DateTime(
                 DateTime::from_millis(DateTime::now().timestamp_millis() + 5 * 60 * 1000)
-            )
+            ),
+            "profile_picture": false
         }
     }
 }

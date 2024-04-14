@@ -3,7 +3,7 @@ use mongodb::Database;
 use mongodb::options::{AggregateOptions, UpdateOptions};
 use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
-use crate::mongo;
+use crate::database;
 use crate::scenes::data::posts::{Comment, Post};
 
 /// Gets a list of comments with the given filter, which will decide the parent of the comments.
@@ -28,7 +28,7 @@ pub async fn get_comments(db: &Database, filter: Document) -> Result<Vec<Comment
         ],
         AggregateOptions::builder().allow_disk_use(true).build()
     ).await {
-        Ok(ref mut cursor) => Ok(mongo::base::resolve_cursor::<Comment>(cursor).await),
+        Ok(ref mut cursor) => Ok(database::base::resolve_cursor::<Comment>(cursor).await),
         Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
     }
 }
@@ -294,7 +294,7 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
         AggregateOptions::builder().allow_disk_use(true).build()
     ).await {
         Ok(ref mut cursor) => {
-            Ok(mongo::base::resolve_cursor::<Post>(cursor).await)
+            Ok(database::base::resolve_cursor::<Post>(cursor).await)
         },
         Err(err) => {
             Err(Error::DebugError(DebugError::new(err.to_string())))
@@ -369,7 +369,7 @@ pub async fn get_random_posts(db: &Database, count: usize, user_id: Uuid, denied
         AggregateOptions::builder().allow_disk_use(true).build()
     ).await {
         Ok(ref mut cursor) => {
-            Ok(mongo::base::resolve_cursor::<Post>(cursor).await)
+            Ok(database::base::resolve_cursor::<Post>(cursor).await)
         },
         Err(err) => {
             Err(Error::DebugError(DebugError::new(err.to_string())))

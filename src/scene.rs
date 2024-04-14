@@ -2,7 +2,7 @@ use crate::errors::error::Error;
 use crate::scenes::data::auth::User;
 use crate::scenes::scenes::Scenes;
 use crate::theme::Theme;
-use iced::{Command, Element, Renderer, Size};
+use iced::{Command, Element, Renderer};
 use mongodb::Database;
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
@@ -108,46 +108,30 @@ pub struct Globals {
     user: Option<User>,
     /// The database the program is connected to.
     mongo_db: Option<Database>,
-    /// The size of the window.
-    window_size: Size,
 }
 
 impl Globals {
     /// Updates the value of the user.
-    pub(crate) fn set_user(&mut self, user: Option<User>) {
+    pub fn set_user(&mut self, user: Option<User>) {
         self.user = user;
     }
 
     /// Returns the user data.
-    pub(crate) fn get_user(&self) -> Option<User> {
+    pub fn get_user(&self) -> Option<User> {
         self.user.clone()
     }
 
+    /// Returns the user data as mutable.
+    pub fn get_user_mut(&mut self) -> &mut Option<User>
+    {
+        &mut self.user
+    }
+
     /// Updates the database object.
-    pub(crate) fn set_db(&mut self, db: Database) { self.mongo_db = Some(db); }
+    pub fn set_db(&mut self, db: Database) { self.mongo_db = Some(db); }
 
     /// Returns the database object.
-    pub(crate) fn get_db(&self) -> Option<Database> { self.mongo_db.clone() }
-
-    /// Updates the value of the window_size.
-    pub(crate) fn set_window_size(&mut self, size: Size) {
-        self.window_size = size;
-    }
-
-    /// Returns the height of the window.
-    pub(crate) fn get_window_height(&self) -> f32 {
-        self.window_size.height
-    }
-
-    /// Returns the width of the window.
-    pub(crate) fn get_window_width(&self) -> f32 {
-        self.window_size.width
-    }
-
-    /// Returns the size of the window.
-    pub(crate) fn get_window_size(&self) -> Size {
-        self.window_size
-    }
+    pub fn get_db(&self) -> Option<Database> { self.mongo_db.clone() }
 }
 
 impl Default for Globals {
@@ -155,7 +139,6 @@ impl Default for Globals {
         Globals {
             user: None,
             mongo_db: None,
-            window_size: Size::new(0.0, 0.0),
         }
     }
 }

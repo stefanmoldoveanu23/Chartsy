@@ -6,7 +6,7 @@ use crate::canvas::tool;
 use crate::canvas::tool::Tool;
 use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
-use crate::mongo;
+use crate::database;
 use crate::scenes::data::drawing::Tag;
 
 /// Gets the data for the drawing stored online with the given id.
@@ -60,7 +60,7 @@ pub async fn get_drawing(db: &Database, id: Uuid)
         None
     ).await {
         Ok(mut documents) => {
-            mongo::base::resolve_cursor::<Document>(&mut documents).await.iter().filter_map(
+            database::base::resolve_cursor::<Document>(&mut documents).await.iter().filter_map(
                 |document| tool::get_deserialized(document)
             ).collect()
         }
@@ -140,7 +140,7 @@ pub async fn get_tags(db: &Database) -> Result<Vec<Tag>, Error>
         None
     ).await {
         Ok(ref mut cursor) => {
-            Ok(mongo::base::resolve_cursor::<Tag>(cursor).await)
+            Ok(database::base::resolve_cursor::<Tag>(cursor).await)
         }
         Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
     }

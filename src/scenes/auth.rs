@@ -6,9 +6,8 @@ use crate::theme::Theme;
 use iced::widget::{Button, Column, Container, Row, Space, Text, TextInput};
 use iced::{Element, Length, Renderer, Command};
 use iced_aw::{TabLabel, Tabs};
-use regex::Regex;
 use std::any::Any;
-use crate::mongo;
+use crate::database;
 use crate::scenes::data::auth::*;
 use crate::serde::Serialize;
 
@@ -127,45 +126,6 @@ impl SceneOptions<Auth> for AuthOptions {
     }
 }
 
-impl Auth {
-    /// Checks the provided credentials in the registration form; if there is an issue, then it will return the error;
-    /// otherwise, it will return [None].
-    fn check_credentials(&self) -> Option<Error> {
-        let email_regex = Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap();
-        let username_regex = Regex::new(r"^[a-zA-Z0-9]+$").unwrap();
-
-        let mut password_good = true;
-        if self.register_form.get_password().len() < 8 {
-            password_good = false;
-        }
-
-        let lowercase_regex = Regex::new(r"[a-z]").unwrap();
-        let uppercase_regex = Regex::new(r"[A-Z]").unwrap();
-        let digit_regex = Regex::new(r"\d").unwrap();
-        let symbol_regex = Regex::new(r"[^\w\s]").unwrap();
-        if !lowercase_regex.is_match(&*self.register_form.get_password().clone())
-            | !uppercase_regex.is_match(&*self.register_form.get_password().clone())
-            | !digit_regex.is_match(&*self.register_form.get_password().clone())
-            | !symbol_regex.is_match(&*self.register_form.get_password().clone())
-        {
-            password_good = false;
-        }
-
-        let email_good = email_regex.is_match(&*self.register_form.get_email().clone());
-        let username_good = username_regex.is_match(&*self.register_form.get_username().clone());
-
-        if !email_good | !username_good | !password_good {
-            Some(Error::AuthError(AuthError::RegisterBadCredentials {
-                email: !email_good,
-                username: !username_good,
-                password: !password_good,
-            }))
-        } else {
-            None
-        }
-    }
-}
-
 impl Scene for Auth {
     fn new(
         options: Option<Box<dyn SceneOptions<Self>>>,
@@ -230,7 +190,11 @@ impl Scene for Auth {
 
                     Command::perform(async {}, |_| Message::SendSmtpMail(mail))
                 } else {
-                    let error = self.check_credentials();
+                    let error = User::check_credentials(
+                        self.register_form.get_username(),
+                        self.register_form.get_email(),
+                        self.register_form.get_password()
+                    );
 
                     if let Some(error) = error {
                         return self.update(globals, Box::new(AuthAction::HandleError(error)));
@@ -245,7 +209,7 @@ impl Scene for Auth {
                         Some(db) => {
                             Command::perform(
                                 async move {
-                                    mongo::auth::create_user(
+                                    database::auth::create_user(
                                         &db,
                                         register_form.get_email().clone(),
                                         register_form.serialize()
@@ -272,7 +236,7 @@ impl Scene for Auth {
                 if let Some(db) = globals.get_db() {
                     return Command::perform(
                         async move {
-                            mongo::auth::validate_email(
+                            database::auth::validate_email(
                                 &db,
                                 register_form.get_email().clone(),
                                 register_code.unwrap_or_default()
@@ -296,7 +260,7 @@ impl Scene for Auth {
 
                 return Command::perform(
                     async move {
-                        mongo::auth::reset_register_code(
+                        database::auth::reset_register_code(
                             &db,
                             email,
                             code
@@ -321,7 +285,7 @@ impl Scene for Auth {
                 if let Some(db) = globals.get_db() {
                     return Command::perform(
                         async move {
-                            mongo::auth::login(&db, log_in_form.serialize()).await
+                            database::auth::login(&db, log_in_form.serialize()).await
                         },
                         move |res| {
                             match res {
@@ -362,7 +326,7 @@ impl Scene for Auth {
 
                 return Command::perform(
                     async move {
-                        mongo::auth::update_user_token(&db, id).await
+                        database::auth::update_user_token(&db, id).await
                     },
                     |_| Message::ChangeScene(Scenes::Main(None))
                 );
@@ -385,6 +349,7 @@ impl Scene for Auth {
                         AuthError::RegisterUserAlreadyExists => {
                             self.register_form.set_error(error.clone());
                         }
+                        _ => { }
                     }
                 }
             }

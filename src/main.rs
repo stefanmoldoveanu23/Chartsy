@@ -14,7 +14,7 @@ use_litcrypt!();
 mod canvas;
 mod config;
 mod errors;
-mod mongo;
+mod database;
 mod scene;
 mod scenes;
 mod serde;
@@ -61,9 +61,9 @@ impl Application for Chartsy {
                 globals,
             },
             Command::batch(vec![
-                window::change_mode(window::Id::MAIN, window::Mode::Fullscreen),
+                window::maximize(window::Id::MAIN, true),
                 iced::font::load(icons::ICON_BYTES).map(|_| Message::None),
-                Command::perform(mongo::base::connect_to_mongodb(), Message::DoneDatabaseInit),
+                Command::perform(database::base::connect_to_mongodb(), Message::DoneDatabaseInit),
             ]),
         )
     }
@@ -88,12 +88,12 @@ impl Application for Chartsy {
                         println!("Successfully connected to database.");
                         Command::perform(
                             async move {
-                                let result = mongo::auth::get_user_from_token(&db).await;
+                                let result = database::auth::get_user_from_token(&db).await;
 
                                 if let Ok(user) = &result {
                                     let user_id = user.get_id();
 
-                                    mongo::auth::update_user_token(&db, user_id).await;
+                                    database::auth::update_user_token(&db, user_id).await;
                                 }
 
                                 result
@@ -108,7 +108,7 @@ impl Application for Chartsy {
                     }
                     Err(err) => {
                         println!("Error connecting to database: {}", err);
-                        Command::perform(mongo::base::connect_to_mongodb(), Message::DoneDatabaseInit)
+                        Command::perform(database::base::connect_to_mongodb(), Message::DoneDatabaseInit)
                     }
                 }
 

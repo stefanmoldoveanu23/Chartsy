@@ -25,7 +25,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 use iced::advanced::renderer::Quad;
 use svg::node::element::Group;
-use crate::mongo;
+use crate::database;
 
 /// The canvas structure.
 pub struct Canvas {
@@ -358,7 +358,7 @@ impl Canvas {
                     if let Some(db) = db {
                         Command::perform(
                         async move {
-                            mongo::drawing::update_drawing(
+                            database::drawing::update_drawing(
                                 &db,
                                 canvas_id,
                                 delete_lower_bound as u32,

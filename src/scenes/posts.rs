@@ -1,20 +1,12 @@
 use std::any::Any;
-use std::io;
-use std::ops::DerefMut;
-use dropbox_sdk::default_client::{NoauthDefaultClient, UserAuthDefaultClient};
-use dropbox_sdk::files;
-use dropbox_sdk::files::DownloadArg;
-use dropbox_sdk::oauth2::Authorization;
 use iced::advanced::image::Handle;
 use iced::{Alignment, Element, Length, Renderer, Command};
 use iced::widget::{Column, Row, Scrollable, Image, Text, TextInput, Button};
 use mongodb::bson::{doc, Uuid};
-use tokio::task::spawn_blocking;
 use crate::widgets::closeable::Closeable;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::post_summary::PostSummary;
-use crate::{config, mongo};
-use crate::errors::debug::DebugError;
+use crate::database;
 use crate::errors::error::Error;
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::serde::Serialize;
@@ -179,7 +171,7 @@ impl Posts {
 
                 Command::perform(
                     async move {
-                        mongo::posts::create_comment(&db, &document).await
+                        database::posts::create_comment(&db, &document).await
                     },
                     |result| {
                         match result {
@@ -206,7 +198,7 @@ impl Posts {
 
                 Command::perform(
                     async move {
-                        mongo::posts::get_comments(&db, filter).await
+                        database::posts::get_comments(&db, filter).await
                     },
                     move |result| {
                         match result {
@@ -279,7 +271,7 @@ impl Scene for Posts {
             Command::perform(
                 async move {
                     let mut posts =
-                        match mongo::posts::get_recommendations(&db, user_id).await {
+                        match database::posts::get_recommendations(&db, user_id).await {
                             Ok(posts) => posts,
                             Err(err) => {
                                 return Err(err);
@@ -291,7 +283,7 @@ impl Scene for Posts {
 
                     if posts.len() < 100 {
                         let mut posts_random =
-                            match mongo::posts::get_random_posts(
+                            match database::posts::get_random_posts(
                                 &db,
                                 need,
                                 user_id,
@@ -361,37 +353,8 @@ impl Scene for Posts {
                         |(index, post_id, user_id)| {
                             Command::perform(
                                 async move {
-                                    let mut auth = Authorization::from_refresh_token(
-                                        config::dropbox_id().into(),
-                                        config::dropbox_refresh_token().into()
-                                    );
-
-                                    let _token = auth
-                                        .obtain_access_token(NoauthDefaultClient::default())
-                                        .unwrap();
-
-                                    let client = UserAuthDefaultClient::new(auth.clone());
-
-                                    spawn_blocking(
-                                        move || {
-                                            let mut data = vec![];
-
-                                            match files::download(
-                                                &client,
-                                                &DownloadArg::new(format!("/{}/{}.webp", user_id, post_id)),
-                                                None,
-                                                None
-                                            ) {
-                                                Ok(Ok(result)) => {
-                                                    let mut read = result.body.unwrap();
-
-                                                    let _ = io::copy(read.deref_mut(), &mut data).unwrap();
-                                                },
-                                                _ => {}
-                                            }
-
-                                            data
-                                        },
+                                    database::base::download_file(
+                                        format!("/{}/{}.webp", user_id, post_id)
                                     ).await
                                 },
                                 move |data| {
@@ -402,9 +365,7 @@ impl Scene for Posts {
                                                 index,
                                             })
                                         ),
-                                        Err(err) => Message::Error(Error::DebugError(
-                                            DebugError::new(err.to_string())
-                                        ))
+                                        Err(err) => Message::Error(err)
                                     }
                                 }
                             )
@@ -448,7 +409,7 @@ impl Scene for Posts {
                     if rating > 0 {
                         Command::perform(
                             async move {
-                                mongo::posts::update_rating(
+                                database::posts::update_rating(
                                     &db,
                                     post_id,
                                     user_id,
@@ -465,7 +426,7 @@ impl Scene for Posts {
                     } else {
                         Command::perform(
                             async move {
-                                mongo::posts::delete_rating(
+                                database::posts::delete_rating(
                                     &db,
                                     post_id,
                                     user_id

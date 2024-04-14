@@ -1,7 +1,4 @@
 use directories::ProjectDirs;
-use dropbox_sdk::default_client::{NoauthDefaultClient, UserAuthDefaultClient};
-use dropbox_sdk::files;
-use dropbox_sdk::files::WriteMode;
 use std::any::Any;
 use std::fs;
 use std::fs::{create_dir_all, File};
@@ -12,6 +9,7 @@ use iced::alignment::Horizontal;
 use iced::widget::{Container, Row, Column, Text, Button, TextInput, Image, Scrollable, Space};
 use iced::{Alignment, Command, Element, Length, Padding, Renderer};
 use iced::widget::image::Handle;
+use iced::widget::scrollable::{Direction, Properties};
 use iced_aw::Badge;
 use json::object::Object;
 use json::JsonValue;
@@ -29,8 +27,7 @@ use crate::canvas::tools::{
     circle::CirclePending, ellipse::EllipsePending, line::LinePending, polygon::PolygonPending,
     rect::RectPending, triangle::TrianglePending,
 };
-use crate::{config, mongo};
-use crate::errors::debug::DebugError;
+use crate::database;
 use crate::errors::error::Error;
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::scenes::scenes::Scenes;
@@ -108,7 +105,7 @@ pub struct Drawing {
 }
 
 impl Drawing {
-    /// Initialize the drawing scene from the mongo database.
+    /// Initialize the drawing scene from the database database.
     /// If the uuid is 0, then insert a new drawing in the database.
     fn init_online(self: &mut Box<Self>, globals: &mut Globals) -> Command<Message> {
         let mut uuid = *self.canvas.get_id();
@@ -116,7 +113,7 @@ impl Drawing {
             if let Some(db) = globals.get_db() {
                 Command::perform(
                     async move {
-                        mongo::drawing::get_drawing(
+                        database::drawing::get_drawing(
                             &db,
                             uuid
                         ).await
@@ -146,7 +143,7 @@ impl Drawing {
 
                 Command::perform(
                     async move {
-                        mongo::drawing::create_drawing(
+                        database::drawing::create_drawing(
                             &db,
                             uuid,
                             user_id
@@ -371,37 +368,19 @@ impl Scene for Box<Drawing> {
                     async move {
                         let buffer = document.to_string();
                         let img = svg2webp(&*buffer, 80.0).unwrap();
-                        let mut auth = dropbox_sdk::oauth2::Authorization::from_refresh_token(
-                            config::dropbox_id().into(),
-                            config::dropbox_refresh_token().into(),
-                        );
-
                         let post_id = Uuid::new();
 
-                        let _token = auth
-                            .obtain_access_token(NoauthDefaultClient::default())
-                            .unwrap();
-                        let client = UserAuthDefaultClient::new(auth);
-
-                        match files::upload(
-                            &client,
-                            &files::UploadArg::new(format!("/{}/{}.webp", user_id, post_id))
-                                .with_mute(false)
-                                .with_mode(WriteMode::Overwrite),
-                            &img,
-                        ) {
-                            Ok(Ok(_metadata)) => {
-                                println!("File successfully sent!");
-                            }
-                            Ok(Err(err)) => {
-                                return Err(Error::DebugError(DebugError::new(format!("Error sending file: {}", err))));
-                            }
+                        match database::base::upload_file(
+                            format!("/{}/{}.webp", user_id, post_id),
+                            img
+                        ).await {
+                            Ok(()) => { }
                             Err(err) => {
-                                return Err(Error::DebugError(DebugError::new(format!("Error with upload request: {}", err))));
+                                return Err(err);
                             }
                         }
 
-                        mongo::drawing::create_post(
+                        database::drawing::create_post(
                             &db,
                             post_id,
                             user_id,
@@ -428,7 +407,7 @@ impl Scene for Box<Drawing> {
                             if let (Some(_), Some(db)) = (globals.get_user(), globals.get_db()) {
                                 Command::perform(
                                     async move {
-                                        mongo::drawing::get_tags(&db).await
+                                        database::drawing::get_tags(&db).await
                                     },
                                     |res| {
                                         match res {
@@ -698,7 +677,13 @@ impl Scene for Box<Drawing> {
                         .width(Length::Shrink)
                         .size(50)
                         .into(),
-                    Container::new::<&Canvas>(&self.canvas)
+                    Container::new::<Scrollable<Message, Theme, Renderer>>(
+                        Scrollable::new(&self.canvas)
+                            .direction(Direction::Both {
+                                vertical: Properties::default(),
+                                horizontal: Properties::default()
+                            })
+                    )
                         .width(Length::Fill)
                         .height(Length::Fill)
                         .center_x()
