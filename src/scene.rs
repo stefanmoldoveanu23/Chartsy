@@ -33,7 +33,7 @@ pub trait Scene: Send + Sync {
     fn get_error_handler(&self, error: Error) -> Box<dyn Action>;
 
     /// Handles closing the [Scene].
-    fn clear(&self);
+    fn clear(&self, globals: &mut Globals);
 }
 
 impl Debug for dyn Scene {

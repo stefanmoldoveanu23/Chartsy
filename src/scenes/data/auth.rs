@@ -91,7 +91,7 @@ impl User {
         (
             code,
             Binary {
-                bytes: Vec::from(hash.as_slice()),
+                bytes: Vec::from(hash.iter().as_slice()),
                 subtype: BinarySubtype::Generic,
             }
         )
@@ -233,7 +233,8 @@ impl Serialize<Document> for RegisterForm {
             "code_expiration": Bson::DateTime(
                 DateTime::from_millis(DateTime::now().timestamp_millis() + 5 * 60 * 1000)
             ),
-            "profile_picture": false
+            "profile_picture": false,
+            "expiration_date": null
         }
     }
 }

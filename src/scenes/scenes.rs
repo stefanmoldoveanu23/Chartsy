@@ -52,31 +52,31 @@ impl SceneLoader {
         match self.current_scene {
             Scenes::Main(_) => {
                 if let Some(main) = &self.main {
-                    main.clear();
+                    main.clear(globals);
                 }
                 self.main = None
             }
             Scenes::Drawing(_) => {
                 if let Some(drawing) = &self.drawing {
-                    drawing.clear();
+                    drawing.clear(globals);
                 }
                 self.drawing = None
             }
             Scenes::Auth(_) => {
                 if let Some(auth) = &self.auth {
-                    auth.clear();
+                    auth.clear(globals);
                 }
                 self.auth = None;
             }
             Scenes::Posts(_) => {
                 if let Some(posts) = &self.posts {
-                    posts.clear();
+                    posts.clear(globals);
                 }
                 self.posts = None;
             },
             Scenes::Settings(_) => {
                 if let Some(settings) = &self.settings {
-                    settings.clear();
+                    settings.clear(globals);
                 }
                 self.settings = None;
             }

@@ -34,6 +34,9 @@ pub struct Settings {
 
     /// The last error that an update request has created.
     input_error: Option<Error>,
+
+    /// This is checked when the user has deleted their account.
+    deleted_account: bool,
 }
 
 /// This scene has no options.
@@ -78,6 +81,9 @@ pub enum SettingsAction {
     /// Sets the users profile picture to the image selected in the file dialog.
     SetImage(Vec<u8>),
 
+    /// Deletes the current users account.
+    DeleteAccount,
+
     /// Handles errors.
     Error(Error)
 }
@@ -98,6 +104,7 @@ impl Action for SettingsAction {
             SettingsAction::LoadedProfilePicture(_) => String::from("Loaded profile picture"),
             SettingsAction::SelectImage => String::from("Select image"),
             SettingsAction::SetImage(_) => String::from("Set image"),
+            SettingsAction::DeleteAccount => String::from("Delete account"),
             SettingsAction::Error(_) => String::from("Error")
         }
     }
@@ -149,7 +156,8 @@ impl Scene for Settings {
             password_input: String::from(""),
             password_repeat: String::from(""),
             profile_picture_input: Handle::from_path("./src/images/loading.png"),
-            input_error: None
+            input_error: None,
+            deleted_account: false,
         };
 
         if let Some(options) = options {
@@ -185,10 +193,18 @@ impl Scene for Settings {
     }
 
     fn update(&mut self, globals: &mut Globals, message: Box<dyn Action>) -> Command<Message> {
-        let message = message
+        let as_option: Option<&SettingsAction> = message
             .as_any()
-            .downcast_ref::<SettingsAction>()
-            .expect("Panic downcasting to SettingsAction");
+            .downcast_ref::<SettingsAction>();
+        let message = if let Some(message) = as_option {
+            message
+        } else {
+            return Command::perform(async {}, move |()| Message::Error(
+                Error::DebugError(DebugError::new(
+                    format!("Message doesn't belong to settiongs scene: {}.", message.get_name())
+                ))
+            ))
+        };
 
         match message {
             SettingsAction::UpdateUsernameField(username) => {
@@ -379,6 +395,23 @@ impl Scene for Settings {
                     }
                 )
             }
+            SettingsAction::DeleteAccount => {
+                let user_id = globals.get_user().unwrap().get_id();
+                let db = globals.get_db().unwrap();
+                self.deleted_account = true;
+
+                Command::perform(
+                    async move {
+                        database::settings::delete_account(&db, user_id).await
+                    },
+                    |result| {
+                        match result {
+                            Ok(_) => Message::ChangeScene(Scenes::Main(None)),
+                            Err(err) => Message::Error(err)
+                        }
+                    }
+                )
+            }
             SettingsAction::None => Command::none(),
             SettingsAction::Error(err) => {
                 self.input_error = Some(err.clone());
@@ -545,6 +578,12 @@ impl Scene for Settings {
                 Space::with_width(Length::Fill).into()
             };
 
+        let delete_account =
+            Button::new("Delete account")
+                .style(crate::theme::button::Button::Danger)
+                .on_press(Message::DoAction(Box::new(SettingsAction::DeleteAccount)))
+                .into();
+
         Column::from_vec(vec![
             title.into(),
             Scrollable::new(
@@ -566,7 +605,8 @@ impl Scene for Settings {
                             profile_picture,
                             profile_picture_error
                         ])
-                            .into()
+                            .into(),
+                        delete_account
                     ])
                         .spacing(20.0)
                         .width(Length::FillPortion(1))
@@ -585,5 +625,9 @@ impl Scene for Settings {
 
     fn get_error_handler(&self, error: Error) -> Box<dyn Action> { Box::new(SettingsAction::Error(error)) }
 
-    fn clear(&self) { }
+    fn clear(&self, globals: &mut Globals) {
+        if self.deleted_account {
+            globals.set_user(None);
+        }
+    }
 }

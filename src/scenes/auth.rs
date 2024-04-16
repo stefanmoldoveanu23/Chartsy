@@ -8,6 +8,7 @@ use iced::{Element, Length, Renderer, Command};
 use iced_aw::{TabLabel, Tabs};
 use std::any::Any;
 use crate::database;
+use crate::errors::debug::DebugError;
 use crate::scenes::data::auth::*;
 use crate::serde::Serialize;
 
@@ -153,10 +154,18 @@ impl Scene for Auth {
     }
 
     fn update(&mut self, globals: &mut Globals, message: Box<dyn Action>) -> Command<Message> {
-        let message: &AuthAction = message
+        let as_option: Option<&AuthAction> = message
             .as_any()
-            .downcast_ref::<AuthAction>()
-            .expect("Panic downcasting to AuthAction");
+            .downcast_ref::<AuthAction>();
+        let message = if let Some(message) = as_option {
+            message
+        } else {
+            return Command::perform(async {}, move |()| Message::Error(
+                Error::DebugError(DebugError::new(
+                    format!("Message doesn't belong to auth scene: {}.", message.get_name())
+                ))
+            ))
+        };
 
         match message {
             AuthAction::RegisterTextFieldUpdate(field) => match field {
@@ -506,5 +515,5 @@ impl Scene for Auth {
         Box::new(AuthAction::HandleError(error))
     }
 
-    fn clear(&self) {}
+    fn clear(&self, _globals: &mut Globals) {}
 }

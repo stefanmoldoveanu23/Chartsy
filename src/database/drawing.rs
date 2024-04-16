@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
 use mongodb::Database;
-use mongodb::options::UpdateOptions;
 use crate::canvas::tool;
 use crate::canvas::tool::Tool;
 use crate::errors::debug::DebugError;
@@ -107,25 +106,6 @@ pub async fn create_post(db: &Database, id: Uuid, user_id: Uuid, description: St
                 "tags": tags.clone()
             },
         None
-    ).await {
-        Ok(_) => { },
-        Err(err) => {
-            return Err(Error::DebugError(DebugError::new(err.to_string())));
-        }
-    };
-
-    match db.collection::<Document>("tags").update_many(
-        doc! {
-                "name": {
-                    "$in": tags
-                }
-            },
-        doc! {
-                "$inc": {
-                    "uses": 1
-                }
-            },
-        UpdateOptions::builder().upsert(true).build()
     ).await {
         Ok(_) => Ok(()),
         Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))

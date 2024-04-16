@@ -9,6 +9,7 @@ use iced::{Alignment, Command, Element, Length, Renderer};
 use iced_aw::{Tabs, TabLabel};
 use mongodb::bson::{Bson, Uuid, UuidRepresentation, Document};
 use crate::database;
+use crate::errors::debug::DebugError;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::card::Card;
 
@@ -277,10 +278,18 @@ impl Scene for Main {
     }
 
     fn update(&mut self, globals: &mut Globals, message: Box<dyn Action>) -> Command<Message> {
-        let message: &MainAction = message
+        let as_option: Option<&MainAction> = message
             .as_any()
-            .downcast_ref::<MainAction>()
-            .expect("Panic downcasting to MainAction");
+            .downcast_ref::<MainAction>();
+        let message = if let Some(message) = as_option {
+            message
+        } else {
+            return Command::perform(async {}, move |()| Message::Error(
+                Error::DebugError(DebugError::new(
+                    format!("Message doesn't belong to main scene: {}.", message.get_name())
+                ))
+            ))
+        };
 
         match message {
             MainAction::ToggleModal(modal) => {
@@ -558,5 +567,5 @@ impl Scene for Main {
         Box::new(MainAction::ErrorHandler(error))
     }
 
-    fn clear(&self) {}
+    fn clear(&self, _globals: &mut Globals) {}
 }

@@ -112,6 +112,7 @@ pub(crate) mod button {
         Transparent,
         UnselectedLayer,
         SelectedLayer,
+        Danger,
     }
 
     impl Default for Button {
@@ -148,6 +149,16 @@ pub(crate) mod button {
                         width: 1.0,
                         radius: 10.0.into()
                     },
+                    ..Default::default()
+                },
+                Button::Danger => Appearance {
+                    background: Some(Background::Color(super::pallete::DANGER)),
+                    border: Border {
+                        color: super::pallete::TEXT,
+                        width: 1.0,
+                        radius: 10.0.into()
+                    },
+                    text_color: super::pallete::TEXT,
                     ..Default::default()
                 }
             }

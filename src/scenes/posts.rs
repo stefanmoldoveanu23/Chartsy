@@ -7,6 +7,7 @@ use crate::widgets::closeable::Closeable;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::post_summary::PostSummary;
 use crate::database;
+use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::serde::Serialize;
@@ -315,7 +316,18 @@ impl Scene for Posts {
     }
 
     fn update(&mut self, globals: &mut Globals, message: Box<dyn Action>) -> Command<Message> {
-        let message = message.as_any().downcast_ref::<PostsAction>().expect("Panic downcasting to PostsAction");
+        let as_option: Option<&PostsAction> = message
+            .as_any()
+            .downcast_ref::<PostsAction>();
+        let message = if let Some(message) = as_option {
+            message
+        } else {
+            return Command::perform(async {}, move |()| Message::Error(
+                Error::DebugError(DebugError::new(
+                    format!("Message doesn't belong to posts scene: {}.", message.get_name())
+                ))
+            ))
+        };
 
         match message {
             PostsAction::LoadedPosts(posts) => {
@@ -688,5 +700,5 @@ impl Scene for Posts {
         Box::new(PostsAction::ErrorHandler(error))
     }
 
-    fn clear(&self) { }
+    fn clear(&self, _globals: &mut Globals) { }
 }

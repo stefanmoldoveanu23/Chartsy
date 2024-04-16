@@ -17,7 +17,7 @@ A desktop application where users can create drawings and share them.
 
 
 ## Plans
-- Implement settings page(profile picture, change data)
+- Implement settings page(account deletion)
 - Complete posts page(profile page, tag search page, maybe notifications)
 - Finishing touches on drawing page(remove tags, fix style section, allow download in different filetypes, drawing name)
 - Stylize pages(details maybe later)

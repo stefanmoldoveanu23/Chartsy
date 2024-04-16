@@ -31,7 +31,7 @@ pub async fn get_user_from_token(database: &Database) -> Result<User, Error>
         Digest::update(&mut sha, token);
         let hash = sha.finalize();
         let bin = Bson::Binary(Binary {
-            bytes: Vec::from(hash.as_slice()),
+            bytes: Vec::from(hash.iter().as_slice()),
             subtype: BinarySubtype::Generic,
         });
 
@@ -40,6 +40,9 @@ pub async fn get_user_from_token(database: &Database) -> Result<User, Error>
                 "auth_token": bin,
                 "token_expiration": {
                     "$gt": Bson::DateTime(DateTime::now())
+                },
+                "expiration_date": {
+                    "$eq": null
                 }
             },
             None
@@ -159,6 +162,7 @@ pub async fn reset_register_code(db: &Database, email: String, code: String) -> 
                 "code_expiration": Bson::DateTime(
                     DateTime::from_millis(DateTime::now().timestamp_millis() + 5 * 60 * 1000)
                 ),
+                "expiration_date": null
             }
         },
         None

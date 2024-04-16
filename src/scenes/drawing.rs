@@ -28,6 +28,7 @@ use crate::canvas::tools::{
     rect::RectPending, triangle::TrianglePending,
 };
 use crate::database;
+use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::scenes::scenes::Scenes;
@@ -339,10 +340,18 @@ impl Scene for Box<Drawing> {
     }
 
     fn update(&mut self, globals: &mut Globals, message: Box<dyn Action>) -> Command<Message> {
-        let message: &DrawingAction = message
+        let as_option: Option<&DrawingAction> = message
             .as_any()
-            .downcast_ref::<DrawingAction>()
-            .expect("Panic downcasting to DrawingAction");
+            .downcast_ref::<DrawingAction>();
+        let message = if let Some(message) = as_option {
+            message
+        } else {
+            return Command::perform(async {}, move |()| Message::Error(
+                Error::DebugError(DebugError::new(
+                    format!("Message doesn't belong to drawing scene: {}.", message.get_name())
+                ))
+            ))
+        };
 
         match message {
             DrawingAction::CanvasAction(action) => self.canvas.update(globals, action.clone()),
@@ -794,5 +803,5 @@ impl Scene for Box<Drawing> {
         Box::new(DrawingAction::ErrorHandler(error))
     }
 
-    fn clear(&self) {}
+    fn clear(&self, _globals: &mut Globals) {}
 }
