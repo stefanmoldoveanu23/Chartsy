@@ -324,6 +324,9 @@ pub enum ModalType {
 
     /// Modal for opening a post.
     ShowingPost(usize),
+
+    /// Modal for reporting a post.
+    ShowingReport(usize)
 }
 
 impl ModalType {
@@ -342,6 +345,14 @@ impl ModalType {
             _ => false
         }
     }
+
+    /// Checks if its value is [ShowingReport](ModalType::ShowingReport).
+    fn is_showing_report(&self) -> bool {
+        match self {
+            ModalType::ShowingReport(_) => true,
+            _ => false,
+        }
+    }
 }
 
 impl PartialEq for ModalType {
@@ -352,6 +363,9 @@ impl PartialEq for ModalType {
             }
             ModalType::ShowingPost(_) => {
                 other.is_showing_post()
+            }
+            ModalType::ShowingReport(_) => {
+                other.is_showing_report()
             }
         }
     }

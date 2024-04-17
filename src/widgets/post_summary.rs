@@ -1,4 +1,4 @@
-use iced::{Alignment, Background, Border, Color, Element, Event, Length, mouse, Padding, Point, Rectangle, Size};
+use iced::{Alignment, Background, Border, Color, Element, Event, Length, mouse, Padding, Point, Rectangle, Size, Vector};
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::{Quad, Style};
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
@@ -104,18 +104,6 @@ where
     fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
         let padding = self.padding;
 
-        let limits_summary = limits
-            .loose()
-            .width(self.summary.as_widget().size().width)
-            .height(self.summary.as_widget().size().height)
-            .shrink(padding);
-
-        let mut summary = self.summary.as_widget().layout(&mut tree.children[0], renderer, &limits_summary);
-        let summary_size = summary.size();
-
-        summary.move_to_mut(Point::new(padding.left, padding.top));
-        summary.align_mut(Alignment::Start, Alignment::Start, summary.size());
-
         let limits_image = limits
             .loose()
             .width(self.image.as_widget().size().width)
@@ -124,6 +112,18 @@ where
 
         let mut image = self.image.as_widget().layout(&mut tree.children[1], renderer, &limits_image);
         let image_size = image.size();
+
+        let limits_summary = limits
+            .loose()
+            .width(image_size.width + padding.left + padding.right)
+            .height(self.summary.as_widget().size().height)
+            .shrink(padding);
+
+        let mut summary = self.summary.as_widget().layout(&mut tree.children[0], renderer, &limits_summary);
+        let summary_size = summary.size();
+
+        summary.move_to_mut(Point::new(padding.left, padding.top));
+        summary.align_mut(Alignment::Start, Alignment::Start, summary.size());
 
         image.move_to_mut(
             Point::new(
@@ -224,21 +224,36 @@ where
 
     fn on_event(
         &mut self,
-        _state: &mut Tree,
+        state: &mut Tree,
         event: Event,
         layout: Layout<'_>,
         cursor: Cursor,
-        _renderer: &Renderer,
-        _clipboard: &mut dyn Clipboard,
+        renderer: &Renderer,
+        clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
-        _viewport: &Rectangle
+        viewport: &Rectangle
     ) -> Status {
         let bounds = layout.bounds();
 
         let mut children = layout.children();
-        children.next().expect("Post needs to have summary");
+        let summary_layout = children.next().expect("Post needs to have summary");
         let image_layout = children.next().expect("Post needs to have image.");
         let image_bounds = image_layout.bounds();
+
+        let result = self.summary.as_widget_mut().on_event(
+            &mut state.children[0],
+            event.clone(),
+            summary_layout,
+            cursor,
+            renderer,
+            clipboard,
+            shell,
+            viewport
+        );
+
+        if result == Status::Captured {
+            return Status::Captured;
+        }
 
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
@@ -277,6 +292,23 @@ where
         } else {
             Interaction::default()
         }
+    }
+
+    fn overlay<'b>(
+        &'b mut self,
+        state: &'b mut Tree,
+        layout: Layout<'_>,
+        renderer: &Renderer,
+        translation: Vector
+    ) -> Option<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
+        let summary_layout = layout.children().next().expect("Post needs to have summary");
+
+        self.summary.as_widget_mut().overlay(
+            &mut state.children[0],
+            summary_layout,
+            renderer,
+            translation
+        )
     }
 }
 

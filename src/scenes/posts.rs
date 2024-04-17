@@ -1,20 +1,25 @@
 use std::any::Any;
 use iced::advanced::image::Handle;
 use iced::{Alignment, Element, Length, Renderer, Command};
-use iced::widget::{Column, Row, Scrollable, Image, Text, TextInput, Button};
+use iced::alignment::Horizontal;
+use iced::widget::{Column, Row, Scrollable, Image, Text, TextInput, Button, Space, Tooltip, Container};
+use iced::widget::tooltip::Position;
+use lettre::message::{Attachment, MultiPart, SinglePart};
 use mongodb::bson::{doc, Uuid};
 use crate::widgets::closeable::Closeable;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::post_summary::PostSummary;
-use crate::database;
+use crate::{config, database};
 use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
+use crate::icons::{ICON, Icon};
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::serde::Serialize;
 use crate::theme::Theme;
 use crate::widgets::rating::Rating;
 
 use crate::scenes::data::posts::*;
+use crate::widgets::card::Card;
 
 /// The [messages](Action) that can be triggered on the [Posts] scene.
 #[derive(Clone)]
@@ -37,6 +42,12 @@ enum PostsAction {
     /// Sets the rating of the given post.
     RatePost{ post_index: usize, rating: usize },
 
+    /// Updates the post report input.
+    UpdateReportInput(String),
+
+    /// Submits a post report.
+    SubmitReport(usize),
+
     /// Triggers when an error occurred.
     ErrorHandler(Error),
 }
@@ -55,6 +66,8 @@ impl Action for PostsAction
             PostsAction::CommentMessage(_) => String::from("Loaded comments"),
             PostsAction::ToggleModal(_) => String::from("Toggle modal"),
             PostsAction::RatePost { .. } => String::from("Rate post"),
+            PostsAction::UpdateReportInput(_) => String::from("Update report input"),
+            PostsAction::SubmitReport(_) => String::from("Submit report"),
             PostsAction::ErrorHandler(_) => String::from("Error handler"),
         }
     }
@@ -80,8 +93,11 @@ pub struct Posts {
     /// The list of available posts.
     posts: Vec<Post>,
 
-    /// The amount of posts to be shown
+    /// The amount of posts to be shown.
     batched: usize,
+
+    /// The user input of a report.
+    report_input: String,
 }
 
 impl Posts {
@@ -259,6 +275,7 @@ impl Scene for Posts {
             modals: ModalStack::new(),
             posts: vec![],
             batched: 0,
+            report_input: String::from(""),
         };
 
         if let Some(options) = options {
@@ -456,6 +473,72 @@ impl Scene for Posts {
                     Command::none()
                 }
             }
+            PostsAction::UpdateReportInput(report_input) => {
+                self.report_input = report_input.clone();
+
+                Command::none()
+            }
+            PostsAction::SubmitReport(post_index) => {
+                let post_index = post_index.clone();
+                let post = self.posts.get(post_index).unwrap();
+                let report_description = self.report_input.clone();
+
+                let message = lettre::Message::builder()
+                    .from(format!("Chartsy <{}>", config::email_address()).parse().unwrap())
+                    .to(format!(
+                        "Stefan Moldoveanu <{}>",
+                        config::admin_email_address()
+                    ).parse().unwrap())
+                    .subject("Anonymous user has submitted a report")
+                    .multipart(
+                        MultiPart::mixed()
+                            .multipart(
+                                MultiPart::related()
+                                    .singlepart(
+                                        SinglePart::html(String::from(
+                                            format!("<p>A user has submitted a report regarding a post:</p>\
+                                            <p>\"{}\"</p>\
+                                            <p>Data regarding the post:</p>\
+                                            <p>Username: \"{}\"</p>\
+                                            <p>Post description: \"{}\"</p>\
+                                            <p>Image:</p>\
+                                            <div><img src=cid:post_image></div>",
+                                                report_description,
+                                                post.get_user().get_username().clone(),
+                                                post.get_description().clone()
+                                        )))
+                                    )
+                                    .singlepart(
+                                        Attachment::new_inline(String::from("post_image"))
+                                            .body(
+                                                post.get_image().clone(),
+                                                "image/*".parse().unwrap()
+                                            )
+                                    )
+                            )
+                            .singlepart(
+                                Attachment::new(String::from("post_image.webp"))
+                                    .body(
+                                        post.get_image().clone(),
+                                        "image/*".parse().unwrap()
+                                    )
+                            )
+                    )
+                    .unwrap();
+
+                Command::batch(vec![
+                    Command::perform(
+                        async { },
+                        move |()| Message::SendSmtpMail(message)
+                    ),
+                    Command::perform(
+                        async { },
+                        move |()| Message::DoAction(Box::new(PostsAction::ToggleModal(
+                            ModalType::ShowingReport(post_index)
+                        )))
+                    )
+                ])
+            }
             PostsAction::ErrorHandler(_) => { Command::none() }
         }
     }
@@ -466,9 +549,31 @@ impl Scene for Posts {
                 self.posts.iter().zip(0..self.batched).map(
                     |(post, index)| {
                         PostSummary::<Message, Theme, Renderer>::new(
-                            Column::with_children(vec![
-                                Text::new(post.get_user().get_username()).size(20.0).into(),
-                                Text::new(post.get_description().clone()).into()
+                            Row::with_children(vec![
+                                Column::with_children(vec![
+                                    Text::new(post.get_user().get_username()).size(20.0).into(),
+                                    Text::new(post.get_description().clone()).into()
+                                ])
+                                    .into(),
+                                Space::with_width(Length::Fill).into(),
+                                Column::with_children(vec![
+                                    Tooltip::new(
+                                        Button::new(Text::new(
+                                            Icon::Report.to_string()
+                                        ).font(ICON).style(crate::theme::text::Text::Error).size(30.0))
+                                            .on_press(Message::DoAction(Box::new(
+                                                PostsAction::ToggleModal(ModalType::ShowingReport(
+                                                    index
+                                                ))
+                                            )))
+                                            .padding(0.0)
+                                            .style(crate::theme::button::Button::Transparent),
+                                        Text::new("Report post"),
+                                        Position::FollowCursor
+                                    )
+                                        .into(),
+                                ])
+                                    .into()
                             ]),
                             Image::new(
                                 Handle::from_memory(post.get_image().clone())
@@ -688,6 +793,42 @@ impl Scene for Posts {
                                 .into()
                         ]
                     )
+                        .into()
+                }
+                ModalType::ShowingReport(post_index) => {
+                    Closeable::new(
+                        Card::new(
+                            Text::new("Report post").size(20.0),
+                            Column::with_children(vec![
+                                TextInput::new(
+                                    "Give a summary of the issue...",
+                                    &*self.report_input.clone()
+                                )
+                                    .on_input(|value| Message::DoAction(Box::new(
+                                        PostsAction::UpdateReportInput(value.clone())
+                                    )))
+                                    .into(),
+                                Container::new(
+                                    Button::new("Submit")
+                                        .on_press(Message::DoAction(Box::new(
+                                            PostsAction::SubmitReport(post_index)
+                                        )))
+                                )
+                                    .width(Length::Fill)
+                                    .align_x(Horizontal::Center)
+                                    .into()
+                            ])
+                                .padding(20.0)
+                                .spacing(30.0)
+                        )
+                            .width(300.0)
+                    )
+                        .on_close(
+                            Message::DoAction(Box::new(PostsAction::ToggleModal(
+                                ModalType::ShowingReport(post_index)
+                            ))),
+                            25.0
+                        )
                         .into()
                 }
             }
