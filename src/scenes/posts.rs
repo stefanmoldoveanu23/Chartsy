@@ -88,7 +88,8 @@ impl Into<Box<dyn Action + 'static>> for Box<PostsAction>
 pub struct Posts {
     /// The stack of modals.
     modals: ModalStack<ModalType>,
-    
+
+    /// Section of recommended posts.
     recommended: PostList,
 
     /// The user input of a report.
@@ -181,6 +182,304 @@ impl Posts {
                 Command::none()
             }
         }
+    }
+
+    /// Generates the visible list of posts.
+    pub fn gen_post_list(&self, _globals: &Globals) -> Element<'_, Message, Theme, Renderer>
+    {
+        Scrollable::new(
+            Column::with_children(
+                self.recommended.get_loaded_posts().into_iter().map(
+                    |(post, index)| {
+                        PostSummary::<Message, Theme, Renderer>::new(
+                            Row::with_children(vec![
+                                Column::with_children(vec![
+                                    Text::new(post.get_user().get_username()).size(20.0).into(),
+                                    Text::new(post.get_description().clone()).into()
+                                ])
+                                    .into(),
+                                Space::with_width(Length::Fill).into(),
+                                Column::with_children(vec![
+                                    Tooltip::new(
+                                        Button::new(Text::new(
+                                            Icon::Report.to_string()
+                                        ).font(ICON).style(crate::theme::text::Text::Error).size(30.0))
+                                            .on_press(Message::DoAction(Box::new(
+                                                PostsAction::ToggleModal(ModalType::ShowingReport(
+                                                    index
+                                                ))
+                                            )))
+                                            .padding(0.0)
+                                            .style(crate::theme::button::Button::Transparent),
+                                        Text::new("Report post"),
+                                        Position::FollowCursor
+                                    )
+                                        .into(),
+                                ])
+                                    .into()
+                            ]),
+                            Image::new(
+                                Handle::from_memory(post.get_image().clone())
+                            ).width(Length::Shrink)
+                        )
+                            .padding(40)
+                            .on_click_image(Message::DoAction(Box::new(PostsAction::ToggleModal(
+                                ModalType::ShowingImage(post.get_image().clone())
+                            ))))
+                            .on_click_data(Message::DoAction(Box::new(PostsAction::ToggleModal(
+                                ModalType::ShowingPost(index)
+                            ))))
+                            .into()
+                    }
+                ).collect::<Vec<Element<Message, Theme, Renderer>>>()
+            )
+                .width(Length::Fill)
+                .align_items(Alignment::Center)
+                .spacing(50)
+        )
+            .on_scroll(|viewport| {
+                if viewport.relative_offset().y == 1.0 && self.recommended.done_loading() {
+                    Message::DoAction(Box::new(PostsAction::LoadBatch))
+                } else {
+                    Message::None
+                }
+            })
+            .width(Length::Fill)
+            .into()
+    }
+
+    /// Generate the modal that shows an image.
+    pub fn gen_show_image<'a>(image: Vec<u8>, _globals: &Globals) -> Element<'a, Message, Theme, Renderer>
+    {
+        Closeable::new(Image::new(
+            Handle::from_memory(image.clone())
+        ).width(Length::Shrink))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .on_close(
+                Message::DoAction(Box::new(PostsAction::ToggleModal(
+                    ModalType::ShowingImage(image)
+                ))),
+                40.0
+            )
+            .style(crate::theme::closeable::Closeable::SpotLight)
+            .into()
+    }
+
+    /// Generate the modal that shows the post.
+    pub fn gen_show_post<'a>(post_index: usize, post: &'a Post, _globals: &Globals) -> Element<'a, Message, Theme, Renderer>
+    {
+        let mut comment_chain = Column::with_children(
+            vec![
+                Row::with_children(
+                    vec![
+                        TextInput::new("Write comment here...", &*post.get_comment_input())
+                            .width(Length::Fill)
+                            .on_input(move |value| Message::DoAction(Box::new(
+                                PostsAction::CommentMessage(CommentMessage::UpdateInput {
+                                    post: post_index,
+                                    position: None,
+                                    input: value,
+                                })
+                            )))
+                            .into(),
+                        Button::new("Add comment")
+                            .on_press(Message::DoAction(Box::new(
+                                PostsAction::CommentMessage(CommentMessage::Add {
+                                    post: post_index,
+                                    parent: None,
+                                })
+                            )))
+                            .into()
+                    ]
+                )
+                    .into()
+            ]
+        );
+
+        let mut position = if let Some(index) = post.get_open_comment() {
+            Ok((0usize, *index))
+        } else {
+            Err(0usize)
+        };
+
+        let mut done = false;
+        while !done {
+            comment_chain = comment_chain.push(
+                match position {
+                    Ok((line, index)) => {
+                        position = if let Some(reply_index) = post.get_comments()[line][index].get_open_reply() {
+                            Ok((post.get_comments()[line][index].get_replies().unwrap(), *reply_index))
+                        } else {
+                            Err(post.get_comments()[line][index].get_replies().unwrap_or(post.get_comments().len()))
+                        };
+
+                        Into::<Element<Message, Theme, Renderer>>::into(
+                            Closeable::new(
+                                Column::with_children(vec![
+                                    Text::new(post.get_comments()[line][index].get_user().get_username().clone())
+                                        .size(17.0)
+                                        .into(),
+                                    Text::new(post.get_comments()[line][index].get_content().clone())
+                                        .into(),
+                                    Row::with_children(vec![
+                                        TextInput::new(
+                                            "Write reply here...",
+                                            &*post.get_comments()[line][index].get_reply_input()
+                                        )
+                                            .on_input(move |value| Message::DoAction(Box::new(
+                                                PostsAction::CommentMessage(CommentMessage::UpdateInput {
+                                                    post: post_index,
+                                                    position: Some((line, index)),
+                                                    input: value.clone(),
+                                                })
+                                            )))
+                                            .into(),
+                                        Button::new("Add reply")
+                                            .on_press(Message::DoAction(Box::new(
+                                                PostsAction::CommentMessage(CommentMessage::Add {
+                                                    post: post_index,
+                                                    parent: Some((line, index))
+                                                })
+                                            )))
+                                            .into()
+                                    ])
+                                        .into()
+                                ])
+                            )
+                                .on_close(
+                                    Message::DoAction(Box::new(PostsAction::CommentMessage(
+                                        CommentMessage::Close {
+                                            post: post_index,
+                                            position: (line, index),
+                                        }
+                                    ))),
+                                    20.0
+                                )
+                        )
+                    }
+                    Err(line) => {
+                        done = true;
+
+                        if line >= post.get_comments().len() {
+                            Text::new("Loading").into()
+                        } else {
+                            Column::with_children(
+                                post.get_comments()[line].iter().zip(0..post.get_comments()[line].len()).map(
+                                    |(comment, index)| Button::new(Column::with_children(vec![
+                                        Text::new(comment.get_user().get_username().clone())
+                                            .size(17.0)
+                                            .into(),
+                                        Text::new(comment.get_content().clone())
+                                            .into()
+                                    ]))
+                                        .style(crate::theme::button::Button::Transparent)
+                                        .on_press(Message::DoAction(Box::new(
+                                            PostsAction::CommentMessage(CommentMessage::Open {
+                                                post: post_index,
+                                                position: (line, index)
+                                            })
+                                        )))
+                                        .into()
+                                ).collect::<Vec<Element<Message, Theme, Renderer>>>()
+                            )
+                                .into()
+                        }
+                    }
+                }
+            );
+        }
+
+        Row::with_children(
+            vec![
+                Closeable::new(Image::new(
+                    Handle::from_memory(post.get_image().clone())
+                ).width(Length::Shrink))
+                    .width(Length::FillPortion(3))
+                    .height(Length::Fill)
+                    .style(crate::theme::closeable::Closeable::SpotLight)
+                    .on_click(Message::DoAction(Box::new(PostsAction::ToggleModal(
+                        ModalType::ShowingImage(post.get_image().clone())
+                    ))))
+                    .into(),
+                Closeable::new(
+                    Column::with_children(vec![
+                        Text::new(post.get_user().get_username())
+                            .size(20.0)
+                            .into(),
+                        Text::new(post.get_description().clone())
+                            .into(),
+                        Rating::new()
+                            .on_rate(move |value| Message::DoAction(Box::new(
+                                PostsAction::RatePost {
+                                    post_index: post_index.clone(),
+                                    rating: value
+                                }
+                            )))
+                            .on_unrate(Message::DoAction(Box::new(
+                                PostsAction::RatePost {
+                                    post_index,
+                                    rating: 0
+                                }
+                            )))
+                            .value(*post.get_rating())
+                            .into(),
+                        comment_chain.into()
+                    ])
+                )
+                    .width(Length::FillPortion(1))
+                    .height(Length::Fill)
+                    .horizontal_alignment(Alignment::Start)
+                    .vertical_alignment(Alignment::Start)
+                    .padding([30.0, 0.0, 0.0, 10.0])
+                    .style(crate::theme::closeable::Closeable::Default)
+                    .on_close(
+                        Message::DoAction(Box::new(PostsAction::ToggleModal(ModalType::ShowingPost(post_index)))),
+                        40.0
+                    )
+                    .into()
+            ]
+        )
+            .into()
+    }
+
+    /// Generates the modal for sending a report.
+    pub fn gen_show_report<'a>(&'a self, post_index: usize, _globals: &Globals) -> Element<'a, Message, Theme, Renderer>
+    {
+        Closeable::new(
+            Card::new(
+                Text::new("Report post").size(20.0),
+                Column::with_children(vec![
+                    TextInput::new(
+                        "Give a summary of the issue...",
+                        &*self.report_input.clone()
+                    )
+                        .on_input(|value| Message::DoAction(Box::new(
+                            PostsAction::UpdateReportInput(value.clone())
+                        )))
+                        .into(),
+                    Container::new(
+                        Button::new("Submit")
+                            .on_press(Message::DoAction(Box::new(
+                                PostsAction::SubmitReport(post_index)
+                            )))
+                    )
+                        .width(Length::Fill)
+                        .align_x(Horizontal::Center)
+                        .into()
+                ])
+                    .padding(20.0)
+                    .spacing(30.0)
+            )
+                .width(300.0)
+        )
+            .on_close(
+                Message::DoAction(Box::new(PostsAction::ToggleModal(
+                    ModalType::ShowingReport(post_index)
+                ))),
+                25.0
+            )
+            .into()
     }
 }
 
@@ -456,293 +755,21 @@ impl Scene for Posts {
         }
     }
 
-    fn view(&self, _globals: &Globals) -> Element<'_, Message, Theme, Renderer> {
-        let post_summaries :Element<Message, Theme, Renderer>= Scrollable::new(
-            Column::with_children(
-                self.recommended.get_loaded_posts().into_iter().map(
-                    |(post, index)| {
-                        PostSummary::<Message, Theme, Renderer>::new(
-                            Row::with_children(vec![
-                                Column::with_children(vec![
-                                    Text::new(post.get_user().get_username()).size(20.0).into(),
-                                    Text::new(post.get_description().clone()).into()
-                                ])
-                                    .into(),
-                                Space::with_width(Length::Fill).into(),
-                                Column::with_children(vec![
-                                    Tooltip::new(
-                                        Button::new(Text::new(
-                                            Icon::Report.to_string()
-                                        ).font(ICON).style(crate::theme::text::Text::Error).size(30.0))
-                                            .on_press(Message::DoAction(Box::new(
-                                                PostsAction::ToggleModal(ModalType::ShowingReport(
-                                                    index
-                                                ))
-                                            )))
-                                            .padding(0.0)
-                                            .style(crate::theme::button::Button::Transparent),
-                                        Text::new("Report post"),
-                                        Position::FollowCursor
-                                    )
-                                        .into(),
-                                ])
-                                    .into()
-                            ]),
-                            Image::new(
-                                Handle::from_memory(post.get_image().clone())
-                            ).width(Length::Shrink)
-                        )
-                            .padding(40)
-                            .on_click_image(Message::DoAction(Box::new(PostsAction::ToggleModal(
-                                ModalType::ShowingImage(post.get_image().clone())
-                            ))))
-                            .on_click_data(Message::DoAction(Box::new(PostsAction::ToggleModal(
-                                ModalType::ShowingPost(index)
-                            ))))
-                            .into()
-                    }
-                ).collect::<Vec<Element<Message, Theme, Renderer>>>()
-            )
-                .width(Length::Fill)
-                .align_items(Alignment::Center)
-                .spacing(50)
-        )
-            .on_scroll(|viewport| {
-                if viewport.relative_offset().y == 1.0 && self.recommended.done_loading() {
-                    Message::DoAction(Box::new(PostsAction::LoadBatch))
-                } else {
-                    Message::None
-                }
-            })
-            .width(Length::Fill)
-            .into();
+    fn view(&self, globals: &Globals) -> Element<'_, Message, Theme, Renderer> {
+        let post_summaries :Element<Message, Theme, Renderer>= self.gen_post_list(globals);
 
         let modal_generator = |modal_type: ModalType| {
             match modal_type {
                 ModalType::ShowingImage(data) => {
-                    Closeable::new(Image::new(
-                        Handle::from_memory(data.clone())
-                    ).width(Length::Shrink))
-                        .width(Length::Fill)
-                        .height(Length::Fill)
-                        .on_close(
-                            Message::DoAction(Box::new(PostsAction::ToggleModal(
-                                ModalType::ShowingImage(data.clone())
-                            ))),
-                            40.0
-                        )
-                        .style(crate::theme::closeable::Closeable::SpotLight)
-                        .into()
+                    Self::gen_show_image(data.clone(), globals)
                 }
                 ModalType::ShowingPost(post_index) => {
                     let post = self.recommended.get_post(post_index).unwrap();
 
-                    let mut comment_chain = Column::with_children(
-                        vec![
-                            Row::with_children(
-                                vec![
-                                    TextInput::new("Write comment here...", &*post.get_comment_input())
-                                        .width(Length::Fill)
-                                        .on_input(move |value| Message::DoAction(Box::new(
-                                            PostsAction::CommentMessage(CommentMessage::UpdateInput {
-                                                post: post_index,
-                                                position: None,
-                                                input: value,
-                                            })
-                                        )))
-                                        .into(),
-                                    Button::new("Add comment")
-                                        .on_press(Message::DoAction(Box::new(
-                                            PostsAction::CommentMessage(CommentMessage::Add {
-                                                post: post_index,
-                                                parent: None,
-                                            })
-                                        )))
-                                        .into()
-                                ]
-                            )
-                                .into()
-                        ]
-                    );
-
-                    let mut position = if let Some(index) = post.get_open_comment() {
-                        Ok((0usize, *index))
-                    } else {
-                        Err(0usize)
-                    };
-
-                    let mut done = false;
-                    while !done {
-                        comment_chain = comment_chain.push(
-                            match position {
-                                Ok((line, index)) => {
-                                    position = if let Some(reply_index) = post.get_comments()[line][index].get_open_reply() {
-                                        Ok((post.get_comments()[line][index].get_replies().unwrap(), *reply_index))
-                                    } else {
-                                        Err(post.get_comments()[line][index].get_replies().unwrap_or(post.get_comments().len()))
-                                    };
-
-                                    Into::<Element<Message, Theme, Renderer>>::into(
-                                        Closeable::new(
-                                            Column::with_children(vec![
-                                                Text::new(post.get_comments()[line][index].get_user().get_username().clone())
-                                                    .size(17.0)
-                                                    .into(),
-                                                Text::new(post.get_comments()[line][index].get_content().clone())
-                                                    .into(),
-                                                Row::with_children(vec![
-                                                    TextInput::new(
-                                                        "Write reply here...",
-                                                        &*post.get_comments()[line][index].get_reply_input()
-                                                    )
-                                                        .on_input(move |value| Message::DoAction(Box::new(
-                                                            PostsAction::CommentMessage(CommentMessage::UpdateInput {
-                                                                post: post_index,
-                                                                position: Some((line, index)),
-                                                                input: value.clone(),
-                                                            })
-                                                        )))
-                                                        .into(),
-                                                    Button::new("Add reply")
-                                                        .on_press(Message::DoAction(Box::new(
-                                                            PostsAction::CommentMessage(CommentMessage::Add {
-                                                                post: post_index,
-                                                                parent: Some((line, index))
-                                                            })
-                                                        )))
-                                                        .into()
-                                                ])
-                                                    .into()
-                                            ])
-                                        )
-                                            .on_close(
-                                                Message::DoAction(Box::new(PostsAction::CommentMessage(
-                                                    CommentMessage::Close {
-                                                        post: post_index,
-                                                        position: (line, index),
-                                                    }
-                                                ))),
-                                                20.0
-                                            )
-                                    )
-                                }
-                                Err(line) => {
-                                    done = true;
-
-                                    if line >= post.get_comments().len() {
-                                        Text::new("Loading").into()
-                                    } else {
-                                        Column::with_children(
-                                            post.get_comments()[line].iter().zip(0..post.get_comments()[line].len()).map(
-                                                |(comment, index)| Button::new(Column::with_children(vec![
-                                                    Text::new(comment.get_user().get_username().clone())
-                                                        .size(17.0)
-                                                        .into(),
-                                                    Text::new(comment.get_content().clone())
-                                                        .into()
-                                                ]))
-                                                    .style(crate::theme::button::Button::Transparent)
-                                                    .on_press(Message::DoAction(Box::new(
-                                                        PostsAction::CommentMessage(CommentMessage::Open {
-                                                            post: post_index,
-                                                            position: (line, index)
-                                                        })
-                                                    )))
-                                                    .into()
-                                            ).collect::<Vec<Element<Message, Theme, Renderer>>>()
-                                        )
-                                            .into()
-                                    }
-                                }
-                            }
-                        );
-                    }
-
-                    Row::with_children(
-                        vec![
-                            Closeable::new(Image::new(
-                                Handle::from_memory(post.get_image().clone())
-                            ).width(Length::Shrink))
-                                .width(Length::FillPortion(3))
-                                .height(Length::Fill)
-                                .style(crate::theme::closeable::Closeable::SpotLight)
-                                .on_click(Message::DoAction(Box::new(PostsAction::ToggleModal(ModalType::ShowingImage(post.get_image().clone())))))
-                                .into(),
-                            Closeable::new(
-                                Column::with_children(vec![
-                                    Text::new(post.get_user().get_username())
-                                        .size(20.0)
-                                        .into(),
-                                    Text::new(post.get_description().clone())
-                                        .into(),
-                                    Rating::new()
-                                        .on_rate(move |value| Message::DoAction(Box::new(
-                                            PostsAction::RatePost {
-                                                post_index: post_index.clone(),
-                                                rating: value
-                                            }
-                                        )))
-                                        .on_unrate(Message::DoAction(Box::new(
-                                            PostsAction::RatePost {
-                                                post_index,
-                                                rating: 0
-                                            }
-                                        )))
-                                        .value(*post.get_rating())
-                                        .into(),
-                                    comment_chain.into()
-                                ])
-                            )
-                                .width(Length::FillPortion(1))
-                                .height(Length::Fill)
-                                .horizontal_alignment(Alignment::Start)
-                                .vertical_alignment(Alignment::Start)
-                                .padding([30.0, 0.0, 0.0, 10.0])
-                                .style(crate::theme::closeable::Closeable::Default)
-                                .on_close(
-                                    Message::DoAction(Box::new(PostsAction::ToggleModal(ModalType::ShowingPost(post_index)))),
-                                    40.0
-                                )
-                                .into()
-                        ]
-                    )
-                        .into()
+                    Self::gen_show_post(post_index, post, globals)
                 }
                 ModalType::ShowingReport(post_index) => {
-                    Closeable::new(
-                        Card::new(
-                            Text::new("Report post").size(20.0),
-                            Column::with_children(vec![
-                                TextInput::new(
-                                    "Give a summary of the issue...",
-                                    &*self.report_input.clone()
-                                )
-                                    .on_input(|value| Message::DoAction(Box::new(
-                                        PostsAction::UpdateReportInput(value.clone())
-                                    )))
-                                    .into(),
-                                Container::new(
-                                    Button::new("Submit")
-                                        .on_press(Message::DoAction(Box::new(
-                                            PostsAction::SubmitReport(post_index)
-                                        )))
-                                )
-                                    .width(Length::Fill)
-                                    .align_x(Horizontal::Center)
-                                    .into()
-                            ])
-                                .padding(20.0)
-                                .spacing(30.0)
-                        )
-                            .width(300.0)
-                    )
-                        .on_close(
-                            Message::DoAction(Box::new(PostsAction::ToggleModal(
-                                ModalType::ShowingReport(post_index)
-                            ))),
-                            25.0
-                        )
-                        .into()
+                    self.gen_show_report(post_index, globals)
                 }
             }
         };

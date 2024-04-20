@@ -560,3 +560,8 @@ impl PartialEq for ModalType {
 }
 
 impl Eq for ModalType { }
+
+/// The sections the posts page is split into.
+pub enum PostSections {
+    
+}
