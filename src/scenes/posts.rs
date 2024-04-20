@@ -5,7 +5,7 @@ use iced::alignment::Horizontal;
 use iced::widget::{Column, Row, Scrollable, Image, Text, TextInput, Button, Space, Tooltip, Container};
 use iced::widget::tooltip::Position;
 use lettre::message::{Attachment, MultiPart, SinglePart};
-use mongodb::bson::{doc, Uuid};
+use mongodb::bson::Uuid;
 use crate::widgets::closeable::Closeable;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::post_summary::PostSummary;
@@ -14,7 +14,6 @@ use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
 use crate::icons::{ICON, Icon};
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
-use crate::serde::Serialize;
 use crate::theme::Theme;
 use crate::widgets::rating::Rating;
 
@@ -90,11 +89,7 @@ pub struct Posts {
     /// The stack of modals.
     modals: ModalStack<ModalType>,
     
-    /// The list of available posts.
-    posts: Vec<Post>,
-
-    /// The amount of posts to be shown.
-    batched: usize,
+    recommended: PostList,
 
     /// The user input of a report.
     report_input: String,
@@ -107,14 +102,7 @@ impl Posts {
             CommentMessage::Open { post, position } => {
                 let (line, index) = position;
 
-                let comment = self.posts[*post].get_comments()[*line][*index].clone();
-                if let Some((parent_line, parent_index)) = comment.get_parent() {
-                    self.posts[*post].get_comments_mut()[*parent_line][*parent_index].set_open_reply(*index);
-                } else {
-                    self.posts[*post].set_open_comment(*index);
-                }
-
-                if comment.replies_not_loaded() {
+                if self.recommended.open_comment(*post, *line, *index) {
                     self.update_comment(
                         &CommentMessage::Load {
                             post: *post,
@@ -127,64 +115,26 @@ impl Posts {
                 }
             }
             CommentMessage::Close {post, position} => {
-                let mut position = if position.0 != 0 {
-                    self.posts[*post].get_comments()[position.0][position.1].get_parent().clone()
-                } else {
-                    self.posts[*post].set_open_comment(None);
-                    Some(*position)
-                };
+                let (line, index) = position;
 
-                while let Some((line, index)) = position {
-                    let reply_line = self.posts[*post].get_comments()[line][index].get_replies().clone();
-                    let reply_index = self.posts[*post].get_comments()[line][index].get_open_reply().clone();
-                    position = reply_line.zip(reply_index);
-
-                    self.posts[*post].get_comments_mut()[line][index].set_open_reply(None);
-                }
+                self.recommended.close_comment(*post, *line, *index);
 
                 Command::none()
             }
             CommentMessage::UpdateInput {post, position, input} => {
-                if let Some((line, index)) = position {
-                    self.posts[*post].get_comments_mut()[*line][*index].set_reply_input(input.clone());
-                } else {
-                    self.posts[*post].set_comment_input(input.clone());
-                }
+                self.recommended.update_input(*post, *position, input.clone());
 
                 Command::none()
             }
             CommentMessage::Add { post, parent } => {
                 let db = globals.get_db().unwrap();
+                let user = globals.get_user().unwrap();
 
-                let comment = if let Some((line, index)) = parent {
-                    let parent = &self.posts[*post].get_comments()[*line][*index];
-                    Comment::new_reply(
-                        Uuid::new(),
-                        globals.get_user().unwrap(),
-                        parent.get_reply_input().clone(),
-                        parent.get_id().clone(),
-                        (*line, *index)
-                    )
+                let document = if let Some((line, index)) = parent {
+                    self.recommended.add_reply(user, *post, *line, *index)
                 } else {
-                    Comment::new_comment(
-                        Uuid::new(),
-                        globals.get_user().unwrap(),
-                        self.posts[*post].get_comment_input().clone(),
-                    )
+                    self.recommended.add_comment(user, *post)
                 };
-
-                let mut document = comment.serialize();
-                if let Some((line, index)) = parent {
-                    self.posts[*post].get_comments_mut()[*line][*index].set_reply_input("");
-
-                    let line = self.posts[*post].get_comments()[*line][*index].get_replies().unwrap();
-                    self.posts[*post].get_comments_mut()[line].push(comment);
-                } else {
-                    self.posts[*post].set_comment_input("");
-                    self.posts[*post].get_comments_mut()[0].push(comment);
-
-                    document.insert("post_id", self.posts[*post].get_id().clone());
-                }
 
                 Command::perform(
                     async move {
@@ -203,15 +153,7 @@ impl Posts {
                 let parent = parent.clone();
                 let post = post.clone();
 
-                let filter = if let Some((line, index)) = parent {
-                    doc! {
-                        "reply_to": self.posts[post].get_comments()[line][index].get_id().clone()
-                    }
-                } else {
-                    doc! {
-                        "post_id": self.posts[post].get_id().clone()
-                    }
-                };
+                let filter = self.recommended.load_comments(post, parent);
 
                 Command::perform(
                     async move {
@@ -234,16 +176,7 @@ impl Posts {
                 )
             }
             CommentMessage::Loaded { post, parent, comments } => {
-                self.posts[*post].get_comments_mut().push(comments.clone());
-                let new_line = self.posts[*post].get_comments().len() - 1;
-
-                for comment in &mut self.posts[*post].get_comments_mut()[new_line] {
-                    comment.set_parent(*parent);
-                }
-
-                if let Some((line, index)) = parent {
-                    self.posts[*post].get_comments_mut()[*line][*index].set_replies(new_line);
-                }
+                self.recommended.loaded_comments(*post, *parent, comments.clone());
 
                 Command::none()
             }
@@ -273,8 +206,7 @@ impl Scene for Posts {
     {
         let mut posts = Posts {
             modals: ModalStack::new(),
-            posts: vec![],
-            batched: 0,
+            recommended: PostList::new(vec![]),
             report_input: String::from(""),
         };
 
@@ -348,8 +280,8 @@ impl Scene for Posts {
 
         match message {
             PostsAction::LoadedPosts(posts) => {
-                self.posts = posts.clone();
-                let length = self.posts.len();
+                self.recommended = PostList::new(posts.clone());
+                let length = posts.len();
 
                 if length > 0 {
                     self.update(globals, Box::new(PostsAction::LoadBatch))
@@ -358,24 +290,12 @@ impl Scene for Posts {
                 }
             }
             PostsAction::LoadedImage { image, index } => {
-                let post = &mut self.posts[*index];
-                post.set_image(image.clone());
+                self.recommended.set_image(*index, image.clone());
 
                 Command::none()
             }
             PostsAction::LoadBatch => {
-                let start = self.batched;
-                let total = self.posts.len();
-
-                self.batched += 10.min(total - start);
-
-                let posts_data = self.posts[start..self.batched].iter().enumerate().map(
-                    |(index, post)| (
-                        index,
-                        post.get_id().clone(),
-                        post.get_user().get_id().clone(),
-                    )
-                ).collect::<Vec<(usize, Uuid, Uuid)>>();
+                let posts_data = self.recommended.load_batch();
 
                 Command::batch(
                     posts_data.into_iter().map(
@@ -410,7 +330,7 @@ impl Scene for Posts {
 
                 match modal {
                     ModalType::ShowingPost(post) => {
-                        if self.posts[*post].get_comments().len() == 0 {
+                        if !self.recommended.has_loaded_comments(*post) {
                             self.update_comment(
                                 &CommentMessage::Load {
                                     post: *post,
@@ -426,51 +346,44 @@ impl Scene for Posts {
                 }
             }
             PostsAction::RatePost { post_index, rating } => {
-                let post :Option<&mut Post>= self.posts.get_mut(*post_index);
-                if let Some(post) = post {
-                    let rating = rating.clone();
-                    post.set_rating(rating);
+                let user_id = globals.get_user().unwrap().get_id();
+                let db = globals.get_db().unwrap();
 
-                    let post_id = *post.get_id();
-                    let user_id = globals.get_user().unwrap().get_id();
-                    let db = globals.get_db().unwrap();
+                let (post_id, rating) = self.recommended.rate_post(*post_index, *rating);
 
-                    if rating > 0 {
-                        Command::perform(
-                            async move {
-                                database::posts::update_rating(
-                                    &db,
-                                    post_id,
-                                    user_id,
-                                    rating as i32
-                                ).await
-                            },
-                            |result| {
-                                match result {
-                                    Ok(_) => Message::None,
-                                    Err(err) => Message::Error(err)
-                                }
+                if let Some(rating) = rating {
+                    Command::perform(
+                        async move {
+                            database::posts::update_rating(
+                                &db,
+                                post_id,
+                                user_id,
+                                rating as i32
+                            ).await
+                        },
+                        |result| {
+                            match result {
+                                Ok(_) => Message::None,
+                                Err(err) => Message::Error(err)
                             }
-                        )
-                    } else {
-                        Command::perform(
-                            async move {
-                                database::posts::delete_rating(
-                                    &db,
-                                    post_id,
-                                    user_id
-                                ).await
-                            },
-                            |result| {
-                                match result {
-                                    Ok(_) => Message::None,
-                                    Err(err) => Message::Error(err)
-                                }
-                            }
-                        )
-                    }
+                        }
+                    )
                 } else {
-                    Command::none()
+                    Command::perform(
+                        async move {
+                            database::posts::delete_rating(
+                                &db,
+                                post_id,
+                                user_id
+                            ).await
+                        },
+                        |result| {
+                            match result {
+                                Ok(_) => Message::None,
+                                Err(err) => Message::Error(err)
+                            }
+                        }
+                    )
                 }
             }
             PostsAction::UpdateReportInput(report_input) => {
@@ -480,7 +393,7 @@ impl Scene for Posts {
             }
             PostsAction::SubmitReport(post_index) => {
                 let post_index = post_index.clone();
-                let post = self.posts.get(post_index).unwrap();
+                let post = self.recommended.get_post(post_index).unwrap();
                 let report_description = self.report_input.clone();
 
                 let message = lettre::Message::builder()
@@ -546,7 +459,7 @@ impl Scene for Posts {
     fn view(&self, _globals: &Globals) -> Element<'_, Message, Theme, Renderer> {
         let post_summaries :Element<Message, Theme, Renderer>= Scrollable::new(
             Column::with_children(
-                self.posts.iter().zip(0..self.batched).map(
+                self.recommended.get_loaded_posts().into_iter().map(
                     |(post, index)| {
                         PostSummary::<Message, Theme, Renderer>::new(
                             Row::with_children(vec![
@@ -595,7 +508,7 @@ impl Scene for Posts {
                 .spacing(50)
         )
             .on_scroll(|viewport| {
-                if viewport.relative_offset().y == 1.0 && self.batched != self.posts.len() {
+                if viewport.relative_offset().y == 1.0 && self.recommended.done_loading() {
                     Message::DoAction(Box::new(PostsAction::LoadBatch))
                 } else {
                     Message::None
@@ -622,7 +535,7 @@ impl Scene for Posts {
                         .into()
                 }
                 ModalType::ShowingPost(post_index) => {
-                    let post = self.posts.get(post_index).unwrap();
+                    let post = self.recommended.get_post(post_index).unwrap();
 
                     let mut comment_chain = Column::with_children(
                         vec![

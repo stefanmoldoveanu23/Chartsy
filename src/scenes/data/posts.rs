@@ -316,6 +316,194 @@ impl Deserialize<Document> for Post {
     }
 }
 
+/// A list of posts to be displayed.
+#[derive(Clone)]
+pub struct PostList {
+    posts: Vec<Post>,
+    loaded: usize,
+}
+
+impl PostList {
+    pub fn new(posts: Vec<Post>) -> Self {
+        PostList {
+            posts,
+            loaded: 0,
+        }
+    }
+
+    /// Sets the image of a post.
+    pub fn set_image(&mut self, index: usize, image: Vec<u8>) {
+        self.posts[index].image = image;
+    }
+
+    /// Load the next batch of images.
+    pub fn load_batch(&mut self) -> Vec<(usize, Uuid, Uuid)>
+    {
+        let start = self.loaded;
+        let total = self.posts.len();
+
+        self.loaded += 10.min(total - start);
+
+        self.posts[start..self.loaded].iter().enumerate().map(
+            |(index, post)| (
+                index,
+                post.get_id().clone(),
+                post.get_user().get_id().clone(),
+            )
+        ).collect::<Vec<(usize, Uuid, Uuid)>>()
+    }
+
+    /// Change the rating given to a post by the authenticated user.
+    pub fn rate_post(&mut self, index: usize, rating: usize) -> (Uuid, Option<usize>)
+    {
+        let post = self.posts.get_mut(index).unwrap();
+
+        let rating = rating.clone();
+        post.set_rating(rating);
+
+        let post_id = *post.get_id();
+
+        (post_id, if rating == 0 { None } else { Some(rating) })
+    }
+
+    /// Opens the given comment. If the replies haven't been loaded yet, returns true.
+    pub fn open_comment(&mut self, post_index: usize, line: usize, index: usize) -> bool
+    {
+        let post = &mut self.posts[post_index];
+        if let Some((parent_line, parent_index)) = post.comments[line][index].parent {
+            post.comments[parent_line][parent_index].open_reply = Some(index);
+        } else {
+            post.set_open_comment(index);
+        }
+
+        post.comments[line][index].replies_not_loaded()
+    }
+
+    /// Closes the given comment.
+    pub fn close_comment(&mut self, post_index: usize, line: usize, index: usize)
+    {
+        let mut position = if line != 0 {
+            self.posts[post_index].comments[line][index].parent.clone()
+        } else {
+            self.posts[post_index].open_comment = None;
+            Some((line, index))
+        };
+
+        while let Some((line, index)) = position {
+            let reply_line = self.posts[post_index].comments[line][index].replies.clone();
+            let reply_index = self.posts[post_index].comments[line][index].open_reply.clone();
+            position = reply_line.zip(reply_index);
+
+            self.posts[post_index].comments[line][index].open_reply = None;
+        }
+    }
+
+    /// Updates the reply input field of the given comment.
+    pub fn update_input(&mut self, post_index: usize, position: Option<(usize, usize)>, input: String)
+    {
+        if let Some((line, index)) = position {
+            self.posts[post_index].comments[line][index].reply_input = input;
+        } else {
+            self.posts[post_index].comment_input = input;
+        }
+    }
+
+    /// Adds a reply to the given comment. Returns the reply data serialized.
+    pub fn add_reply(&mut self, user: User, post_index: usize, line: usize, index: usize) -> Document
+    {
+        let parent = &self.posts[post_index].comments[line][index];
+
+        let comment = Comment::new_reply(
+            Uuid::new(),
+            user,
+            parent.get_reply_input().clone(),
+            parent.get_id().clone(),
+            (line, index)
+        );
+
+        let document = comment.serialize();
+
+        self.posts[post_index].comments[line][index].reply_input = String::from("");
+
+        let line = self.posts[post_index].comments[line][index].replies.unwrap();
+        self.posts[post_index].comments[line].push(comment);
+
+        document
+    }
+
+    /// Adds a comment to the given post. Returns the comment data serialized.
+    pub fn add_comment(&mut self, user: User, post_index: usize) -> Document
+    {
+        let comment = Comment::new_comment(
+            Uuid::new(),
+            user,
+            self.posts[post_index].comment_input.clone(),
+        );
+
+        let mut document = comment.serialize();
+
+        self.posts[post_index].comment_input = String::from("");
+        self.posts[post_index].comments[0].push(comment);
+
+        document.insert("post_id", self.posts[post_index].id);
+        document
+    }
+
+    /// Returns the load comments request mongo document.
+    pub fn load_comments(&mut self, post_index: usize, parent: Option<(usize, usize)>) -> Document
+    {
+        if let Some((line, index)) = parent {
+            doc! {
+                "reply_to": self.posts[post_index].comments[line][index].id
+            }
+        } else {
+            doc! {
+                "post_id": self.posts[post_index].id
+            }
+        }
+    }
+
+    /// Adds a new set of comments that were loaded.
+    pub fn loaded_comments(&mut self, post_index: usize, parent: Option<(usize, usize)>, comments: Vec<Comment>)
+    {
+        self.posts[post_index].comments.push(comments);
+        let new_line = self.posts[post_index].comments.len() - 1;
+
+        for comment in &mut self.posts[post_index].comments[new_line] {
+            comment.parent = parent;
+        }
+
+        if let Some((line, index)) = parent {
+            self.posts[post_index].comments[line][index].replies = Some(new_line);
+        }
+    }
+
+    /// Returns true if the given post has already loaded the main comments.
+    pub fn has_loaded_comments(&self, post_index: usize) -> bool
+    {
+        self.posts[post_index].comments.len() > 0
+    }
+
+    /// Returns the post at the given index.
+    pub fn get_post(&self, index: usize) -> Option<&Post>
+    {
+        self.posts.get(index)
+    }
+
+    /// Returns a list of the loaded posts.
+    pub fn get_loaded_posts(&self) -> impl IntoIterator<Item=(&Post, usize)>
+    {
+        self.posts[..self.loaded].iter().enumerate().map(
+            |val| (val.1, val.0)
+        )
+    }
+
+    /// Tells whether the images have all been loaded.
+    pub fn done_loading(&self) -> bool {
+        self.loaded == self.posts.len()
+    }
+}
+
 /// The types a modal can have on the [Posts] scene.
 #[derive(Clone)]
 pub enum ModalType {
