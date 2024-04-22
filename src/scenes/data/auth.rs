@@ -256,6 +256,7 @@ impl RegisterForm {
         &self.error
     }
 
+    #[allow(dead_code)]
     pub fn get_code(&self) -> &String {
         &self.code
     }

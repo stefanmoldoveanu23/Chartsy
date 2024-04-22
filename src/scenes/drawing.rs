@@ -715,8 +715,7 @@ impl Scene for Box<Drawing> {
             .spacing(20)
             .width(Length::Fill)
             .height(Length::Fill)
-            .align_items(Alignment::Center)
-            .into();
+            .align_items(Alignment::Center);
 
         let modal_transform = |modal_type: ModalTypes| -> Element<Message, Theme, Renderer> {
             match modal_type {
@@ -739,7 +738,7 @@ impl Scene for Box<Drawing> {
                                             Text::new(tag.get_name().clone())
                                         )
                                             .padding(3)
-                                    ).collect())
+                                    ))
                                         .padding(Padding::from([5.0, 0.0, 5.0, 0.0]))
                                         .spacing(5.0)
                                         .into(),

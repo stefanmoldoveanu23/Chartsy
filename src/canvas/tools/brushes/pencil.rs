@@ -78,7 +78,7 @@ impl Brush for Pencil {
             .set("stroke-width", style.get_stroke_width())
             .set("stroke", style.get_stroke_color())
             .set("stroke-opacity", style.get_stroke_alpha())
-            .set("style", "mix-blend-mode:hard-light")
+            //.set("style", "mix-blend-mode:hard-light")
             .set("d", data);
 
         svg.add(path)

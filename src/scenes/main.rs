@@ -560,7 +560,7 @@ impl Scene for Main {
             }
         };
 
-        self.modals.get_modal(container_entrance.into(), modal_generator)
+        self.modals.get_modal(container_entrance, modal_generator)
     }
 
     fn get_error_handler(&self, error: Error) -> Box<dyn Action> {

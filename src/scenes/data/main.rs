@@ -1,6 +1,3 @@
-use crate::scene::Scene;
-use crate::scenes::main::Main;
-
 /// The modals that can be displayed on the [Main] [scene](Scene).
 #[derive(Clone, Eq, PartialEq)]
 pub enum ModalType {

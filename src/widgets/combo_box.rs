@@ -9,6 +9,7 @@ use iced::event::Status;
 use iced::mouse::{Cursor, Interaction};
 use iced::widget::{Column, Text, TextInput};
 use difflib::sequencematcher::SequenceMatcher;
+use iced::widget::text_input::State;
 
 /// A widget where the user can input text and is offered choices from a given list of options
 ///that are similar to that input.
@@ -43,9 +44,9 @@ where
     Theme: 'a + iced::widget::text_input::StyleSheet + iced::widget::text::StyleSheet
 {
     /// Creates a new combo box.
-    pub fn new(tags: Vec<Tag>, placeholder: &'a str, value: &'a str, on_selected: fn(Tag) -> Message) -> Self
+    pub fn new(tags: impl IntoIterator<Item=Tag>, placeholder: &'a str, value: &'a str, on_selected: fn(Tag) -> Message) -> Self
     {
-        let filtered_tags :Vec<Tag>= filter_tags(tags, value, 10);
+        let filtered_tags :Vec<Tag>= filter_tags(tags.into_iter().collect(), value, 10);
 
         ComboBox {
             tags: filtered_tags.clone(),
@@ -190,14 +191,16 @@ where
         translation: Vector,
     ) -> Option<Element<'b, Message, Theme, Renderer>> {
         let mut children = state.children.iter_mut();
+        let state_input = children.next().expect("Need to have text input child.");
+        let is_focused = state_input.state.downcast_ref::<State<Renderer::Paragraph>>().is_focused();
         let text_input_overlay = self.text_input.overlay(
-            children.next().expect("Need to have text input child."),
+            state_input,
             layout,
             renderer,
             translation
         );
 
-        if self.tags.len() > 0 {
+        if self.tags.len() > 0 && is_focused {
             let bounds = layout.bounds();
             let column = Column::<Message, Theme, Renderer>::with_children(
                 self.tags.iter().map(|tag| Text::new(tag.to_string()).into())
@@ -304,7 +307,7 @@ impl<'a, 'b, Tag, Message, Theme, Renderer> Overlay<Message, Theme, Renderer> fo
 where
     Tag: 'a + Clone + Display,
     Message: 'a + Clone,
-    Renderer: 'a + iced::advanced::Renderer
+    Renderer: 'a + iced::advanced::Renderer,
 {
     fn layout(
         &mut self,
@@ -497,7 +500,7 @@ where
             total_score += score;
         }
 
-        if total_score > 40.0 {
+        if total_score > 30.0 {
             if filtered.len() == count && *(scores.last().unwrap()) > total_score {
                 continue;
             }

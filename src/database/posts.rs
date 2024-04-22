@@ -4,6 +4,7 @@ use mongodb::options::{AggregateOptions, UpdateOptions};
 use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
 use crate::database;
+use crate::database::base::resolve_cursor;
 use crate::scenes::data::posts::{Comment, Post};
 
 /// Gets a list of comments with the given filter, which will decide the parent of the comments.
@@ -50,7 +51,7 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
 {
     match db.collection::<Document>("ratings").aggregate(
         Vec::from([
-            /// Groups all ratings by the post they were made on
+            // Groups all ratings by the post they were made on
             doc! {
                 "$group": {
                     "_id": "$post_id",
@@ -59,7 +60,7 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
                     }
                 }
             },
-            /// Filters out all posts that the currently authenticated user hasn't rated
+            // Filters out all posts that the currently authenticated user hasn't rated
             doc! {
                 "$match": {
                     "ratings": {
@@ -67,11 +68,11 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
                     }
                 }
             },
-            /// Unwind all groups
+            // Unwind all groups
             doc! {
                 "$unwind": "$ratings"
             },
-            /// Join with the corresponding post
+            // Join with the corresponding post
             doc! {
                 "$lookup": {
                     "from": "posts",
@@ -80,15 +81,15 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
                     "as": "post"
                 }
             },
-            /// Unwind by post
+            // Unwind by post
             doc! {
                 "$unwind": "$post"
             },
-            /// Unwind by tags
+            // Unwind by tags
             doc! {
                 "$unwind": "$post.tags"
             },
-            /// Restructure to keep the essential data
+            // Restructure to keep the essential data
             doc! {
                 "$project": {
                     "_id": 0,
@@ -107,14 +108,14 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
                     },
                 }
             },
-            /// Average score by user and tag
+            // Average score by user and tag
             doc! {
                 "$group": {
                     "_id": { "user_id": "$user_id", "tag": "$tag" },
                     "score": { "$avg": "$value" }
                 }
             },
-            /// Group by user, computing the magnitudes
+            // Group by user, computing the magnitudes
             doc! {
                 "$group": {
                     "_id": "$_id.tag",
@@ -135,11 +136,11 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
                     }
                 }
             },
-            /// Unwind; this way, each tag will have access to the authenticated users score for the same tag
+            // Unwind; this way, each tag will have access to the authenticated users score for the same tag
             doc! {
                 "$unwind": "$groups"
             },
-            /// Create the dot multiplication
+            // Create the dot multiplication
             doc! {
                 "$project": {
                     "_id": 0,
@@ -151,7 +152,7 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
                     }
                 }
             },
-            /// Group by user and compute magnitudes and dot product
+            // Group by user and compute magnitudes and dot product
             doc! {
                 "$group": {
                     "_id": "$user_id",
@@ -165,7 +166,7 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
                     }
                 }
             },
-            /// Group to isolate authenticated user
+            // Group to isolate authenticated user
             doc! {
                 "$group": {
                     "_id": null,
@@ -193,11 +194,11 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
                     }
                 }
             },
-            /// Unwind to get each user again, except the authenticated one
+            // Unwind to get each user again, except the authenticated one
             doc! {
                 "$unwind": "$users"
             },
-            /// Project to compute each user's similarity score
+            // Project to compute each user's similarity score
             doc! {
                 "$project": {
                     "_id": "$users._id",
@@ -219,7 +220,7 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
                     }
                 }
             },
-            /// Join with users to get full data
+            // Join with users to get full data
             doc! {
                 "$lookup": {
                     "from": "users",
@@ -228,11 +229,11 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
                     "as": "user"
                 }
             },
-            /// Unwind user data
+            // Unwind user data
             doc! {
                 "$unwind": "$user"
             },
-            /// Join with posts
+            // Join with posts
             doc! {
                 "$lookup": {
                     "from": "posts",
@@ -241,17 +242,17 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
                     "as": "post",
                 }
             },
-            /// Unwind the posts
+            // Unwind the posts
             doc! {
                 "$unwind": "$post"
             },
-            /// Add a field of random value
+            // Add a field of random value
             doc! {
                 "$addFields": {
                     "randomValue": { "$rand": {} }
                 }
             },
-            /// Remove those with score less than the random value
+            // Remove those with score less than the random value
             doc! {
                 "$match": {
                     "$expr": {
@@ -259,13 +260,13 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
                     }
                 }
             },
-            /// Sample 100 of those remaining
+            // Sample 100 of those remaining
             doc! {
                 "$sample": {
                     "size": 100
                 }
             },
-            /// Join with ratings
+            // Join with ratings
             doc! {
                 "$lookup": {
                     "from": "ratings",
@@ -283,7 +284,7 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
                     "as": "rating"
                 }
             },
-            /// Unwind the rating
+            // Unwind the rating
             doc! {
                 "$unwind": {
                     "path": "$rating",
@@ -294,11 +295,82 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
         AggregateOptions::builder().allow_disk_use(true).build()
     ).await {
         Ok(ref mut cursor) => {
-            Ok(database::base::resolve_cursor::<Post>(cursor).await)
+            Ok(resolve_cursor::<Post>(cursor).await)
         },
         Err(err) => {
             Err(Error::DebugError(DebugError::new(err.to_string())))
         }
+    }
+}
+
+/// Gets the posts that contain all the given tags.
+pub async fn get_filtered(db: &Database, user_id: Uuid, tags: Vec<String>) -> Result<Vec<Post>, Error>
+{
+    match db.collection::<Document>("posts").aggregate(
+        vec![
+            doc! {
+                "$match": {
+                    "tags": { "$all": tags }
+                }
+            },
+            doc! {
+                "$project": {
+                    "post": "$$ROOT"
+                }
+            },
+            doc! {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "post.user_id",
+                    "foreignField": "id",
+                    "as": "user"
+                }
+            },
+            doc! {
+                "$unwind": "$user"
+            },
+            doc! {
+                "$lookup": {
+                    "from": "ratings",
+                    "localField": "post.id",
+                    "foreignField": "post_id",
+                    "pipeline": vec![
+                        doc! {
+                            "$match": {
+                                "$expr": {
+                                    "$eq": ["$user_id", user_id]
+                                }
+                            }
+                        }
+                    ],
+                    "as": "rating"
+                }
+            },
+            doc! {
+                "$unwind": "$rating"
+            },
+            doc! {
+                "$limit": 100
+            }
+        ],
+        AggregateOptions::builder().allow_disk_use(true).build()
+    ).await {
+        Ok(ref mut cursor) => Ok(resolve_cursor::<Post>(cursor).await),
+        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+    }
+}
+
+/// Gets the posts of the user with the given id.
+pub async fn get_user_posts(db: &Database, user_id: Uuid) -> Result<Vec<Post>, Error>
+{
+    match db.collection::<Document>("posts").find(
+        doc! {
+            "user_id": user_id
+        },
+        None
+    ).await {
+        Ok(ref mut cursor) => Ok(resolve_cursor::<Post>(cursor).await),
+        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
     }
 }
 

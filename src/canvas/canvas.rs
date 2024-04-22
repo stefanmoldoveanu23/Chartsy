@@ -502,8 +502,7 @@ impl<'a> CanvasVessel<'a>
                             state.get_tools(),
                             &canvas.current_tool,
                             &canvas.style,
-                            *pos == vessel.current_layer,
-                            true
+                            *pos == vessel.current_layer
                         ))
                     )
                 })

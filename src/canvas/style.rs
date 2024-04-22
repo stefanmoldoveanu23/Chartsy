@@ -61,6 +61,7 @@ impl Style {
     }
 
     /// Modifies the stroke width of the [pending tool](crate::canvas::tool::Pending).
+    #[allow(dead_code)]
     pub(crate) fn stroke_width(mut self, stroke_width: impl Into<f32>) -> Self {
         if let Some((_, color, v1, v2)) = self.stroke {
             self.stroke = Some((stroke_width.into(), color, v1, v2));
@@ -72,6 +73,7 @@ impl Style {
     }
 
     /// Modifies the stroke color of the [pending tool](crate::canvas::tool::Pending).
+    #[allow(dead_code)]
     pub(crate) fn stroke_color(mut self, stroke_color: impl Into<Color>) -> Self {
         if let Some((width, _, v1, v2)) = self.stroke {
             self.stroke = Some((width, stroke_color.into(), v1, v2));
@@ -83,6 +85,7 @@ impl Style {
     }
 
     /// Modifies the fill color of the [pending tool](crate::canvas::tool::Pending).
+    #[allow(dead_code)]
     pub(crate) fn fill(mut self, fill: impl Into<Color>) -> Self {
         if let Some((_, visible)) = self.fill {
             self.fill = Some((fill.into(), visible));

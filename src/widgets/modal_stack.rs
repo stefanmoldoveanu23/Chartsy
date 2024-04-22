@@ -47,14 +47,14 @@ where
     }
 
     /// Returns an element with the modals overlaid on top of each other.
-    pub fn get_modal<'a, F>(&self, underlay: Element<'a, Message, Theme, Renderer>, into_element: F)
+    pub fn get_modal<'a, F>(&self, underlay: impl Into<Element<'a, Message, Theme, Renderer>>, into_element: F)
         -> Element<'a, Message, Theme, Renderer>
     where F: Fn(ModalTypes) -> Element<'a, Message, Theme, Renderer>
     {
         let modals = self.stack.clone();
 
         Modal::new(
-            underlay,
+            underlay.into(),
             modals.iter().map(|modal| into_element(modal.clone())).collect()
         )
             .into()

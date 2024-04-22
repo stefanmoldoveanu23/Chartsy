@@ -1,4 +1,5 @@
 use std::fmt::{Display, Formatter};
+use std::hash::{Hash, Hasher};
 use mongodb::bson::{Bson, doc, Document};
 use crate::serde::{Deserialize, Serialize};
 
@@ -35,6 +36,14 @@ impl Tag {
 impl PartialEq for Tag {
     fn eq(&self, other: &Self) -> bool {
         self.name.clone() == other.name
+    }
+}
+
+impl Eq for Tag { }
+
+impl Hash for Tag {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
     }
 }
 

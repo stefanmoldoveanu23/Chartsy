@@ -39,7 +39,7 @@ where
     Theme: 'a,
 {
     /// Creates a new [Grid] given the list of contents.
-    pub fn new(elements: Vec<impl Into<Element<'a, Message, Theme, Renderer>>>) -> Self
+    pub fn new(elements: impl IntoIterator<Item = impl Into<Element<'a, Message, Theme, Renderer>>>) -> Self
     {
         let mut contents = vec![];
         for element in elements {

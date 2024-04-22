@@ -186,13 +186,14 @@ pub(crate) mod button {
 /// for the custom [Theme].
 pub(crate) mod container {
     use iced::widget::container::{Appearance, StyleSheet};
-    use iced::Border;
+    use iced::{Background, Border, Color};
 
     #[derive(Default)]
     pub enum Container {
         #[default]
         Default,
         Bordered,
+        Badge(Color)
     }
     impl StyleSheet for super::Theme {
         type Style = Container;
@@ -204,12 +205,31 @@ pub(crate) mod container {
                 }
                 Container::Bordered => Appearance {
                     border: Border {
-                        color: iced::theme::palette::Palette::GRUVBOX_DARK.text,
+                        color: super::pallete::HIGHLIGHT,
                         width: 2.0,
                         radius: Default::default(),
                     },
                     ..Appearance::default()
                 },
+                Container::Badge(background) => {
+                    let contrast =
+                        if *background == super::pallete::TEXT || *background == super::pallete::HIGHLIGHT {
+                        super::pallete::BACKGROUND
+                    } else {
+                        super::pallete::TEXT
+                    };
+
+                    Appearance {
+                        border: Border {
+                            color: contrast,
+                            width: 2.0,
+                            radius: 20.0.into()
+                        },
+                        background: Some(Background::Color(*background)),
+                        text_color: Some(contrast),
+                        ..Default::default()
+                    }
+                }
             }
         }
     }

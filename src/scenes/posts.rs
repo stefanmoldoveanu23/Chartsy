@@ -1,11 +1,14 @@
 use std::any::Any;
-use iced::advanced::image::Handle;
+use std::collections::HashSet;
+use iced::advanced::image::{Data, Handle};
 use iced::{Alignment, Element, Length, Renderer, Command};
 use iced::alignment::Horizontal;
 use iced::widget::{Column, Row, Scrollable, Image, Text, TextInput, Button, Space, Tooltip, Container};
 use iced::widget::tooltip::Position;
+use iced_aw::{TabLabel, Tabs};
 use lettre::message::{Attachment, MultiPart, SinglePart};
 use mongodb::bson::Uuid;
+use mongodb::Database;
 use crate::widgets::closeable::Closeable;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::post_summary::PostSummary;
@@ -14,23 +17,30 @@ use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
 use crate::icons::{ICON, Icon};
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
+use crate::scenes::data::drawing::Tag;
 use crate::theme::Theme;
 use crate::widgets::rating::Rating;
 
 use crate::scenes::data::posts::*;
 use crate::widgets::card::Card;
+use crate::widgets::close::Close;
+use crate::widgets::combo_box::ComboBox;
+use crate::widgets::grid::Grid;
 
 /// The [messages](Action) that can be triggered on the [Posts] scene.
 #[derive(Clone)]
 enum PostsAction {
+    /// Loads posts for the active tab.
+    LoadPosts,
+
     /// Triggers when some posts are loaded to be displayed.
-    LoadedPosts(Vec<Post>),
+    LoadedPosts(Vec<Post>, PostTabs),
 
     /// Triggers when the given amount of images from the posts have been loaded.
-    LoadedImage{ image: Vec<u8>, index: usize },
+    LoadedImage{ image: Vec<u8>, index: usize, tab: PostTabs },
 
     /// Loads a batch of images.
-    LoadBatch,
+    LoadBatch(PostTabs),
 
     /// Handles messages related to comments.
     CommentMessage(CommentMessage),
@@ -41,11 +51,26 @@ enum PostsAction {
     /// Sets the rating of the given post.
     RatePost{ post_index: usize, rating: usize },
 
+    /// Triggered when all tags have been loaded.
+    LoadedTags(Vec<Tag>),
+
+    /// Updates the filter tag input.
+    UpdateFilterInput(String),
+
+    /// Adds a new tag to the filters.
+    AddTag(Tag),
+
+    /// Removes a tag from the filters.
+    RemoveTag(Tag),
+
     /// Updates the post report input.
     UpdateReportInput(String),
 
     /// Submits a post report.
     SubmitReport(usize),
+
+    /// Selects a tab.
+    SelectTab(PostTabs),
 
     /// Triggers when an error occurred.
     ErrorHandler(Error),
@@ -59,14 +84,20 @@ impl Action for PostsAction
 
     fn get_name(&self) -> String {
         match self {
-            PostsAction::LoadedPosts(_) => String::from("Loaded posts"),
+            PostsAction::LoadPosts => String::from("Load posts"),
+            PostsAction::LoadedPosts(_, _) => String::from("Loaded posts"),
             PostsAction::LoadedImage{ .. } => String::from("Loaded image"),
-            PostsAction::LoadBatch => String::from("Load batch"),
+            PostsAction::LoadBatch(_) => String::from("Load batch"),
             PostsAction::CommentMessage(_) => String::from("Loaded comments"),
             PostsAction::ToggleModal(_) => String::from("Toggle modal"),
             PostsAction::RatePost { .. } => String::from("Rate post"),
+            PostsAction::LoadedTags(_) => String::from("Loaded tags"),
+            PostsAction::UpdateFilterInput(_) => String::from("Update filter input"),
+            PostsAction::AddTag(_) => String::from("Add tag"),
+            PostsAction::RemoveTag(_) => String::from("Remove tag"),
             PostsAction::UpdateReportInput(_) => String::from("Update report input"),
             PostsAction::SubmitReport(_) => String::from("Submit report"),
+            PostsAction::SelectTab(_) => String::from("Select tab"),
             PostsAction::ErrorHandler(_) => String::from("Error handler"),
         }
     }
@@ -89,21 +120,122 @@ pub struct Posts {
     /// The stack of modals.
     modals: ModalStack<ModalType>,
 
-    /// Section of recommended posts.
+    /// Tab of recommended posts.
     recommended: PostList,
+
+    /// Tab of filtered posts.
+    filtered: PostList,
+
+    /// List of chosen filter tags.
+    tags: HashSet<Tag>,
+
+    /// List of all filter tags.
+    all_tags: HashSet<Tag>,
+
+    /// Value of filter tag input.
+    filter_input: String,
+
+    /// Tab of user profile.
+    profile: PostList,
+
+    /// Currently active tab.
+    active_tab: PostTabs,
 
     /// The user input of a report.
     report_input: String,
 }
 
 impl Posts {
+    /// Creates a command that returns a list of recommended posts.
+    fn gen_recommended(db: Database, user_id: Uuid) -> Command<Message>
+    {
+        Command::perform(
+            async move {
+                let mut posts =
+                    match database::posts::get_recommendations(&db, user_id).await {
+                        Ok(posts) => posts,
+                        Err(err) => {
+                            return Err(err);
+                        }
+                    };
+
+                let need = 100 - posts.len();
+                let uuids :Vec<Uuid>= posts.iter().map(|post: &Post| post.get_id().clone()).collect();
+
+                if posts.len() < 100 {
+                    let mut posts_random =
+                        match database::posts::get_random_posts(
+                            &db,
+                            need,
+                            user_id,
+                            uuids
+                        ).await {
+                            Ok(posts) => posts,
+                            Err(err) => {
+                                return Err(err);
+                            }
+                        };
+
+                    posts.append(&mut posts_random);
+                }
+
+                Ok(posts)
+            },
+            |result| {
+                match result {
+                    Ok(posts) => Message::DoAction(Box::new(
+                        PostsAction::LoadedPosts(posts, PostTabs::Recommended)
+                    )),
+                    Err(err) => Message::Error(err)
+                }
+            }
+        )
+    }
+
+    /// Creates a command that returns the list of posts that has all tags from the filter.
+    fn gen_filtered(db: Database, user_id: Uuid, tags: Vec<String>) -> Command<Message>
+    {
+        Command::perform(
+            async move {
+                database::posts::get_filtered(&db, user_id, tags).await
+            },
+            |result| {
+                match result {
+                    Ok(posts) => Message::DoAction(Box::new(
+                        PostsAction::LoadedPosts(posts, PostTabs::Filtered)
+                    )),
+                    Err(err) => Message::Error(err)
+                }
+            }
+        )
+    }
+
+    /// Creates a command that returns the list of posts on the given users profile.
+    fn gen_profile(db: Database, user_id: Uuid) -> Command<Message>
+    {
+        Command::perform(
+            async move {
+                database::posts::get_user_posts(&db, user_id).await
+            },
+            |result| {
+                match result {
+                    Ok(posts) => Message::DoAction(Box::new(
+                        PostsAction::LoadedPosts(posts, PostTabs::Profile)
+                    )),
+                    Err(err) => Message::Error(err)
+                }
+            }
+        )
+    }
+
+    /// Applies the update corresponding the given message.
     fn update_comment(&mut self, comment_message: &CommentMessage, globals: &mut Globals) -> Command<Message>
     {
         match comment_message {
             CommentMessage::Open { post, position } => {
                 let (line, index) = position;
 
-                if self.recommended.open_comment(*post, *line, *index) {
+                if self.get_active_tab_mut().open_comment(*post, *line, *index) {
                     self.update_comment(
                         &CommentMessage::Load {
                             post: *post,
@@ -118,12 +250,12 @@ impl Posts {
             CommentMessage::Close {post, position} => {
                 let (line, index) = position;
 
-                self.recommended.close_comment(*post, *line, *index);
+                self.get_active_tab_mut().close_comment(*post, *line, *index);
 
                 Command::none()
             }
             CommentMessage::UpdateInput {post, position, input} => {
-                self.recommended.update_input(*post, *position, input.clone());
+                self.get_active_tab_mut().update_input(*post, *position, input.clone());
 
                 Command::none()
             }
@@ -132,9 +264,9 @@ impl Posts {
                 let user = globals.get_user().unwrap();
 
                 let document = if let Some((line, index)) = parent {
-                    self.recommended.add_reply(user, *post, *line, *index)
+                    self.get_active_tab_mut().add_reply(user, *post, *line, *index)
                 } else {
-                    self.recommended.add_comment(user, *post)
+                    self.get_active_tab_mut().add_comment(user, *post)
                 };
 
                 Command::perform(
@@ -154,7 +286,8 @@ impl Posts {
                 let parent = parent.clone();
                 let post = post.clone();
 
-                let filter = self.recommended.load_comments(post, parent);
+                let active_tab = self.active_tab;
+                let filter = self.get_tab_mut(active_tab).load_comments(post, parent);
 
                 Command::perform(
                     async move {
@@ -167,7 +300,8 @@ impl Posts {
                                     CommentMessage::Loaded {
                                         post,
                                         parent,
-                                        comments
+                                        comments,
+                                        tab: active_tab
                                     }
                                 )))
                             }
@@ -176,8 +310,8 @@ impl Posts {
                     }
                 )
             }
-            CommentMessage::Loaded { post, parent, comments } => {
-                self.recommended.loaded_comments(*post, *parent, comments.clone());
+            CommentMessage::Loaded { post, parent, comments, tab } => {
+                self.get_tab_mut(*tab).loaded_comments(*post, *parent, comments.clone());
 
                 Command::none()
             }
@@ -185,74 +319,77 @@ impl Posts {
     }
 
     /// Generates the visible list of posts.
-    pub fn gen_post_list(&self, _globals: &Globals) -> Element<'_, Message, Theme, Renderer>
+    pub fn gen_post_list(&self, tab: PostTabs, _globals: &Globals) -> Element<'_, Message, Theme, Renderer>
     {
-        Scrollable::new(
-            Column::with_children(
-                self.recommended.get_loaded_posts().into_iter().map(
-                    |(post, index)| {
-                        PostSummary::<Message, Theme, Renderer>::new(
-                            Row::with_children(vec![
-                                Column::with_children(vec![
-                                    Text::new(post.get_user().get_username()).size(20.0).into(),
-                                    Text::new(post.get_description().clone()).into()
-                                ])
-                                    .into(),
-                                Space::with_width(Length::Fill).into(),
-                                Column::with_children(vec![
-                                    Tooltip::new(
-                                        Button::new(Text::new(
-                                            Icon::Report.to_string()
-                                        ).font(ICON).style(crate::theme::text::Text::Error).size(30.0))
-                                            .on_press(Message::DoAction(Box::new(
-                                                PostsAction::ToggleModal(ModalType::ShowingReport(
-                                                    index
-                                                ))
-                                            )))
-                                            .padding(0.0)
-                                            .style(crate::theme::button::Button::Transparent),
-                                        Text::new("Report post"),
-                                        Position::FollowCursor
-                                    )
+        Container::new(
+            Scrollable::new(
+                Column::with_children(
+                    self.get_tab(tab).get_loaded_posts().into_iter().map(
+                        |(post, index)| {
+                            PostSummary::<Message, Theme, Renderer>::new(
+                                Row::with_children(vec![
+                                    Column::with_children(vec![
+                                        Text::new(post.get_user().get_username()).size(20.0).into(),
+                                        Text::new(post.get_description().clone()).into()
+                                    ])
                                         .into(),
-                                ])
-                                    .into()
-                            ]),
-                            Image::new(
-                                Handle::from_memory(post.get_image().clone())
-                            ).width(Length::Shrink)
-                        )
-                            .padding(40)
-                            .on_click_image(Message::DoAction(Box::new(PostsAction::ToggleModal(
-                                ModalType::ShowingImage(post.get_image().clone())
-                            ))))
-                            .on_click_data(Message::DoAction(Box::new(PostsAction::ToggleModal(
-                                ModalType::ShowingPost(index)
-                            ))))
-                            .into()
-                    }
-                ).collect::<Vec<Element<Message, Theme, Renderer>>>()
+                                    Space::with_width(Length::Fill).into(),
+                                    Column::with_children(vec![
+                                        Tooltip::new(
+                                            Button::new(Text::new(
+                                                Icon::Report.to_string()
+                                            ).font(ICON).style(crate::theme::text::Text::Error).size(30.0))
+                                                .on_press(Message::DoAction(Box::new(
+                                                    PostsAction::ToggleModal(ModalType::ShowingReport(
+                                                        index
+                                                    ))
+                                                )))
+                                                .padding(0.0)
+                                                .style(crate::theme::button::Button::Transparent),
+                                            Text::new("Report post"),
+                                            Position::FollowCursor
+                                        )
+                                            .into(),
+                                    ])
+                                        .into()
+                                ]),
+                                Image::new(
+                                    post.get_image().clone()
+                                ).width(Length::Shrink)
+                            )
+                                .padding(40)
+                                .on_click_image(Message::DoAction(Box::new(PostsAction::ToggleModal(
+                                    ModalType::ShowingImage(post.get_image().clone())
+                                ))))
+                                .on_click_data(Message::DoAction(Box::new(PostsAction::ToggleModal(
+                                    ModalType::ShowingPost(index)
+                                ))))
+                                .into()
+                        }
+                    ).collect::<Vec<Element<Message, Theme, Renderer>>>()
+                )
+                    .width(Length::Fill)
+                    .align_items(Alignment::Center)
+                    .spacing(50)
             )
+                .on_scroll(move |viewport| {
+                    if viewport.relative_offset().y == 1.0 && self.get_tab(tab).done_loading() {
+                        Message::DoAction(Box::new(PostsAction::LoadBatch(tab)))
+                    } else {
+                        Message::None
+                    }
+                })
                 .width(Length::Fill)
-                .align_items(Alignment::Center)
-                .spacing(50)
         )
-            .on_scroll(|viewport| {
-                if viewport.relative_offset().y == 1.0 && self.recommended.done_loading() {
-                    Message::DoAction(Box::new(PostsAction::LoadBatch))
-                } else {
-                    Message::None
-                }
-            })
-            .width(Length::Fill)
+            .padding([20.0, 0.0, 0.0, 0.0])
             .into()
     }
 
     /// Generate the modal that shows an image.
-    pub fn gen_show_image<'a>(image: Vec<u8>, _globals: &Globals) -> Element<'a, Message, Theme, Renderer>
+    pub fn gen_show_image<'a>(image: Handle, _globals: &Globals) -> Element<'a, Message, Theme, Renderer>
     {
         Closeable::new(Image::new(
-            Handle::from_memory(image.clone())
+            image.clone()
         ).width(Length::Shrink))
             .width(Length::Fill)
             .height(Length::Fill)
@@ -393,7 +530,7 @@ impl Posts {
         Row::with_children(
             vec![
                 Closeable::new(Image::new(
-                    Handle::from_memory(post.get_image().clone())
+                    post.get_image().clone()
                 ).width(Length::Shrink))
                     .width(Length::FillPortion(3))
                     .height(Length::Fill)
@@ -444,7 +581,7 @@ impl Posts {
     }
 
     /// Generates the modal for sending a report.
-    pub fn gen_show_report<'a>(&'a self, post_index: usize, _globals: &Globals) -> Element<'a, Message, Theme, Renderer>
+    pub fn gen_show_report(&self, post_index: usize, _globals: &Globals) -> Element<Message, Theme, Renderer>
     {
         Closeable::new(
             Card::new(
@@ -481,6 +618,30 @@ impl Posts {
             )
             .into()
     }
+
+    /// Returns the required tab.
+    fn get_tab(&self, tab: PostTabs) -> &PostList {
+        match tab {
+            PostTabs::Recommended => &self.recommended,
+            PostTabs::Filtered => &self.filtered,
+            PostTabs::Profile => &self.profile
+        }
+    }
+
+    /// Returns the required tab as mutable.
+    fn get_tab_mut(&mut self, tab: PostTabs) -> &mut PostList {
+        match tab {
+            PostTabs::Recommended => &mut self.recommended,
+            PostTabs::Filtered => &mut self.filtered,
+            PostTabs::Profile => &mut self.profile
+        }
+    }
+
+    /// Returns the active tab.
+    fn get_active_tab(&self) -> &PostList { self.get_tab(self.active_tab.clone()) }
+
+    /// Returns the active tab as mutable.
+    fn get_active_tab_mut(&mut self) -> &mut PostList { self.get_tab_mut(self.active_tab.clone()) }
 }
 
 /// The [Posts] scene does not have any optional initialization values.
@@ -506,6 +667,12 @@ impl Scene for Posts {
         let mut posts = Posts {
             modals: ModalStack::new(),
             recommended: PostList::new(vec![]),
+            filtered: PostList::new(vec![]),
+            tags: HashSet::new(),
+            all_tags: HashSet::new(),
+            filter_input: String::from(""),
+            profile: PostList::new(vec![]),
+            active_tab: PostTabs::Recommended,
             report_input: String::from(""),
         };
 
@@ -514,48 +681,28 @@ impl Scene for Posts {
         }
 
         let db = globals.get_db().unwrap();
+        let db_clone = db.clone();
         let user_id = globals.get_user().unwrap().get_id().clone();
+
         (
             posts,
-            Command::perform(
-                async move {
-                    let mut posts =
-                        match database::posts::get_recommendations(&db, user_id).await {
-                            Ok(posts) => posts,
-                            Err(err) => {
-                                return Err(err);
-                            }
-                        };
-
-                    let need = 100 - posts.len();
-                    let uuids :Vec<Uuid>= posts.iter().map(|post: &Post| post.get_id().clone()).collect();
-
-                    if posts.len() < 100 {
-                        let mut posts_random =
-                            match database::posts::get_random_posts(
-                                &db,
-                                need,
-                                user_id,
-                                uuids
-                            ).await {
-                                Ok(posts) => posts,
-                                Err(err) => {
-                                    return Err(err);
-                                }
-                            };
-
-                        posts.append(&mut posts_random);
+            Command::batch(vec![
+                Self::gen_recommended(db.clone(), user_id),
+                Command::perform(
+                    async move {
+                        database::drawing::get_tags(&db_clone).await
+                    },
+                    |tags| {
+                        match tags {
+                            Ok(tags) => Message::DoAction(Box::new(
+                                PostsAction::LoadedTags(tags)
+                            )),
+                            Err(err) => Message::Error(err)
+                        }
                     }
-
-                    Ok(posts)
-                },
-                |result| {
-                    match result {
-                        Ok(posts) => Message::DoAction(Box::new(PostsAction::LoadedPosts(posts))),
-                        Err(err) => Message::Error(err)
-                    }
-                }
-            )
+                ),
+                Self::gen_profile(db, user_id)
+            ])
         )
     }
 
@@ -578,23 +725,39 @@ impl Scene for Posts {
         };
 
         match message {
-            PostsAction::LoadedPosts(posts) => {
-                self.recommended = PostList::new(posts.clone());
+            PostsAction::LoadPosts => {
+                let db = globals.get_db().unwrap();
+                let user_id = globals.get_user().unwrap().get_id();
+
+                match self.active_tab {
+                    PostTabs::Recommended => Self::gen_recommended(db, user_id),
+                    PostTabs::Filtered => Self::gen_filtered(
+                        db,
+                        user_id,
+                        self.tags.iter().map(|tag| tag.get_name().clone()).collect()
+                    ),
+                    PostTabs::Profile => Self::gen_profile(db, user_id)
+                }
+            }
+            PostsAction::LoadedPosts(posts, tab) => {
+                let tab = tab.clone();
+                *self.get_tab_mut(tab.clone()) = PostList::new(posts.clone());
                 let length = posts.len();
 
                 if length > 0 {
-                    self.update(globals, Box::new(PostsAction::LoadBatch))
+                    self.update(globals, Box::new(PostsAction::LoadBatch(tab)))
                 } else {
                     Command::none()
                 }
             }
-            PostsAction::LoadedImage { image, index } => {
-                self.recommended.set_image(*index, image.clone());
+            PostsAction::LoadedImage { image, index, tab } => {
+                self.get_tab_mut(tab.clone()).set_image(*index, image.clone());
 
                 Command::none()
             }
-            PostsAction::LoadBatch => {
-                let posts_data = self.recommended.load_batch();
+            PostsAction::LoadBatch(tab) => {
+                let tab = tab.clone();
+                let posts_data = self.get_tab_mut(tab).load_batch();
 
                 Command::batch(
                     posts_data.into_iter().map(
@@ -611,6 +774,7 @@ impl Scene for Posts {
                                             Box::new(PostsAction::LoadedImage {
                                                 image: data,
                                                 index,
+                                                tab
                                             })
                                         ),
                                         Err(err) => Message::Error(err)
@@ -641,6 +805,10 @@ impl Scene for Posts {
                             Command::none()
                         }
                     }
+                    ModalType::ShowingReport(_) => {
+                        self.report_input = String::from("");
+                        Command::none()
+                    }
                     _ => Command::none()
                 }
             }
@@ -648,7 +816,8 @@ impl Scene for Posts {
                 let user_id = globals.get_user().unwrap().get_id();
                 let db = globals.get_db().unwrap();
 
-                let (post_id, rating) = self.recommended.rate_post(*post_index, *rating);
+                let (post_id, rating) =
+                    self.get_active_tab_mut().rate_post(*post_index, *rating);
 
                 if let Some(rating) = rating {
                     Command::perform(
@@ -685,6 +854,27 @@ impl Scene for Posts {
                     )
                 }
             }
+            PostsAction::LoadedTags(tags) => {
+                self.all_tags = HashSet::from_iter(tags.iter().map(|tag| tag.clone()));
+
+                Command::none()
+            }
+            PostsAction::UpdateFilterInput(filter_input) => {
+                self.filter_input = filter_input.clone();
+
+                Command::none()
+            }
+            PostsAction::AddTag(tag) => {
+                self.tags.insert(tag.clone());
+                self.filter_input = String::from("");
+
+                Command::none()
+            }
+            PostsAction::RemoveTag(tag) => {
+                self.tags.remove(tag);
+
+                Command::none()
+            }
             PostsAction::UpdateReportInput(report_input) => {
                 self.report_input = report_input.clone();
 
@@ -692,8 +882,12 @@ impl Scene for Posts {
             }
             PostsAction::SubmitReport(post_index) => {
                 let post_index = post_index.clone();
-                let post = self.recommended.get_post(post_index).unwrap();
                 let report_description = self.report_input.clone();
+                let post = self.get_active_tab_mut().get_post(post_index).unwrap();
+                let image :Vec<u8>= match post.get_image().data() {
+                    Data::Bytes(data) => data.iter().map(|byte| *byte).collect(),
+                    _ => vec![],
+                };
 
                 let message = lettre::Message::builder()
                     .from(format!("Chartsy <{}>", config::email_address()).parse().unwrap())
@@ -723,7 +917,7 @@ impl Scene for Posts {
                                     .singlepart(
                                         Attachment::new_inline(String::from("post_image"))
                                             .body(
-                                                post.get_image().clone(),
+                                                image.clone(),
                                                 "image/*".parse().unwrap()
                                             )
                                     )
@@ -731,7 +925,7 @@ impl Scene for Posts {
                             .singlepart(
                                 Attachment::new(String::from("post_image.webp"))
                                     .body(
-                                        post.get_image().clone(),
+                                        image,
                                         "image/*".parse().unwrap()
                                     )
                             )
@@ -751,12 +945,86 @@ impl Scene for Posts {
                     )
                 ])
             }
+            PostsAction::SelectTab(tab_id) => {
+                self.active_tab = *tab_id;
+
+                Command::none()
+            }
             PostsAction::ErrorHandler(_) => { Command::none() }
         }
     }
 
     fn view(&self, globals: &Globals) -> Element<'_, Message, Theme, Renderer> {
-        let post_summaries :Element<Message, Theme, Renderer>= self.gen_post_list(globals);
+        let recommended_tab = self.gen_post_list(PostTabs::Recommended, globals);
+
+        let filtered_tab = Column::with_children(vec![
+            Column::with_children(vec![
+                Row::with_children(vec![
+                    ComboBox::new(
+                        self.all_tags.clone(),
+                        "Add filter...",
+                        &*self.filter_input,
+                        |tag| Message::DoAction(Box::new(PostsAction::AddTag(tag)))
+                    )
+                        .on_input(|input| Message::DoAction(Box::new(
+                            PostsAction::UpdateFilterInput(input))
+                        ))
+                        .into(),
+                    Button::new("Submit")
+                        .on_press(Message::DoAction(Box::new(PostsAction::LoadPosts)))
+                        .into()
+                ])
+                    .spacing(10.0)
+                    .into(),
+                Grid::new(self.tags.iter().map(
+                    |tag| Container::new(
+                        Row::with_children(vec![
+                            Text::new(tag.get_name().clone()).into(),
+                            Close::new(
+                                Message::DoAction(Box::new(PostsAction::RemoveTag(tag.clone())))
+                            )
+                                .size(15.0)
+                                .into()
+                        ])
+                            .spacing(5.0)
+                            .align_items(Alignment::Center)
+                    )
+                        .padding(10.0)
+                        .style(crate::theme::container::Container::Badge(crate::theme::pallete::TEXT))
+                ))
+                    .into()
+
+            ])
+                .padding([0.0, 300.0, 0.0, 300.0])
+                .spacing(10.0)
+                .into(),
+            self.gen_post_list(PostTabs::Filtered, globals)
+        ])
+            .spacing(20.0)
+            .padding([20.0, 0.0, 0.0, 0.0])
+            .into();
+
+        let underlay = Tabs::new_with_tabs(
+            vec![
+                (
+                    PostTabs::Recommended,
+                    TabLabel::Text(String::from("Recommended")),
+                    recommended_tab
+                ),
+                (
+                    PostTabs::Filtered,
+                    TabLabel::Text(String::from("Filtered")),
+                    filtered_tab
+                ),
+                (
+                    PostTabs::Profile,
+                    TabLabel::Text(String::from("Profile")),
+                    Text::new("Profile tab content").into()
+                )
+            ],
+            |tab_id| Message::DoAction(Box::new(PostsAction::SelectTab(tab_id)))
+        )
+            .set_active_tab(&self.active_tab);
 
         let modal_generator = |modal_type: ModalType| {
             match modal_type {
@@ -764,7 +1032,7 @@ impl Scene for Posts {
                     Self::gen_show_image(data.clone(), globals)
                 }
                 ModalType::ShowingPost(post_index) => {
-                    let post = self.recommended.get_post(post_index).unwrap();
+                    let post = self.get_active_tab().get_post(post_index).unwrap();
 
                     Self::gen_show_post(post_index, post, globals)
                 }
@@ -774,7 +1042,7 @@ impl Scene for Posts {
             }
         };
 
-        self.modals.get_modal(post_summaries.into(), modal_generator)
+        self.modals.get_modal(underlay, modal_generator)
     }
 
     fn get_error_handler(&self, error: Error) -> Box<dyn Action> {

@@ -121,9 +121,6 @@ pub struct LayerVessel<'a> {
 
     /// Tells whether this layer is currently being drawn on.
     active: bool,
-
-    /// Tells whether this layer is visible or not.
-    visible: bool,
 }
 
 impl<'a> LayerVessel<'a>
@@ -133,8 +130,7 @@ impl<'a> LayerVessel<'a>
         tools: &'a [Arc<dyn Tool>],
         current_tool: &'a Box<dyn Pending>,
         style: &'a Style,
-        active: bool,
-        visible: bool
+        active: bool
     ) -> Self {
         LayerVessel {
             state,
@@ -142,7 +138,6 @@ impl<'a> LayerVessel<'a>
             current_tool,
             style,
             active,
-            visible
         }
     }
 }
