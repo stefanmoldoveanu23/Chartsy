@@ -26,6 +26,32 @@ pub enum LogInField {
     Password(String),
 }
 
+/// User roles.
+#[derive(Default, Debug, Clone)]
+pub enum Role {
+    Admin,
+    #[default]
+    User
+}
+
+impl Into<i32> for Role {
+    fn into(self) -> i32 {
+        match self {
+            Role::Admin => 0,
+            Role::User => 1,
+        }
+    }
+}
+
+impl From<i32> for Role {
+    fn from(value: i32) -> Self {
+        match value {
+            0 => Role::Admin,
+            _ => Role::User
+        }
+    }
+}
+
 /// Structure for the user data.
 #[derive(Default, Debug, Clone)]
 pub struct User {
@@ -37,6 +63,12 @@ pub struct User {
 
     /// The username of the [User].
     username: String,
+
+    /// The tag of the [User].
+    user_tag: String,
+
+    /// The role of the [User].
+    role: Role,
 
     /// The hashed password of the [User].
     password_hash: String,
@@ -51,23 +83,38 @@ pub struct User {
 impl User {
     /// Returns the id of the [user](User).
     pub fn get_id(&self) -> Uuid {
-        self.id.clone()
+        self.id
     }
 
     /// Returns the email of the [user](User).
-    pub fn get_email(&self) -> String {
-        self.email.clone()
+    pub fn get_email(&self) -> &String {
+        &self.email
     }
 
     /// Returns the username of the [user](User).
-    pub fn get_username(&self) -> String {
-        self.username.clone()
+    pub fn get_username(&self) -> &String {
+        &self.username
+    }
+
+    /// Returns the tag of the [user](User).
+    pub fn get_user_tag(&self) -> &String {
+        &self.user_tag
+    }
+
+    pub fn get_role(&self) -> &Role {
+        &self.role
     }
 
     /// Sets the username of the [user](User).
     pub fn set_username(&mut self, username: impl Into<String>)
     {
         self.username = username.into();
+    }
+
+    /// Sets the tag of the [user](User).
+    pub fn set_user_tag(&mut self, user_tag: impl Into<String>)
+    {
+        self.user_tag = user_tag.into();
     }
 
     /// Tests whether the given password is the same as the [users](User).
@@ -107,6 +154,13 @@ impl User {
         let regex = Regex::new(r"^[a-zA-Z0-9]+$").unwrap();
 
         regex.is_match(&*username.clone())
+    }
+
+    /// CHeck whether the provided user tag is valid.
+    pub fn check_user_tag(user_tag: &String) -> bool {
+        let regex = Regex::new(r"^[a-zA-Z0-9._]+$").unwrap();
+
+        regex.is_match(&*user_tag.clone())
     }
 
     /// Checks whether the provided email is valid.
@@ -184,6 +238,12 @@ impl Deserialize<Document> for User {
         if let Ok(username) = document.get_str("username") {
             user.username = username.into();
         }
+        if let Ok(user_tag) = document.get_str("user_tag") {
+            user.user_tag = user_tag.into();
+        }
+        if let Ok(role) = document.get_i32("role") {
+            user.role = role.into();
+        }
         if let Ok(password) = document.get_str("password") {
             user.password_hash = password.into();
         }
@@ -223,6 +283,8 @@ impl Serialize<Document> for RegisterForm {
             "id": Uuid::new(),
             "email": self.email.clone(),
             "username": self.username.clone(),
+            "user_tag": Uuid::new().to_string(),
+            "role": Into::<i32>::into(Role::User),
             "password": self.password.clone(),
             "register_code": self.code.clone(),
             "auth_token": "",

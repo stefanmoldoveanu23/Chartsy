@@ -347,7 +347,10 @@ pub async fn get_filtered(db: &Database, user_id: Uuid, tags: Vec<String>) -> Re
                 }
             },
             doc! {
-                "$unwind": "$rating"
+                "$unwind": {
+                    "path": "$rating",
+                    "preserveNullAndEmptyArrays": true
+                }
             },
             doc! {
                 "$limit": 100

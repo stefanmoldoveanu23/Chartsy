@@ -21,6 +21,12 @@ pub enum AuthError {
 
     /// The provided profile picture is larger than 5MB.
     ProfilePictureTooLarge,
+
+    /// The user tag has incorrect formatting.
+    BadUserTag,
+
+    /// The user tag provided is not unique.
+    UserTagAlreadyExists
 }
 
 impl Display for AuthError {
@@ -44,7 +50,9 @@ impl Display for AuthError {
                 AuthError::RegisterBadCode => "The provided code is incorrect or has expired!",
                 AuthError::RegisterUserAlreadyExists => "An account with this email already exists!",
                 AuthError::LogInUserDoesntExist => "An account with this email and password doesn't exist!",
-                AuthError::ProfilePictureTooLarge => "Your new profile picture needs to be at most 5MB!"
+                AuthError::ProfilePictureTooLarge => "Your new profile picture needs to be at most 5MB!",
+                AuthError::BadUserTag => "The provided user tag cannot be empty!",
+                AuthError::UserTagAlreadyExists => "Another account already uses this user tag!"
             }
         )
     }

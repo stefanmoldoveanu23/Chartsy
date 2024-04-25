@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
-use mongodb::bson::{Bson, doc, Document};
+use mongodb::bson::{doc, Document};
 use crate::serde::{Deserialize, Serialize};
 
 /// The types of the modals that can be opened.
@@ -57,7 +57,7 @@ impl Serialize<Document> for Tag {
     fn serialize(&self) -> Document {
         doc![
             "name": self.name.clone(),
-            "uses": self.uses
+            "uses": self.uses as i32
         ]
     }
 }
@@ -66,11 +66,11 @@ impl Deserialize<Document> for Tag {
     fn deserialize(document: &Document) -> Self where Self: Sized {
         let mut tag = Tag { name: "".into(), uses: 0 };
 
-        if let Some(Bson::String(name)) = document.get("name") {
-            tag.name = name.clone();
+        if let Ok(name) = document.get_str("name") {
+            tag.name = name.into();
         }
-        if let Some(Bson::Int32(uses)) = document.get("uses") {
-            tag.uses = *uses as u32;
+        if let Ok(uses) = document.get_i32("uses") {
+            tag.uses = uses as u32;
         }
 
         tag

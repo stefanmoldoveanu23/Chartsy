@@ -2,7 +2,7 @@ use std::io;
 use dropbox_sdk::default_client::{NoauthDefaultClient, UserAuthDefaultClient};
 use dropbox_sdk::files;
 use dropbox_sdk::files::{DownloadArg, UploadArg, WriteMode};
-use mongodb::{Client, Cursor, Database};
+use mongodb::{Client, Cursor};
 use mongodb::bson::Document;
 use mongodb::options::ClientOptions;
 use crate::config;
@@ -13,7 +13,7 @@ use crate::serde::Deserialize;
 /// Attempts to connect to the database [Database].
 ///
 /// Returns an error upon failure.
-pub async fn connect_to_mongodb() -> Result<Database, Error>
+pub async fn connect_to_mongodb() -> Result<Client, Error>
     where
         Client: Send + 'static,
 {
@@ -23,11 +23,9 @@ pub async fn connect_to_mongodb() -> Result<Database, Error>
             config::mongo_name(),
             config::mongo_pass()
         )
-    ).await.map_err(|error| Error::from(error))?;
+    ).await?;
 
-    let client = Client::with_options(client_options).map_err(|error| Error::from(error))?;
-
-    Ok(client.database("chartsy"))
+    Client::with_options(client_options).map_err(|err| err.into())
 }
 
 /// Collects all entries of the cursor, attempting to deserialize them in the functions Type.

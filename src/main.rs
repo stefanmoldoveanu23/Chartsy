@@ -82,8 +82,9 @@ impl Application for Chartsy {
             }
             Message::DoneDatabaseInit(result) => {
                 match result {
-                    Ok(db) => {
-                        self.globals.set_db(db.clone());
+                    Ok(client) => {
+                        self.globals.set_client(client);
+                        let db = self.globals.get_db().unwrap();
 
                         println!("Successfully connected to database.");
                         Command::perform(

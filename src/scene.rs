@@ -3,7 +3,7 @@ use crate::scenes::data::auth::User;
 use crate::scenes::scenes::Scenes;
 use crate::theme::Theme;
 use iced::{Command, Element, Renderer};
-use mongodb::Database;
+use mongodb::{Client, ClientSession, Database};
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
 
@@ -92,7 +92,7 @@ pub enum Message {
     /// Performs an [Action], which should correspond to the current [scenes](Scene) enum of messages.
     DoAction(Box<dyn Action>),
     /// Triggers when a database connection has been established.
-    DoneDatabaseInit(Result<Database, Error>),
+    DoneDatabaseInit(Result<Client, Error>),
     /// Triggers when a user has been logged in using a token stored locally from a previous login.
     AutoLoggedIn(User),
     /// Sends en e-mail.
@@ -106,8 +106,9 @@ pub enum Message {
 pub struct Globals {
     /// The data corresponding the authenticated [User]. Is None is no user is authenticated.
     user: Option<User>,
+
     /// The database the program is connected to.
-    mongo_db: Option<Database>,
+    mongo_client: Option<Client>,
 }
 
 impl Globals {
@@ -127,18 +128,31 @@ impl Globals {
         &mut self.user
     }
 
-    /// Updates the database object.
-    pub fn set_db(&mut self, db: Database) { self.mongo_db = Some(db); }
+    /// Updates the client object.
+    pub fn set_client(&mut self, client: Client) { self.mongo_client = Some(client); }
 
-    /// Returns the database object.
-    pub fn get_db(&self) -> Option<Database> { self.mongo_db.clone() }
+    /// Returns the database from the client.
+    pub fn get_db(&self) -> Option<Database> {
+        match &self.mongo_client {
+            Some(client) => Some(client.database("chartsy")),
+            None => None
+        }
+    }
+
+    /// Starts a mongo session and returns it.
+    pub async fn start_session(&self) -> Option<Result<ClientSession, Error>> {
+        match &self.mongo_client {
+            Some(client) => Some(client.start_session(None).await.map_err(|err| err.into())),
+            None => None
+        }
+    }
 }
 
 impl Default for Globals {
     fn default() -> Self {
         Globals {
             user: None,
-            mongo_db: None,
+            mongo_client: None,
         }
     }
 }

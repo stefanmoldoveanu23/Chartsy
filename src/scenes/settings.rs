@@ -23,6 +23,9 @@ pub struct Settings {
     /// The current user input in the username TextInput.
     username_input: String,
 
+    /// The current user input in the user tag TextInput.
+    user_tag_input: String,
+
     /// The current user input in the password TextInput.
     password_input: String,
 
@@ -63,6 +66,12 @@ pub enum SettingsAction {
     /// Username update request.
     UpdateUsername,
 
+    /// When the user tag TextInput field is modified.
+    UpdateUserTagField(String),
+
+    /// User tag update request.
+    UpdateUserTag,
+
     /// When the password TextInput field is modified.
     UpdatePasswordField(String),
 
@@ -98,6 +107,8 @@ impl Action for SettingsAction {
             SettingsAction::None => String::from("None"),
             SettingsAction::UpdateUsernameField(_) => String::from("Update username field"),
             SettingsAction::UpdateUsername => String::from("Update username"),
+            SettingsAction::UpdateUserTagField(_) => String::from("Update user tag field"),
+            SettingsAction::UpdateUserTag => String::from("Update user tag"),
             SettingsAction::UpdatePasswordField(_) => String::from("Update password field"),
             SettingsAction::UpdatePasswordRepeatField(_) => String::from("Update password repeat field"),
             SettingsAction::UpdatePassword => String::from("Update password"),
@@ -153,6 +164,7 @@ impl Scene for Settings {
 
         let mut settings = Self {
             username_input: user.get_username().clone(),
+            user_tag_input: user.get_user_tag().clone(),
             password_input: String::from(""),
             password_repeat: String::from(""),
             profile_picture_input: Handle::from_path("./src/images/loading.png"),
@@ -245,6 +257,34 @@ impl Scene for Settings {
                         }
                     }
                 )
+            }
+            SettingsAction::UpdateUserTagField(user_tag) => {
+                self.user_tag_input = user_tag.clone();
+
+                Command::none()
+            }
+            SettingsAction::UpdateUserTag => {
+                if !User::check_user_tag(&self.user_tag_input) {
+                    self.input_error = Some(Error::AuthError(AuthError::BadUserTag));
+
+                    Command::none()
+                } else {
+                    let tag = self.user_tag_input.clone();
+                    globals.get_user_mut().as_mut().unwrap().set_user_tag(tag.clone());
+                    let globals = globals.clone();
+
+                    Command::perform(
+                        async move {
+                            database::settings::find_user_by_tag(&globals, tag).await
+                        },
+                        |result| {
+                            match result {
+                                Ok(()) => Message::None,
+                                Err(err) => Message::Error(err)
+                            }
+                        }
+                    )
+                }
             }
             SettingsAction::UpdatePasswordField(password) => {
                 self.password_input = password.clone();
@@ -491,6 +531,47 @@ impl Scene for Settings {
             Space::with_width(Length::Fill).into()
         };
 
+        let user_tag = Column::with_children(vec![
+            Text::new("User Tag").size(20.0).into(),
+            Row::with_children(vec![
+                TextInput::new(
+                    "Input user tag...",
+                    &*self.user_tag_input.clone()
+                )
+                    .on_input(|value| Message::DoAction(Box::new(
+                        SettingsAction::UpdateUserTagField(value.clone())
+                    )))
+                    .size(15.0)
+                    .into(),
+                Space::with_width(Length::Fill)
+                    .into(),
+                if self.user_tag_input.clone() == user.get_user_tag().clone() {
+                    Button::new(Text::new("Update").size(15.0))
+                } else {
+                    Button::new(Text::new("Update").size(15.0))
+                        .on_press(Message::DoAction(Box::new(SettingsAction::UpdateUserTag)))
+                }
+                    .into()
+            ])
+                .spacing(5.0)
+                .into()
+        ])
+            .width(Length::Fill)
+            .spacing(5.0)
+            .into();
+
+        let user_tag_error =
+            if Some(Error::AuthError(AuthError::UserTagAlreadyExists)) == self.input_error ||
+                Some(Error::AuthError(AuthError::BadUserTag)) == self.input_error {
+                let error = self.input_error.clone();
+                Text::new(error.unwrap().to_string())
+                    .style(crate::theme::text::Text::Error)
+                    .size(15.0)
+                    .into()
+            } else {
+                Space::with_width(Length::Fill).into()
+            };
+
         let password = Row::with_children(vec![
             Column::with_children(vec![
                 Text::new("Password").size(20.0).into(),
@@ -594,6 +675,11 @@ impl Scene for Settings {
                         Column::with_children(vec![
                             username,
                             username_error,
+                        ])
+                            .into(),
+                        Column::with_children(vec![
+                            user_tag,
+                            user_tag_error
                         ])
                             .into(),
                         Column::with_children(vec![
