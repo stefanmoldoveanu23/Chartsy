@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::sync::Arc;
 use iced::widget::image::Handle;
 use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
 use crate::scenes::data::auth::User;
@@ -187,9 +189,6 @@ pub struct Post {
     /// The id of the post.
     id: Uuid,
 
-    /// The data of the image.
-    image: Handle,
-
     /// The description of the [Post].
     description: String,
 
@@ -214,16 +213,12 @@ pub struct Post {
 }
 
 impl Post {
-    pub fn get_id(&self) -> &Uuid {
-        &self.id
+    pub fn get_id(&self) -> Uuid {
+        self.id
     }
 
     pub fn get_user(&self) -> &User {
         &self.user
-    }
-
-    pub fn get_image(&self) -> &Handle {
-        &self.image
     }
 
     pub fn get_description(&self) -> &String {
@@ -250,8 +245,8 @@ impl Post {
         &self.rating
     }
 
-    pub fn set_image(&mut self, image: Vec<u8>) {
-        self.image = Handle::from_memory(image);
+    pub fn get_image(&self, images: &HashMap<Uuid, Arc<Vec<u8>>>) -> Option<Arc<Vec<u8>>> {
+        images.get(&self.id).map(Clone::clone)
     }
 
     pub fn set_rating(&mut self, rating: impl Into<usize>) {
@@ -271,7 +266,6 @@ impl Default for Post {
     fn default() -> Self {
         Post {
             id: Uuid::default(),
-            image: Handle::from_path("./src/images/loading.png"),
             description: "".into(),
             tags: vec![],
             user: User::default(),
@@ -319,7 +313,10 @@ impl Deserialize<Document> for Post {
 /// A list of posts to be displayed.
 #[derive(Clone)]
 pub struct PostList {
+    /// Ids of posts in this list.
     posts: Vec<Post>,
+
+    /// Number of loaded posts.
     loaded: usize,
 }
 
@@ -331,39 +328,31 @@ impl PostList {
         }
     }
 
-    /// Sets the image of a post.
-    pub fn set_image(&mut self, index: usize, image: Vec<u8>) {
-        self.posts[index].set_image(image);
-    }
-
     /// Load the next batch of images.
-    pub fn load_batch(&mut self) -> Vec<(usize, Uuid, Uuid)>
+    pub fn load_batch(&mut self) -> Vec<(Uuid, Uuid)>
     {
         let start = self.loaded;
         let total = self.posts.len();
 
         self.loaded += 10.min(total - start);
 
-        self.posts[start..self.loaded].iter().enumerate().map(
-            |(index, post)| (
-                index,
-                post.get_id().clone(),
-                post.get_user().get_id().clone(),
+        self.posts[start..self.loaded].iter().map(
+            |post| (
+                post.get_user().get_id(),
+                post.get_id()
             )
-        ).collect::<Vec<(usize, Uuid, Uuid)>>()
+        ).collect::<Vec<(Uuid, Uuid)>>()
     }
 
     /// Change the rating given to a post by the authenticated user.
     pub fn rate_post(&mut self, index: usize, rating: usize) -> (Uuid, Option<usize>)
     {
-        let post = self.posts.get_mut(index).unwrap();
+        let post = &mut self.posts[index];
 
         let rating = rating.clone();
         post.set_rating(rating);
 
-        let post_id = *post.get_id();
-
-        (post_id, if rating == 0 { None } else { Some(rating) })
+        (post.get_id(), if rating == 0 { None } else { Some(rating) })
     }
 
     /// Opens the given comment. If the replies haven't been loaded yet, returns true.
@@ -382,36 +371,41 @@ impl PostList {
     /// Closes the given comment.
     pub fn close_comment(&mut self, post_index: usize, line: usize, index: usize)
     {
+        let post = &mut self.posts[post_index];
+
         let mut position = if line != 0 {
-            self.posts[post_index].comments[line][index].parent.clone()
+            post.comments[line][index].parent.clone()
         } else {
-            self.posts[post_index].open_comment = None;
+            post.open_comment = None;
             Some((line, index))
         };
 
         while let Some((line, index)) = position {
-            let reply_line = self.posts[post_index].comments[line][index].replies.clone();
-            let reply_index = self.posts[post_index].comments[line][index].open_reply.clone();
+            let reply_line = post.comments[line][index].replies.clone();
+            let reply_index = post.comments[line][index].open_reply.clone();
             position = reply_line.zip(reply_index);
 
-            self.posts[post_index].comments[line][index].open_reply = None;
+            post.comments[line][index].open_reply = None;
         }
     }
 
     /// Updates the reply input field of the given comment.
     pub fn update_input(&mut self, post_index: usize, position: Option<(usize, usize)>, input: String)
     {
+        let post = &mut self.posts[post_index];
+
         if let Some((line, index)) = position {
-            self.posts[post_index].comments[line][index].reply_input = input;
+            post.comments[line][index].reply_input = input;
         } else {
-            self.posts[post_index].comment_input = input;
+            post.comment_input = input;
         }
     }
 
     /// Adds a reply to the given comment. Returns the reply data serialized.
     pub fn add_reply(&mut self, user: User, post_index: usize, line: usize, index: usize) -> Document
     {
-        let parent = &self.posts[post_index].comments[line][index];
+        let post = &mut self.posts[post_index];
+        let parent = &post.comments[line][index];
 
         let comment = Comment::new_reply(
             Uuid::new(),
@@ -423,10 +417,10 @@ impl PostList {
 
         let document = comment.serialize();
 
-        self.posts[post_index].comments[line][index].reply_input = String::from("");
+        post.comments[line][index].reply_input = String::from("");
 
-        let line = self.posts[post_index].comments[line][index].replies.unwrap();
-        self.posts[post_index].comments[line].push(comment);
+        let line = post.comments[line][index].replies.unwrap();
+        post.comments[line].push(comment);
 
         document
     }
@@ -434,18 +428,20 @@ impl PostList {
     /// Adds a comment to the given post. Returns the comment data serialized.
     pub fn add_comment(&mut self, user: User, post_index: usize) -> Document
     {
+        let post = &mut self.posts[post_index];
+
         let comment = Comment::new_comment(
             Uuid::new(),
             user,
-            self.posts[post_index].comment_input.clone(),
+            post.comment_input.clone(),
         );
 
         let mut document = comment.serialize();
 
-        self.posts[post_index].comment_input = String::from("");
-        self.posts[post_index].comments[0].push(comment);
+        post.comment_input = String::from("");
+        post.comments[0].push(comment);
 
-        document.insert("post_id", self.posts[post_index].id);
+        document.insert("post_id", post.id);
         document
     }
 
@@ -466,15 +462,16 @@ impl PostList {
     /// Adds a new set of comments that were loaded.
     pub fn loaded_comments(&mut self, post_index: usize, parent: Option<(usize, usize)>, comments: Vec<Comment>)
     {
-        self.posts[post_index].comments.push(comments);
-        let new_line = self.posts[post_index].comments.len() - 1;
+        let post = &mut self.posts[post_index];
+        post.comments.push(comments);
+        let new_line = post.comments.len() - 1;
 
-        for comment in &mut self.posts[post_index].comments[new_line] {
+        for comment in &mut post.comments[new_line] {
             comment.parent = parent;
         }
 
         if let Some((line, index)) = parent {
-            self.posts[post_index].comments[line][index].replies = Some(new_line);
+            post.comments[line][index].replies = Some(new_line);
         }
     }
 

@@ -6,6 +6,10 @@ use iced::{Command, Element, Renderer};
 use mongodb::{Client, ClientSession, Database};
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
+use std::sync::Arc;
+use std::time::Duration;
+use moka::future::Cache;
+use mongodb::bson::Uuid;
 
 /// An individual scene that handles its actions internally.
 pub trait Scene: Send + Sync {
@@ -109,6 +113,9 @@ pub struct Globals {
 
     /// The database the program is connected to.
     mongo_client: Option<Client>,
+
+    /// The caching system.
+    cache: Cache<Uuid, Arc<Vec<u8>>>
 }
 
 impl Globals {
@@ -118,15 +125,10 @@ impl Globals {
     }
 
     /// Returns the user data.
-    pub fn get_user(&self) -> Option<User> {
-        self.user.clone()
-    }
+    pub fn get_user(&self) -> Option<&User> { self.user.as_ref() }
 
     /// Returns the user data as mutable.
-    pub fn get_user_mut(&mut self) -> &mut Option<User>
-    {
-        &mut self.user
-    }
+    pub fn get_user_mut(&mut self) -> Option<&mut User> { self.user.as_mut() }
 
     /// Updates the client object.
     pub fn set_client(&mut self, client: Client) { self.mongo_client = Some(client); }
@@ -146,6 +148,11 @@ impl Globals {
             None => None
         }
     }
+
+    /// Returns the cache.
+    pub fn get_cache(&self) -> &Cache<Uuid, Arc<Vec<u8>>> {
+        &self.cache
+    }
 }
 
 impl Default for Globals {
@@ -153,6 +160,10 @@ impl Default for Globals {
         Globals {
             user: None,
             mongo_client: None,
+            cache: Cache::builder()
+                .time_to_idle(Duration::from_secs(60 * 60))
+                .max_capacity(500 * 1024 * 1024)
+                .build()
         }
     }
 }

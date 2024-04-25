@@ -25,3 +25,4 @@ difflib = "0.4.0"
 litcrypt2 = "0.1.2"
 svg2webp = "0.1.6"
 rfd = { version = "0.14.1", features = ["tokio"] }
+moka = { version = "0.12.7", features = ["future"] }

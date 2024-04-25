@@ -1,6 +1,7 @@
 use std::any::Any;
-use std::collections::HashSet;
-use iced::advanced::image::{Data, Handle};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use iced::advanced::image::Handle;
 use iced::{Alignment, Element, Length, Renderer, Command};
 use iced::alignment::Horizontal;
 use iced::widget::{Column, Row, Scrollable, Image, Text, TextInput, Button, Space, Tooltip, Container};
@@ -12,11 +13,12 @@ use mongodb::Database;
 use crate::widgets::closeable::Closeable;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::post_summary::PostSummary;
-use crate::{config, database};
+use crate::{config, database, LOADING_IMAGE};
 use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
 use crate::icons::{ICON, Icon};
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
+use crate::scenes::data::auth::User;
 use crate::scenes::data::drawing::Tag;
 use crate::theme::Theme;
 use crate::widgets::rating::Rating;
@@ -37,7 +39,7 @@ enum PostsAction {
     LoadedPosts(Vec<Post>, PostTabs),
 
     /// Triggers when the given amount of images from the posts have been loaded.
-    LoadedImage{ image: Vec<u8>, index: usize, tab: PostTabs },
+    LoadedImage{ image: Arc<Vec<u8>>, post_id: Uuid },
 
     /// Loads a batch of images.
     LoadBatch(PostTabs),
@@ -137,6 +139,12 @@ pub struct Posts {
 
     /// Tab of user profile.
     profile: PostList,
+
+    /// The user currently being looked up.
+    user_profile: User,
+
+    /// All necessary images, stored in a hashmap for avoiding storing the same image twice.
+    images: HashMap<Uuid, Arc<Vec<u8>>>,
 
     /// Currently active tab.
     active_tab: PostTabs,
@@ -261,7 +269,7 @@ impl Posts {
             }
             CommentMessage::Add { post, parent } => {
                 let db = globals.get_db().unwrap();
-                let user = globals.get_user().unwrap();
+                let user = globals.get_user().unwrap().clone();
 
                 let document = if let Some((line, index)) = parent {
                     self.get_active_tab_mut().add_reply(user, *post, *line, *index)
@@ -329,6 +337,13 @@ impl Posts {
                             PostSummary::<Message, Theme, Renderer>::new(
                                 Row::with_children(vec![
                                     Column::with_children(vec![
+                                        Button::new(
+                                            Text::new(format!("@{}", post.get_user().get_user_tag()))
+                                                .size(15.0)
+                                                .style(crate::theme::text::Text::Gray)
+                                        )
+                                            .style(crate::theme::button::Button::Transparent)
+                                            .into(),
                                         Text::new(post.get_user().get_username()).size(20.0).into(),
                                         Text::new(post.get_description().clone()).into()
                                     ])
@@ -353,13 +368,19 @@ impl Posts {
                                     ])
                                         .into()
                                 ]),
-                                Image::new(
-                                    post.get_image().clone()
-                                ).width(Length::Shrink)
+                                Image::new(Handle::from_memory(
+                                    post.get_image(&self.images)
+                                        .map(|image| image.as_ref().clone())
+                                        .unwrap_or(LOADING_IMAGE.into())
+                                )).width(Length::Shrink)
                             )
                                 .padding(40)
                                 .on_click_image(Message::DoAction(Box::new(PostsAction::ToggleModal(
-                                    ModalType::ShowingImage(post.get_image().clone())
+                                    ModalType::ShowingImage(Handle::from_memory(
+                                        post.get_image(&self.images)
+                                            .map(|image| image.as_ref().clone())
+                                            .unwrap_or(LOADING_IMAGE.into())
+                                    ))
                                 ))))
                                 .on_click_data(Message::DoAction(Box::new(PostsAction::ToggleModal(
                                     ModalType::ShowingPost(index)
@@ -383,6 +404,8 @@ impl Posts {
         )
             .padding([20.0, 0.0, 0.0, 0.0])
             .into()
+
+        //todo!("Add action when pressing the button")
     }
 
     /// Generate the modal that shows an image.
@@ -404,8 +427,8 @@ impl Posts {
     }
 
     /// Generate the modal that shows the post.
-    pub fn gen_show_post<'a>(post_index: usize, post: &'a Post, _globals: &Globals) -> Element<'a, Message, Theme, Renderer>
-    {
+    pub fn gen_show_post<'a>(post_index: usize, image: Handle, post: &'a Post, _globals: &Globals)
+        -> Element<'a, Message, Theme, Renderer> {
         let mut comment_chain = Column::with_children(
             vec![
                 Row::with_children(
@@ -529,14 +552,15 @@ impl Posts {
 
         Row::with_children(
             vec![
-                Closeable::new(Image::new(
-                    post.get_image().clone()
-                ).width(Length::Shrink))
+                Closeable::new(
+                    Image::new(image.clone())
+                        .width(Length::Shrink)
+                )
                     .width(Length::FillPortion(3))
                     .height(Length::Fill)
                     .style(crate::theme::closeable::Closeable::SpotLight)
                     .on_click(Message::DoAction(Box::new(PostsAction::ToggleModal(
-                        ModalType::ShowingImage(post.get_image().clone())
+                        ModalType::ShowingImage(image)
                     ))))
                     .into(),
                 Closeable::new(
@@ -672,6 +696,8 @@ impl Scene for Posts {
             all_tags: HashSet::new(),
             filter_input: String::from(""),
             profile: PostList::new(vec![]),
+            user_profile: globals.get_user().unwrap().clone(),
+            images: HashMap::new(),
             active_tab: PostTabs::Recommended,
             report_input: String::from(""),
         };
@@ -750,10 +776,21 @@ impl Scene for Posts {
                     Command::none()
                 }
             }
-            PostsAction::LoadedImage { image, index, tab } => {
-                self.get_tab_mut(tab.clone()).set_image(*index, image.clone());
+            PostsAction::LoadedImage { image, post_id } => {
+                let post_id = *post_id;
+                let image = image.clone();
+                self.images.insert(post_id, image.clone());
 
-                Command::none()
+                let cache = globals.get_cache().clone();
+
+                Command::perform(
+                    async move {
+                        if !cache.contains_key(&post_id) {
+                            cache.insert(post_id, image.clone()).await
+                        }
+                    },
+                    |()| Message::None
+                )
             }
             PostsAction::LoadBatch(tab) => {
                 let tab = tab.clone();
@@ -761,20 +798,23 @@ impl Scene for Posts {
 
                 Command::batch(
                     posts_data.into_iter().map(
-                        |(index, post_id, user_id)| {
+                        |(user_id, post_id)| {
+                            let cache = globals.get_cache().clone();
+
                             Command::perform(
                                 async move {
-                                    database::base::download_file(
-                                        format!("/{}/{}.webp", user_id, post_id)
-                                    ).await
+                                    cache.get(&post_id).await.map(Ok).unwrap_or(
+                                        database::base::download_file(
+                                            format!("/{}/{}.webp", user_id, post_id)
+                                        ).await.map(Arc::new)
+                                    )
                                 },
                                 move |data| {
                                     match data {
                                         Ok(data) => Message::DoAction(
                                             Box::new(PostsAction::LoadedImage {
                                                 image: data,
-                                                index,
-                                                tab
+                                                post_id
                                             })
                                         ),
                                         Err(err) => Message::Error(err)
@@ -883,11 +923,8 @@ impl Scene for Posts {
             PostsAction::SubmitReport(post_index) => {
                 let post_index = post_index.clone();
                 let report_description = self.report_input.clone();
-                let post = self.get_active_tab_mut().get_post(post_index).unwrap();
-                let image :Vec<u8>= match post.get_image().data() {
-                    Data::Bytes(data) => data.iter().map(|byte| *byte).collect(),
-                    _ => vec![],
-                };
+                let post = self.get_active_tab().get_post(post_index).unwrap();
+                let image = self.images.get(&post.get_id()).unwrap().as_ref().clone();
 
                 let message = lettre::Message::builder()
                     .from(format!("Chartsy <{}>", config::email_address()).parse().unwrap())
@@ -1004,6 +1041,11 @@ impl Scene for Posts {
             .padding([20.0, 0.0, 0.0, 0.0])
             .into();
 
+        let profile_tab = Column::with_children(vec![
+            Text::new("Profile tab content").into()
+        ])
+            .into();
+
         let underlay = Tabs::new_with_tabs(
             vec![
                 (
@@ -1019,7 +1061,7 @@ impl Scene for Posts {
                 (
                     PostTabs::Profile,
                     TabLabel::Text(String::from("Profile")),
-                    Text::new("Profile tab content").into()
+                    profile_tab
                 )
             ],
             |tab_id| Message::DoAction(Box::new(PostsAction::SelectTab(tab_id)))
@@ -1034,7 +1076,12 @@ impl Scene for Posts {
                 ModalType::ShowingPost(post_index) => {
                     let post = self.get_active_tab().get_post(post_index).unwrap();
 
-                    Self::gen_show_post(post_index, post, globals)
+                    Self::gen_show_post(
+                        post_index,
+                        Handle::from_memory(self.images[&post.get_id()].as_ref().clone()),
+                        post,
+                        globals
+                    )
                 }
                 ModalType::ShowingReport(post_index) => {
                     self.gen_show_report(post_index, globals)

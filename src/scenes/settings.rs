@@ -160,7 +160,7 @@ impl Scene for Settings {
     fn new(options: Option<Box<dyn SceneOptions<Self>>>, globals: &mut Globals)
         -> (Self, Command<Message>) where Self: Sized {
 
-        let user = globals.get_user().unwrap();
+        let user = globals.get_user().unwrap().clone();
 
         let mut settings = Self {
             username_input: user.get_username().clone(),

@@ -3,7 +3,6 @@ use mongodb::Database;
 use mongodb::options::{AggregateOptions, UpdateOptions};
 use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
-use crate::database;
 use crate::database::base::resolve_cursor;
 use crate::scenes::data::posts::{Comment, Post};
 
@@ -29,7 +28,7 @@ pub async fn get_comments(db: &Database, filter: Document) -> Result<Vec<Comment
         ],
         AggregateOptions::builder().allow_disk_use(true).build()
     ).await {
-        Ok(ref mut cursor) => Ok(database::base::resolve_cursor::<Comment>(cursor).await),
+        Ok(ref mut cursor) => Ok(resolve_cursor::<Comment>(cursor).await),
         Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
     }
 }
@@ -37,13 +36,10 @@ pub async fn get_comments(db: &Database, filter: Document) -> Result<Vec<Comment
 /// Inserts a comment from the given document.
 pub async fn create_comment(db: &Database, comment: &Document) -> Result<(), Error>
 {
-    match db.collection::<Document>("comments").insert_one(
+    db.collection::<Document>("comments").insert_one(
         comment,
         None
-    ).await {
-        Ok(_) => Ok(()),
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
-    }
+    ).await.map(|_| ()).map_err(Into::into)
 }
 
 /// Generates recommendations for the user with the given id.
@@ -443,12 +439,8 @@ pub async fn get_random_posts(db: &Database, count: usize, user_id: Uuid, denied
         ],
         AggregateOptions::builder().allow_disk_use(true).build()
     ).await {
-        Ok(ref mut cursor) => {
-            Ok(database::base::resolve_cursor::<Post>(cursor).await)
-        },
-        Err(err) => {
-            Err(Error::DebugError(DebugError::new(err.to_string())))
-        }
+        Ok(ref mut cursor) => Ok(resolve_cursor::<Post>(cursor).await),
+        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
     }
 }
 
@@ -457,7 +449,7 @@ pub async fn get_random_posts(db: &Database, count: usize, user_id: Uuid, denied
 pub async fn update_rating(db: &Database, post_id: Uuid, user_id: Uuid, rating: i32)
    -> Result<(), Error>
 {
-    match db.collection::<Document>("ratings").update_one(
+    db.collection::<Document>("ratings").update_one(
         doc! {
             "post_id": post_id,
             "user_id": user_id,
@@ -468,23 +460,17 @@ pub async fn update_rating(db: &Database, post_id: Uuid, user_id: Uuid, rating: 
             }
         },
         UpdateOptions::builder().upsert(true).build()
-    ).await {
-        Ok(_) => Ok(()),
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
-    }
+    ).await.map(|_| ()).map_err(Into::into)
 }
 
 /// Deletes the rating that the user has given the post.
 pub async fn delete_rating(db: &Database, post_id: Uuid, user_id: Uuid) -> Result<(), Error>
 {
-    match db.collection::<Document>("ratings").delete_one(
+    db.collection::<Document>("ratings").delete_one(
         doc! {
                 "post_id": post_id,
                 "user_id": user_id
             },
         None
-    ).await {
-        Ok(_) => Ok(()),
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
-    }
+    ).await.map(|_| ()).map_err(Into::into)
 }

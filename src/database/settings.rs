@@ -3,7 +3,7 @@ use mongodb::Database;
 use crate::errors::auth::AuthError;
 use crate::errors::debug::DebugError;
 use crate::errors::error::Error;
-use crate::scene::Globals;
+use crate::scene::{Globals};
 
 /// Updates the data of a user, given their [id](Uuid) and what needs to be updated.
 pub async fn update_user(db: &Database, user_id: Uuid, update: Document) -> Result<(), Error>

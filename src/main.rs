@@ -29,6 +29,8 @@ use theme::Theme;
 use iced::{executor, window, Application, Command, Element, Renderer, Settings, Subscription};
 use lettre::{AsyncSmtpTransport, Tokio1Executor, AsyncTransport};
 
+pub const LOADING_IMAGE :&[u8]= include_bytes!("images/loading.png");
+
 pub fn main() -> iced::Result {
     Chartsy::run(Settings {
         antialiasing: true,

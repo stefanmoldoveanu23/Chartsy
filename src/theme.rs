@@ -26,6 +26,7 @@ pub mod pallete {
 
 /// Module that implements the [text](iced::widget::text::Text) [StyleSheet] for the custom [Theme].
 pub(crate) mod text {
+    use iced::Color;
     use crate::theme::Theme;
     use iced::widget::text::{Appearance, StyleSheet};
 
@@ -35,7 +36,8 @@ pub(crate) mod text {
         Default,
         Light,
         Dark,
-        Error
+        Error,
+        Gray
     }
 
     impl StyleSheet for Theme {
@@ -54,6 +56,9 @@ pub(crate) mod text {
                 },
                 Text::Error => Appearance {
                     color: Some(super::pallete::DANGER)
+                },
+                Text::Gray => Appearance {
+                    color: Some(Color::from_rgb(0.5, 0.5, 0.5))
                 }
             }
         }
