@@ -8,6 +8,7 @@ use iced::widget::{Column, Row, Scrollable, Image, Text, TextInput, Button, Spac
 use iced::widget::tooltip::Position;
 use iced_aw::{TabLabel, Tabs};
 use lettre::message::{Attachment, MultiPart, SinglePart};
+use moka::future::Cache;
 use mongodb::bson::Uuid;
 use mongodb::Database;
 use crate::widgets::closeable::Closeable;
@@ -39,7 +40,7 @@ enum PostsAction {
     LoadedPosts(Vec<Post>, PostTabs),
 
     /// Triggers when the given amount of images from the posts have been loaded.
-    LoadedImage{ image: Arc<Vec<u8>>, post_id: Uuid },
+    LoadedImage{ image: Arc<Vec<u8>>, id: Uuid},
 
     /// Loads a batch of images.
     LoadBatch(PostTabs),
@@ -154,6 +155,36 @@ pub struct Posts {
 }
 
 impl Posts {
+    /// Get an image if it is not in cache.
+    fn get_image(image_id: Uuid, image_path: String, cache: &Cache<Uuid, Arc<Vec<u8>>>) -> Command<Message>
+    {
+        let cache = cache.clone();
+
+        Command::perform(
+            async move {
+                cache.try_get_with(
+                    image_id,
+                    async move {
+                        database::base::download_file(image_path).await.map(
+                            |data| Arc::new(data)
+                        )
+                    }
+                ).await
+            },
+            move |result| {
+                match result {
+                    Ok(data) => Message::DoAction(
+                        Box::new(PostsAction::LoadedImage {
+                            image: data,
+                            id: image_id,
+                        })
+                    ),
+                    Err(err) => Message::Error(err.as_ref().clone())
+                }
+            }
+        )
+    }
+
     /// Creates a command that returns a list of recommended posts.
     fn gen_recommended(db: Database, user_id: Uuid) -> Command<Message>
     {
@@ -219,21 +250,28 @@ impl Posts {
     }
 
     /// Creates a command that returns the list of posts on the given users profile.
-    fn gen_profile(db: Database, user_id: Uuid) -> Command<Message>
-    {
-        Command::perform(
-            async move {
-                database::posts::get_user_posts(&db, user_id).await
-            },
-            |result| {
-                match result {
-                    Ok(posts) => Message::DoAction(Box::new(
-                        PostsAction::LoadedPosts(posts, PostTabs::Profile)
-                    )),
-                    Err(err) => Message::Error(err)
+    fn gen_profile(
+        db: Database,
+        user_id: Uuid,
+        profile_picture_path: String,
+        cache: &Cache<Uuid, Arc<Vec<u8>>>
+    ) -> Command<Message> {
+        Command::batch(vec![
+            Command::perform(
+                async move {
+                    database::posts::get_user_posts(&db, user_id).await
+                },
+                |result| {
+                    match result {
+                        Ok(posts) => Message::DoAction(Box::new(
+                            PostsAction::LoadedPosts(posts, PostTabs::Profile)
+                        )),
+                        Err(err) => Message::Error(err)
+                    }
                 }
-            }
-        )
+            ),
+            Self::get_image(user_id, profile_picture_path, cache)
+        ])
     }
 
     /// Applies the update corresponding the given message.
@@ -727,7 +765,16 @@ impl Scene for Posts {
                         }
                     }
                 ),
-                Self::gen_profile(db, user_id)
+                Self::gen_profile(
+                    db,
+                    user_id,
+                    if globals.get_user().unwrap().has_profile_picture() {
+                        format!("/{}/profile_picture.webp", user_id)
+                    } else {
+                        String::from("/default_profile_picture.webp")
+                    },
+                    globals.get_cache()
+                )
             ])
         )
     }
@@ -762,7 +809,16 @@ impl Scene for Posts {
                         user_id,
                         self.tags.iter().map(|tag| tag.get_name().clone()).collect()
                     ),
-                    PostTabs::Profile => Self::gen_profile(db, user_id)
+                    PostTabs::Profile => Self::gen_profile(
+                        db,
+                        user_id,
+                        if globals.get_user().unwrap().has_profile_picture() {
+                            format!("/{}/profile_picture.webp", user_id)
+                        } else {
+                            String::from("/default_profile_picture.webp")
+                        },
+                        globals.get_cache()
+                    )
                 }
             }
             PostsAction::LoadedPosts(posts, tab) => {
@@ -776,17 +832,21 @@ impl Scene for Posts {
                     Command::none()
                 }
             }
-            PostsAction::LoadedImage { image, post_id } => {
-                let post_id = *post_id;
+            PostsAction::LoadedImage { image, id } => {
+                if self.images.contains_key(id) {
+                    return Command::none();
+                }
+
+                let id = *id;
                 let image = image.clone();
-                self.images.insert(post_id, image.clone());
+                self.images.insert(id, image.clone());
 
                 let cache = globals.get_cache().clone();
 
                 Command::perform(
                     async move {
-                        if !cache.contains_key(&post_id) {
-                            cache.insert(post_id, image.clone()).await
+                        if !cache.contains_key(&id) {
+                            cache.insert(id, image.clone()).await
                         }
                     },
                     |()| Message::None
@@ -794,36 +854,38 @@ impl Scene for Posts {
             }
             PostsAction::LoadBatch(tab) => {
                 let tab = tab.clone();
-                let posts_data = self.get_tab_mut(tab).load_batch();
+                let posts = self.get_tab_mut(tab).load_batch();
+                let mut user_ids = HashSet::<Uuid>::new();
 
-                Command::batch(
-                    posts_data.into_iter().map(
-                        |(user_id, post_id)| {
-                            let cache = globals.get_cache().clone();
+                let mut commands = vec![];
 
-                            Command::perform(
-                                async move {
-                                    cache.get(&post_id).await.map(Ok).unwrap_or(
-                                        database::base::download_file(
-                                            format!("/{}/{}.webp", user_id, post_id)
-                                        ).await.map(Arc::new)
-                                    )
-                                },
-                                move |data| {
-                                    match data {
-                                        Ok(data) => Message::DoAction(
-                                            Box::new(PostsAction::LoadedImage {
-                                                image: data,
-                                                post_id
-                                            })
-                                        ),
-                                        Err(err) => Message::Error(err)
-                                    }
-                                }
-                            )
-                        }
-                    )
-                )
+                for post in posts {
+                    let post_id = post.get_id();
+                    let user_id = post.get_user().get_id();
+
+                    commands.push(Self::get_image(
+                        post_id,
+                        format!("/{}/{}.webp", user_id, post_id),
+                        globals.get_cache()
+                    ));
+
+                    if !user_ids.contains(&user_id) {
+                        let has_profile_picture = post.get_user().has_profile_picture();
+                        user_ids.insert(user_id);
+
+                        commands.push(Self::get_image(
+                            user_id,
+                            if has_profile_picture {
+                                format!("/{}/profile_picture.webp", user_id)
+                            } else {
+                                String::from("/default_profile_picture.webp")
+                            },
+                            globals.get_cache()
+                        ));
+                    }
+                }
+
+                Command::batch(commands)
             }
             PostsAction::CommentMessage(message) => {
                 self.update_comment(message, globals)

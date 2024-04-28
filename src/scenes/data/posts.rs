@@ -329,19 +329,14 @@ impl PostList {
     }
 
     /// Load the next batch of images.
-    pub fn load_batch(&mut self) -> Vec<(Uuid, Uuid)>
+    pub fn load_batch(&mut self) -> &[Post]
     {
         let start = self.loaded;
         let total = self.posts.len();
 
         self.loaded += 10.min(total - start);
 
-        self.posts[start..self.loaded].iter().map(
-            |post| (
-                post.get_user().get_id(),
-                post.get_id()
-            )
-        ).collect::<Vec<(Uuid, Uuid)>>()
+        &self.posts[start..self.loaded]
     }
 
     /// Change the rating given to a post by the authenticated user.
