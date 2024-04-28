@@ -1,6 +1,6 @@
 use mongodb::bson::{doc, Document, Uuid};
 use mongodb::Database;
-use crate::errors::debug::DebugError;
+use crate::errors::debug::{debug_message, DebugError};
 use crate::errors::error::Error;
 use crate::database;
 
@@ -14,6 +14,6 @@ pub async fn get_drawings(db: &Database, user_id: Uuid) -> Result<Vec<Document>,
         None
     ).await {
         Ok(ref mut cursor) => Ok(database::base::resolve_cursor::<Document>(cursor).await),
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
     }
 }

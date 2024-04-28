@@ -28,7 +28,7 @@ use crate::canvas::tools::{
     rect::RectPending, triangle::TrianglePending,
 };
 use crate::database;
-use crate::errors::debug::DebugError;
+use crate::errors::debug::{debug_message, DebugError};
 use crate::errors::error::Error;
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::scenes::scenes::Scenes;
@@ -348,7 +348,7 @@ impl Scene for Box<Drawing> {
         } else {
             return Command::perform(async {}, move |()| Message::Error(
                 Error::DebugError(DebugError::new(
-                    format!("Message doesn't belong to drawing scene: {}.", message.get_name())
+                    debug_message!(format!("Message doesn't belong to drawing scene: {}.", message.get_name()))
                 ))
             ))
         };
@@ -381,7 +381,7 @@ impl Scene for Box<Drawing> {
 
                         match database::base::upload_file(
                             format!("/{}/{}.webp", user_id, post_id),
-                            img
+                            img.to_vec()
                         ).await {
                             Ok(()) => { }
                             Err(err) => {

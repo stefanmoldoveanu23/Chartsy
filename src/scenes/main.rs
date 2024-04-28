@@ -9,7 +9,7 @@ use iced::{Alignment, Command, Element, Length, Renderer};
 use iced_aw::{Tabs, TabLabel};
 use mongodb::bson::{Bson, Uuid, UuidRepresentation, Document};
 use crate::database;
-use crate::errors::debug::DebugError;
+use crate::errors::debug::{debug_message, DebugError};
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::card::Card;
 
@@ -286,7 +286,7 @@ impl Scene for Main {
         } else {
             return Command::perform(async {}, move |()| Message::Error(
                 Error::DebugError(DebugError::new(
-                    format!("Message doesn't belong to main scene: {}.", message.get_name())
+                    debug_message!(format!("Message doesn't belong to main scene: {}.", message.get_name()))
                 ))
             ))
         };

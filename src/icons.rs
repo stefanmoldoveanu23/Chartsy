@@ -17,7 +17,8 @@ pub enum Icon {
     Hidden,
     Add,
     Leave,
-    Report
+    Report,
+    Loading
 }
 
 pub enum ToolIcon {
@@ -44,6 +45,7 @@ impl Display for Icon {
                 Icon::Add => '\u{F0FE}',
                 Icon::Leave => '\u{F0A8}',
                 Icon::Report => '\u{F0CE7}',
+                Icon::Loading => '\u{F1978}'
             }
         )
     }

@@ -1,15 +1,14 @@
 use std::any::Any;
 use std::fs;
 use std::io::Cursor;
+use std::ops::Deref;
 use iced::{Alignment, Command, Element, Length, Renderer};
 use iced::advanced::image::Handle;
 use iced::widget::{Button, Column, Row, Scrollable, Space, Text, TextInput};
-use image::imageops::FilterType;
-use image::Pixel;
 use mongodb::bson::doc;
 use rfd::AsyncFileDialog;
 use crate::errors::auth::AuthError;
-use crate::errors::debug::DebugError;
+use crate::errors::debug::{debug_message, DebugError};
 use crate::errors::error::Error;
 use crate::icons::{Icon, ICON};
 use crate::database;
@@ -17,6 +16,8 @@ use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
 use crate::scenes::data::auth::User;
 use crate::scenes::scenes::Scenes;
 use crate::theme::Theme;
+use crate::widgets::modal_stack::ModalStack;
+use crate::widgets::wait_panel::WaitPanel;
 
 /// The struct for the settings [Scene].
 pub struct Settings {
@@ -40,6 +41,9 @@ pub struct Settings {
 
     /// This is checked when the user has deleted their account.
     deleted_account: bool,
+
+    /// Tells whether the loading panel is activated.
+    modal_stack: ModalStack<()>,
 }
 
 /// This scene has no options.
@@ -90,6 +94,9 @@ pub enum SettingsAction {
     /// Sets the users profile picture to the image selected in the file dialog.
     SetImage(Vec<u8>),
 
+    /// Triggered when a new profile picture has been saved.
+    SavedProfilePicture,
+
     /// Deletes the current users account.
     DeleteAccount,
 
@@ -115,6 +122,7 @@ impl Action for SettingsAction {
             SettingsAction::LoadedProfilePicture(_) => String::from("Loaded profile picture"),
             SettingsAction::SelectImage => String::from("Select image"),
             SettingsAction::SetImage(_) => String::from("Set image"),
+            SettingsAction::SavedProfilePicture => String::from("Saved profile picture"),
             SettingsAction::DeleteAccount => String::from("Delete account"),
             SettingsAction::Error(_) => String::from("Error")
         }
@@ -122,37 +130,6 @@ impl Action for SettingsAction {
 
     fn boxed_clone(&self) -> Box<dyn Action + 'static> {
         Box::new((*self).clone())
-    }
-}
-
-impl Settings {
-    /// Useless here; keep for later implementations.
-    async fn process_profile_image(data: &Vec<u8>) -> Vec<u8>
-    {
-        let image = image::load_from_memory(data.as_slice()).unwrap();
-        let image = image.to_rgba8();
-        let size = 500;
-        let mut image = image::imageops::resize(
-            &image,
-            size,
-            size,
-            FilterType::Lanczos3
-        );
-        let radius = (size as f32) / 2.0;
-        let mut pixels = image.pixels_mut();
-
-        for x in 0..size {
-            let dx = x as f32 - radius;
-
-            for y in 0..size {
-                let dy = y as f32 - radius;
-                let distance = (dx * dx + dy * dy).sqrt();
-                let alpha = if distance <= radius { 1 } else { 0 };
-                pixels.next().unwrap().channels_mut()[3] *= alpha as u8;
-            }
-        }
-
-        image.into_raw()
     }
 }
 
@@ -170,6 +147,7 @@ impl Scene for Settings {
             profile_picture_input: Handle::from_path("./src/images/loading.png"),
             input_error: None,
             deleted_account: false,
+            modal_stack: ModalStack::new()
         };
 
         if let Some(options) = options {
@@ -213,7 +191,7 @@ impl Scene for Settings {
         } else {
             return Command::perform(async {}, move |()| Message::Error(
                 Error::DebugError(DebugError::new(
-                    format!("Message doesn't belong to settiongs scene: {}.", message.get_name())
+                    debug_message!(format!("Message doesn't belong to settings scene: {}.", message.get_name()))
                 ))
             ))
         };
@@ -355,7 +333,7 @@ impl Scene for Settings {
                                 }
                             }
                             None => Err(Error::DebugError(
-                                DebugError::new("Error getting file path.")
+                                DebugError::new(debug_message!("Error getting file path."))
                             ))
                         }
                     },
@@ -369,6 +347,7 @@ impl Scene for Settings {
             },
             SettingsAction::SetImage(data) => {
                 self.profile_picture_input = Handle::from_memory(data.clone());
+                self.modal_stack.toggle_modal(());
 
                 let need_mongo_update = !globals.get_user().unwrap().has_profile_picture();
                 globals.get_user_mut().as_mut().unwrap().set_profile_picture();
@@ -384,15 +363,19 @@ impl Scene for Settings {
                                 let dyn_image = match image::load_from_memory(data.as_slice()) {
                                     Ok(image) => image,
                                     Err(err) => {
-                                        return Err(Error::DebugError(DebugError::new(err.to_string())));
+                                        return Err(Error::DebugError(DebugError::new(
+                                            debug_message!(err.to_string())
+                                        )));
                                     }
                                 };
 
-                                let mut webp_data :Vec<u8>= vec![];
-                                let mut cursor = Cursor::new(&mut webp_data);
-                                match dyn_image.write_to(&mut cursor, image::ImageFormat::WebP) {
-                                    Ok(_) => Ok(webp_data.into_boxed_slice()),
-                                    Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+                                match webp::Encoder::from_image(&dyn_image) {
+                                    Ok(encoder) => {
+                                        Ok(encoder.encode(20.0).deref().to_vec())
+                                    },
+                                    Err(err) => {
+                                        Err(Error::DebugError(DebugError::new(debug_message!(err))))
+                                    }
                                 }
                             }
                         ).await {
@@ -401,7 +384,9 @@ impl Scene for Settings {
                                 return Err(err);
                             }
                             Err(err) => {
-                                return Err(Error::DebugError(DebugError::new(err.to_string())))
+                                return Err(Error::DebugError(DebugError::new(
+                                    debug_message!(err.to_string())
+                                )))
                             }
                         };
 
@@ -420,8 +405,8 @@ impl Scene for Settings {
                                 &db,
                                 user_id,
                                 doc! {
-                                "profile_picture": true
-                            }
+                                    "profile_picture": true
+                                }
                             ).await
                         } else {
                             Ok(())
@@ -429,11 +414,16 @@ impl Scene for Settings {
                     },
                     |result| {
                         match result {
-                            Ok(_) => Message::None,
+                            Ok(_) => Message::DoAction(Box::new(SettingsAction::SavedProfilePicture)),
                             Err(err) => Message::Error(err)
                         }
                     }
                 )
+            }
+            SettingsAction::SavedProfilePicture => {
+                self.modal_stack.toggle_modal(());
+
+                Command::none()
             }
             SettingsAction::DeleteAccount => {
                 let user_id = globals.get_user().unwrap().get_id();
@@ -665,7 +655,7 @@ impl Scene for Settings {
                 .on_press(Message::DoAction(Box::new(SettingsAction::DeleteAccount)))
                 .into();
 
-        Column::from_vec(vec![
+        let underlay = Column::from_vec(vec![
             title.into(),
             Scrollable::new(
                 Row::with_children(vec![
@@ -705,8 +695,13 @@ impl Scene for Settings {
         ])
             .width(Length::Fill)
             .align_items(Alignment::Center)
-            .spacing(20.0)
-            .into()
+            .spacing(20.0);
+
+        let generate_modal = |()| {
+            WaitPanel::new("Saving image. Please wait...").into()
+        };
+
+        self.modal_stack.get_modal(underlay, generate_modal)
     }
 
     fn get_error_handler(&self, error: Error) -> Box<dyn Action> { Box::new(SettingsAction::Error(error)) }

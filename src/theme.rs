@@ -37,7 +37,8 @@ pub(crate) mod text {
         Light,
         Dark,
         Error,
-        Gray
+        Gray,
+        Custom(Color)
     }
 
     impl StyleSheet for Theme {
@@ -59,6 +60,9 @@ pub(crate) mod text {
                 },
                 Text::Gray => Appearance {
                     color: Some(Color::from_rgb(0.5, 0.5, 0.5))
+                },
+                Text::Custom(color) => Appearance {
+                    color: Some(color)
                 }
             }
         }
@@ -198,7 +202,8 @@ pub(crate) mod container {
         #[default]
         Default,
         Bordered,
-        Badge(Color)
+        Badge(Color),
+        Panel(Background),
     }
     impl StyleSheet for super::Theme {
         type Style = Container;
@@ -234,6 +239,10 @@ pub(crate) mod container {
                         text_color: Some(contrast),
                         ..Default::default()
                     }
+                }
+                Container::Panel(background) => Appearance {
+                    background: Some(*background),
+                    ..Default::default()
                 }
             }
         }

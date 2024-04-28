@@ -3,7 +3,7 @@ use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
 use mongodb::Database;
 use crate::canvas::tool;
 use crate::canvas::tool::Tool;
-use crate::errors::debug::DebugError;
+use crate::errors::debug::{debug_message, DebugError};
 use crate::errors::error::Error;
 use crate::database;
 use crate::scenes::data::drawing::Tag;
@@ -38,17 +38,17 @@ pub async fn get_drawing(db: &Database, id: Uuid)
                ).collect()
             } else {
                 return Err(Error::DebugError(DebugError::new(
-                    "Error retrieving layers from database!".to_string()
+                    debug_message!("Error retrieving layers from database!")
                 )));
             }
         }
         Ok(None) => {
             return Err(Error::DebugError(DebugError::new(
-                format!("The canvas with id {} could not be found in the database!", id)
+                debug_message!(format!("The canvas with id {} could not be found in the database!", id))
             )));
         }
         Err(err) => {
-            return Err(Error::DebugError(DebugError::new(err.to_string())));
+            return Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))));
         }
     };
 
@@ -64,7 +64,7 @@ pub async fn get_drawing(db: &Database, id: Uuid)
             ).collect()
         }
         Err(err) => {
-            return Err(Error::DebugError(DebugError::new(err.to_string())));
+            return Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))));
         }
     };
 
@@ -89,7 +89,7 @@ pub async fn create_drawing(db: &Database, id: Uuid, user_id: Uuid)
         None
     ).await {
         Ok(_) => Ok((layer_id, "New layer".into())),
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
     }
 }
 
@@ -108,7 +108,7 @@ pub async fn create_post(db: &Database, id: Uuid, user_id: Uuid, description: St
         None
     ).await {
         Ok(_) => Ok(()),
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
     }
 }
 
@@ -122,7 +122,7 @@ pub async fn get_tags(db: &Database) -> Result<Vec<Tag>, Error>
         Ok(ref mut cursor) => {
             Ok(database::base::resolve_cursor::<Tag>(cursor).await)
         }
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
     }
 }
 
@@ -158,7 +158,7 @@ pub async fn update_drawing(
     ).await {
         Ok(_) => { },
         Err(err) => {
-            return Err(Error::DebugError(DebugError::new(err.to_string())));
+            return Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))));
         }
     }
 
@@ -169,7 +169,7 @@ pub async fn update_drawing(
         ).await {
             Ok(_) => { },
             Err(err) => {
-                return Err(Error::DebugError(DebugError::new(err.to_string())));
+                return Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))));
             }
         }
     }
@@ -195,12 +195,12 @@ pub async fn update_drawing(
                 Ok(())
             } else {
                 Err(Error::DebugError(DebugError::new(
-                    format!("Drawing with id {} not found!", canvas_id)
+                    debug_message!(format!("Drawing with id {} not found!", canvas_id))
                 )))
             }
         }
         Err(err) => {
-            Err(Error::DebugError(DebugError::new(err.to_string())))
+            Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
         }
     }
 }

@@ -6,7 +6,7 @@ use mongodb::{Client, Cursor};
 use mongodb::bson::Document;
 use mongodb::options::ClientOptions;
 use crate::config;
-use crate::errors::debug::DebugError;
+use crate::errors::debug::{debug_message, DebugError};
 use crate::errors::error::Error;
 use crate::serde::Deserialize;
 
@@ -17,15 +17,22 @@ pub async fn connect_to_mongodb() -> Result<Client, Error>
     where
         Client: Send + 'static,
 {
-    let client_options = ClientOptions::parse(
+    let client_options = match ClientOptions::parse(
         format!(
             "mongodb+srv://{}:{}@chartsy.1fzpgot.mongodb.net/?retryWrites=true&w=majority&appName=Chartsy",
             config::mongo_name(),
             config::mongo_pass()
         )
-    ).await?;
+    ).await {
+        Ok(options) => options,
+        Err(err) => {
+            return Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+        }
+    };
 
-    Client::with_options(client_options).map_err(|err| err.into())
+    Client::with_options(client_options).map_err(
+        |err| Error::DebugError(DebugError::new(debug_message!(err.to_string())))
+    )
 }
 
 /// Collects all entries of the cursor, attempting to deserialize them in the functions Type.
@@ -69,11 +76,11 @@ pub async fn connect_to_dropbox() -> Result<UserAuthDefaultClient, Error>
                 .unwrap();
             UserAuthDefaultClient::new(auth)
         }
-    ).await.map_err(|err| Error::DebugError(DebugError::new(err.to_string())))
+    ).await.map_err(|err| Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
 }
 
 /// Uploads a file to dropbox.
-pub async fn upload_file(path: String, data: Box<[u8]>) -> Result<(), Error>
+pub async fn upload_file(path: String, data: Vec<u8>) -> Result<(), Error>
 {
     let client = match connect_to_dropbox().await {
         Ok(client) => client,
@@ -90,17 +97,17 @@ pub async fn upload_file(path: String, data: Box<[u8]>) -> Result<(), Error>
                 &UploadArg::new(path)
                     .with_mute(false)
                     .with_mode(WriteMode::Overwrite),
-                &data
+                data.as_slice()
             ) {
                 Ok(Ok(_)) => Ok(()),
-                Ok(Err(err)) => Err(Error::DebugError(DebugError::new(err.to_string()))),
-                Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+                Ok(Err(err)) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string())))),
+                Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
             }
         }
     ).await {
         Ok(Ok(_)) => Ok(()),
         Ok(Err(err)) => Err(err),
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
     }
 }
 
@@ -130,24 +137,24 @@ pub async fn download_file(path: String) -> Result<Vec<u8>, Error>
                             match io::copy(reader, &mut data) {
                                 Ok(_) => Ok(data),
                                 Err(err) => Err(Error::DebugError(
-                                    DebugError::new(err.to_string())
+                                    DebugError::new(debug_message!(err.to_string()))
                                 ))
                             }
                         }
                         None => Err(Error::DebugError(DebugError::new(
-                            format!("Could not find reader for the file {}.", path)
+                            debug_message!(format!("Could not find reader for the file {}.", path))
                         )))
                     }
                 }
                 Ok(Err(err)) => Err(Error::DebugError(
                     DebugError::new(err.to_string())
                 )),
-                Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+                Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
             }
         }
     ).await {
         Ok(Ok(data)) => Ok(data),
         Ok(Err(err)) => Err(err),
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
     }
 }

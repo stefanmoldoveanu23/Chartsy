@@ -8,7 +8,7 @@ use iced::{Element, Length, Renderer, Command};
 use iced_aw::{TabLabel, Tabs};
 use std::any::Any;
 use crate::database;
-use crate::errors::debug::DebugError;
+use crate::errors::debug::{debug_message, DebugError};
 use crate::scenes::data::auth::*;
 use crate::serde::Serialize;
 
@@ -162,7 +162,7 @@ impl Scene for Auth {
         } else {
             return Command::perform(async {}, move |()| Message::Error(
                 Error::DebugError(DebugError::new(
-                    format!("Message doesn't belong to auth scene: {}.", message.get_name())
+                    debug_message!(format!("Message doesn't belong to auth scene: {}.", message.get_name()))
                 ))
             ))
         };

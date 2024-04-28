@@ -47,11 +47,3 @@ impl Debug for Error {
         }
     }
 }
-
-impl From<mongodb::error::Error> for Error {
-    fn from(value: mongodb::error::Error) -> Self {
-        Error::DebugError(DebugError::new(
-            String::from("Error accessing database:\n") + &*value.to_string(),
-        ))
-    }
-}

@@ -15,7 +15,7 @@ use crate::widgets::closeable::Closeable;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::post_summary::PostSummary;
 use crate::{config, database, LOADING_IMAGE};
-use crate::errors::debug::DebugError;
+use crate::errors::debug::{debug_message, DebugError};
 use crate::errors::error::Error;
 use crate::icons::{ICON, Icon};
 use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
@@ -792,7 +792,7 @@ impl Scene for Posts {
         } else {
             return Command::perform(async {}, move |()| Message::Error(
                 Error::DebugError(DebugError::new(
-                    format!("Message doesn't belong to posts scene: {}.", message.get_name())
+                    debug_message!(format!("Message doesn't belong to posts scene: {}.", message.get_name()))
                 ))
             ))
         };
@@ -1104,7 +1104,23 @@ impl Scene for Posts {
             .into();
 
         let profile_tab = Column::with_children(vec![
-            Text::new("Profile tab content").into()
+            Column::with_children(vec![
+                Image::new(Handle::from_memory(
+                    self.images.get(&self.user_profile.get_id()).map(
+                        |image| image.as_ref().clone()
+                    ).unwrap_or(LOADING_IMAGE.to_vec())
+                ))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into(),
+                Text::new(self.user_profile.get_username())
+                    .size(30.0)
+                    .into()
+            ])
+                .align_items(Alignment::Center)
+                .padding([0.0, 300.0, 0.0, 300.0])
+                .spacing(20.0)
+                .into()
         ])
             .into();
 

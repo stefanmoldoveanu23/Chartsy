@@ -10,6 +10,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use moka::future::Cache;
 use mongodb::bson::Uuid;
+use crate::debug_message;
+use crate::errors::debug::DebugError;
 
 /// An individual scene that handles its actions internally.
 pub trait Scene: Send + Sync {
@@ -144,7 +146,9 @@ impl Globals {
     /// Starts a mongo session and returns it.
     pub async fn start_session(&self) -> Option<Result<ClientSession, Error>> {
         match &self.mongo_client {
-            Some(client) => Some(client.start_session(None).await.map_err(|err| err.into())),
+            Some(client) => Some(client.start_session(None).await.map_err(
+                |err| Error::DebugError(DebugError::new(debug_message!(err.to_string())))
+            )),
             None => None
         }
     }

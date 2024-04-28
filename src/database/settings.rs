@@ -1,7 +1,7 @@
 use mongodb::bson::{Bson, DateTime, doc, Document, Uuid};
 use mongodb::Database;
 use crate::errors::auth::AuthError;
-use crate::errors::debug::DebugError;
+use crate::errors::debug::{debug_message, DebugError};
 use crate::errors::error::Error;
 use crate::scene::{Globals};
 
@@ -22,11 +22,11 @@ pub async fn update_user(db: &Database, user_id: Uuid, update: Document) -> Resu
                 Ok(())
             } else {
                 Err(Error::DebugError(DebugError::new(
-                    format!("Database couldn't find a user with id {}.", user_id)
+                    debug_message!(format!("Database couldn't find a user with id {}.", user_id))
                 )))
             }
         }
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
     }
 }
 
@@ -37,7 +37,12 @@ pub async fn find_user_by_tag(globals: &Globals, user_tag: String) -> Result<(),
 
     let db = globals.get_db().unwrap();
     let mut session = globals.start_session().await.unwrap()?;
-    session.start_transaction(None).await?;
+    match session.start_transaction(None).await {
+        Ok(_) => { },
+        Err(err) => {
+            return Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+        }
+    }
 
     match db.collection::<Document>("users").find_one_with_session(
         doc! {
@@ -47,13 +52,25 @@ pub async fn find_user_by_tag(globals: &Globals, user_tag: String) -> Result<(),
         &mut session
     ).await {
         Ok(Some(_)) => {
-            session.abort_transaction().await?;
-            return Err(Error::AuthError(AuthError::UserTagAlreadyExists));
+            return match session.abort_transaction().await {
+                Ok(_) => {
+                    Err(Error::AuthError(AuthError::UserTagAlreadyExists))
+                },
+                Err(err) => {
+                    Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+                }
+            }
         },
         Ok(None) => { },
         Err(err) => {
-            session.abort_transaction().await?;
-            return Err(Error::DebugError(DebugError::new(err.to_string())));
+            return match session.abort_transaction().await {
+                Ok(_) => {
+                    Err(Error::DebugError(DebugError::new(err.to_string())))
+                },
+                Err(err) => {
+                    Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+                }
+            }
         }
     }
 
@@ -71,18 +88,24 @@ pub async fn find_user_by_tag(globals: &Globals, user_tag: String) -> Result<(),
     ).await {
         Ok(result) => {
             if result.modified_count > 0 {
-                session.commit_transaction().await?;
-                Ok(())
+                match session.commit_transaction().await {
+                    Ok(_) => Ok(()),
+                    Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+                }
             } else {
-                session.abort_transaction().await?;
-                Err(Error::DebugError(DebugError::new(
-                    format!("Database could not find user with id {}!", user_id)
-                )))
+                match session.abort_transaction().await {
+                    Ok(_) => Err(Error::DebugError(DebugError::new(
+                            debug_message!(format!("Database could not find user with id {}!", user_id))
+                        ))),
+                    Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+                }
             }
         }
         Err(err) => {
-            session.abort_transaction().await?;
-            Err(Error::DebugError(DebugError::new(err.to_string())))
+            match session.abort_transaction().await {
+                Ok(_) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string())))),
+                Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+            }
         }
     }
 }
@@ -110,10 +133,10 @@ pub async fn delete_account(db: &Database, id: Uuid) -> Result<(), Error>
                 Ok(())
             } else {
                 Err(Error::DebugError(DebugError::new(
-                    format!("Database could not find user with id {}.", id)
+                    debug_message!(format!("Database could not find user with id {}.", id))
                 )))
             }
         }
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
     }
 }

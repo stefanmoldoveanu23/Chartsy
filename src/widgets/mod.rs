@@ -7,3 +7,4 @@ pub mod combo_box;
 pub mod card;
 pub mod grid;
 pub mod rating;
+pub mod wait_panel;

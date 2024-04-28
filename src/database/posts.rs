@@ -1,7 +1,7 @@
 use mongodb::bson::{doc, Document, Uuid};
 use mongodb::Database;
 use mongodb::options::{AggregateOptions, UpdateOptions};
-use crate::errors::debug::DebugError;
+use crate::errors::debug::{debug_message, DebugError};
 use crate::errors::error::Error;
 use crate::database::base::resolve_cursor;
 use crate::scenes::data::posts::{Comment, Post};
@@ -39,7 +39,7 @@ pub async fn create_comment(db: &Database, comment: &Document) -> Result<(), Err
     db.collection::<Document>("comments").insert_one(
         comment,
         None
-    ).await.map(|_| ()).map_err(Into::into)
+    ).await.map(|_| ()).map_err(|err| Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
 }
 
 /// Generates recommendations for the user with the given id.
@@ -294,7 +294,7 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
             Ok(resolve_cursor::<Post>(cursor).await)
         },
         Err(err) => {
-            Err(Error::DebugError(DebugError::new(err.to_string())))
+            Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
         }
     }
 }
@@ -355,21 +355,64 @@ pub async fn get_filtered(db: &Database, user_id: Uuid, tags: Vec<String>) -> Re
         AggregateOptions::builder().allow_disk_use(true).build()
     ).await {
         Ok(ref mut cursor) => Ok(resolve_cursor::<Post>(cursor).await),
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
     }
 }
 
 /// Gets the posts of the user with the given id.
 pub async fn get_user_posts(db: &Database, user_id: Uuid) -> Result<Vec<Post>, Error>
 {
-    match db.collection::<Document>("posts").find(
-        doc! {
-            "user_id": user_id
-        },
-        None
+    match db.collection::<Document>("posts").aggregate(
+        vec![
+            doc! {
+                "$match": {
+                    "user_id": user_id
+                }
+            },
+            doc! {
+                "$project": {
+                    "post": "$$ROOT"
+                }
+            },
+            doc! {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "post.user_id",
+                    "foreignField": "id",
+                    "as": "user"
+                }
+            },
+            doc! {
+                "$unwind": "$user"
+            },
+            doc! {
+                "$lookup": {
+                    "from": "ratings",
+                    "localField": "post.id",
+                    "foreignField": "post_id",
+                    "pipeline": vec![
+                        doc! {
+                            "$match": {
+                                "$expr": {
+                                    "$eq": ["$user_id", user_id]
+                                }
+                            }
+                        }
+                    ],
+                    "as": "rating"
+                }
+            },
+            doc! {
+                "$unwind": {
+                    "path": "$rating",
+                    "preserveNullAndEmptyArrays": true
+                }
+            },
+        ],
+        AggregateOptions::builder().allow_disk_use(true).build()
     ).await {
         Ok(ref mut cursor) => Ok(resolve_cursor::<Post>(cursor).await),
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
     }
 }
 
@@ -440,7 +483,7 @@ pub async fn get_random_posts(db: &Database, count: usize, user_id: Uuid, denied
         AggregateOptions::builder().allow_disk_use(true).build()
     ).await {
         Ok(ref mut cursor) => Ok(resolve_cursor::<Post>(cursor).await),
-        Err(err) => Err(Error::DebugError(DebugError::new(err.to_string())))
+        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
     }
 }
 
@@ -460,7 +503,7 @@ pub async fn update_rating(db: &Database, post_id: Uuid, user_id: Uuid, rating: 
             }
         },
         UpdateOptions::builder().upsert(true).build()
-    ).await.map(|_| ()).map_err(Into::into)
+    ).await.map(|_| ()).map_err(|err| Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
 }
 
 /// Deletes the rating that the user has given the post.
@@ -472,5 +515,5 @@ pub async fn delete_rating(db: &Database, post_id: Uuid, user_id: Uuid) -> Resul
                 "user_id": user_id
             },
         None
-    ).await.map(|_| ()).map_err(Into::into)
+    ).await.map(|_| ()).map_err(|err| Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
 }
