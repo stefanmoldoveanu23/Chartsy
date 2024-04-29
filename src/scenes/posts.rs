@@ -66,6 +66,9 @@ enum PostsAction {
     /// Removes a tag from the filters.
     RemoveTag(Tag),
 
+    /// Opens a users' profile.
+    OpenProfile(User),
+
     /// Updates the post report input.
     UpdateReportInput(String),
 
@@ -98,6 +101,7 @@ impl Action for PostsAction
             PostsAction::UpdateFilterInput(_) => String::from("Update filter input"),
             PostsAction::AddTag(_) => String::from("Add tag"),
             PostsAction::RemoveTag(_) => String::from("Remove tag"),
+            PostsAction::OpenProfile(_) => String::from("Open profile"),
             PostsAction::UpdateReportInput(_) => String::from("Update report input"),
             PostsAction::SubmitReport(_) => String::from("Submit report"),
             PostsAction::SelectTab(_) => String::from("Select tab"),
@@ -365,7 +369,7 @@ impl Posts {
     }
 
     /// Generates the visible list of posts.
-    pub fn gen_post_list(&self, tab: PostTabs, _globals: &Globals) -> Element<'_, Message, Theme, Renderer>
+    pub fn gen_post_list(&self, tab: PostTabs, _globals: &Globals) -> Container<'_, Message, Theme, Renderer>
     {
         Container::new(
             Scrollable::new(
@@ -374,13 +378,38 @@ impl Posts {
                         |(post, index)| {
                             PostSummary::<Message, Theme, Renderer>::new(
                                 Row::with_children(vec![
-                                    Column::with_children(vec![
+                                    Tooltip::new(
                                         Button::new(
-                                            Text::new(format!("@{}", post.get_user().get_user_tag()))
-                                                .size(15.0)
-                                                .style(crate::theme::text::Text::Gray)
+                                            Image::new(Handle::from_memory(
+                                                self.images.get(&post.get_user().get_id())
+                                                    .map(|image| image.as_ref().clone())
+                                                    .unwrap_or(LOADING_IMAGE.into())
+                                            ))
+                                                .width(50.0)
+                                                .height(50.0)
                                         )
-                                            .style(crate::theme::button::Button::Transparent)
+                                            .on_press(Message::DoAction(Box::new(
+                                                PostsAction::OpenProfile(post.get_user().clone())
+                                            )))
+                                            .style(crate::theme::button::Button::Transparent),
+                                        Text::new(format!("{}'s profile", post.get_user().get_user_tag())),
+                                        Position::FollowCursor
+                                    )
+                                        .into(),
+                                    Column::with_children(vec![
+                                        Tooltip::new(
+                                            Button::new(
+                                                Text::new(format!("@{}", post.get_user().get_user_tag()))
+                                                    .size(15.0)
+                                                    .style(crate::theme::text::Text::Gray)
+                                            )
+                                                .style(crate::theme::button::Button::Transparent)
+                                                .on_press(Message::DoAction(Box::new(
+                                                    PostsAction::OpenProfile(post.get_user().clone())
+                                                ))),
+                                            Text::new(format!("{}'s profile", post.get_user().get_user_tag())),
+                                            Position::FollowCursor
+                                        )
                                             .into(),
                                         Text::new(post.get_user().get_username()).size(20.0).into(),
                                         Text::new(post.get_description().clone()).into()
@@ -405,7 +434,8 @@ impl Posts {
                                             .into(),
                                     ])
                                         .into()
-                                ]),
+                                ])
+                                    .spacing(10.0),
                                 Image::new(Handle::from_memory(
                                     post.get_image(&self.images)
                                         .map(|image| image.as_ref().clone())
@@ -441,9 +471,6 @@ impl Posts {
                 .width(Length::Fill)
         )
             .padding([20.0, 0.0, 0.0, 0.0])
-            .into()
-
-        //todo!("Add action when pressing the button")
     }
 
     /// Generate the modal that shows an image.
@@ -977,6 +1004,21 @@ impl Scene for Posts {
 
                 Command::none()
             }
+            PostsAction::OpenProfile(user) => {
+                self.user_profile = user.clone();
+                self.active_tab = PostTabs::Profile;
+
+                Posts::gen_profile(
+                    globals.get_db().unwrap(),
+                    user.get_id(),
+                    if user.has_profile_picture() {
+                        format!("/{}/profile_picture.webp", user.get_id())
+                    } else {
+                        String::from("/default_profile_picture.webp")
+                    },
+                    globals.get_cache()
+                )
+            }
             PostsAction::UpdateReportInput(report_input) => {
                 self.report_input = report_input.clone();
 
@@ -1054,7 +1096,7 @@ impl Scene for Posts {
     }
 
     fn view(&self, globals: &Globals) -> Element<'_, Message, Theme, Renderer> {
-        let recommended_tab = self.gen_post_list(PostTabs::Recommended, globals);
+        let recommended_tab = self.gen_post_list(PostTabs::Recommended, globals).into();
 
         let filtered_tab = Column::with_children(vec![
             Column::with_children(vec![
@@ -1098,30 +1140,43 @@ impl Scene for Posts {
                 .spacing(10.0)
                 .into(),
             self.gen_post_list(PostTabs::Filtered, globals)
+                .into()
         ])
             .spacing(20.0)
             .padding([20.0, 0.0, 0.0, 0.0])
             .into();
 
         let profile_tab = Column::with_children(vec![
-            Column::with_children(vec![
+            Button::new(
                 Image::new(Handle::from_memory(
                     self.images.get(&self.user_profile.get_id()).map(
                         |image| image.as_ref().clone()
                     ).unwrap_or(LOADING_IMAGE.to_vec())
                 ))
-                    .width(Length::Fill)
                     .height(Length::Fill)
-                    .into(),
-                Text::new(self.user_profile.get_username())
-                    .size(30.0)
-                    .into()
-            ])
-                .align_items(Alignment::Center)
-                .padding([0.0, 300.0, 0.0, 300.0])
-                .spacing(20.0)
+            )
+                .style(crate::theme::button::Button::Transparent)
+                .width(Length::Shrink)
+                .height(Length::FillPortion(1))
+                .on_press(Message::DoAction(Box::new(PostsAction::ToggleModal(
+                    ModalType::ShowingImage(
+                        Handle::from_memory(
+                            self.images.get(&self.user_profile.get_id()).map(
+                                |image| image.as_ref().clone()
+                            ).unwrap_or(LOADING_IMAGE.to_vec())
+                        )
+                    )
+                ))))
+                .into(),
+            Text::new(self.user_profile.get_username())
+                .size(30.0)
+                .into(),
+            self.gen_post_list(PostTabs::Profile, globals)
+                .height(Length::FillPortion(3))
                 .into()
         ])
+            .spacing(10.0)
+            .align_items(Alignment::Center)
             .into();
 
         let underlay = Tabs::new_with_tabs(

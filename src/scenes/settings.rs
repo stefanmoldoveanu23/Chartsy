@@ -1,6 +1,5 @@
 use std::any::Any;
 use std::fs;
-use std::io::Cursor;
 use std::ops::Deref;
 use iced::{Alignment, Command, Element, Length, Renderer};
 use iced::advanced::image::Handle;
