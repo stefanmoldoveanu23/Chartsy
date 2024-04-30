@@ -26,14 +26,24 @@ use scene::{Globals, Message};
 use scenes::scenes::SceneLoader;
 use theme::Theme;
 
-use iced::{executor, window, Application, Command, Element, Renderer, Settings, Subscription};
+use iced::{executor, window, Application, Command, Element, Renderer, Settings, Subscription, Font};
+use iced::font::{Family, Stretch, Style, Weight};
 use lettre::{AsyncSmtpTransport, Tokio1Executor, AsyncTransport};
 
 pub const LOADING_IMAGE :&[u8]= include_bytes!("images/loading.png");
 
+pub const INCONSOLATA_BYTES :&[u8]= include_bytes!("images/Inconsolata-SemiBold.ttf");
+pub const INCONSOLATA :Font= Font {
+    family: Family::Name("Inconsolata"),
+    weight: Weight::Semibold,
+    stretch: Stretch::Normal,
+    style: Style::Normal,
+};
+
 pub fn main() -> iced::Result {
     Chartsy::run(Settings {
         antialiasing: true,
+        default_font: INCONSOLATA,
         ..Settings::default()
     })
 }
@@ -65,6 +75,7 @@ impl Application for Chartsy {
             Command::batch(vec![
                 window::maximize(window::Id::MAIN, true),
                 iced::font::load(icons::ICON_BYTES).map(|_| Message::None),
+                iced::font::load(INCONSOLATA_BYTES).map(|_| Message::None),
                 Command::perform(database::base::connect_to_mongodb(), Message::DoneDatabaseInit),
             ]),
         )

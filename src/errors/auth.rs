@@ -26,7 +26,10 @@ pub enum AuthError {
     BadUserTag,
 
     /// The user tag provided is not unique.
-    UserTagAlreadyExists
+    UserTagAlreadyExists,
+
+    /// The user tag provided doesn't exist.
+    UserTagDoesNotExist(String)
 }
 
 impl Display for AuthError {
@@ -52,7 +55,12 @@ impl Display for AuthError {
                 AuthError::LogInUserDoesntExist => "An account with this email and password doesn't exist!",
                 AuthError::ProfilePictureTooLarge => "Your new profile picture needs to be at most 5MB!",
                 AuthError::BadUserTag => "The provided user tag cannot be empty!",
-                AuthError::UserTagAlreadyExists => "Another account already uses this user tag!"
+                AuthError::UserTagAlreadyExists => "Another account already uses this user tag!",
+                AuthError::UserTagDoesNotExist(user_tag) => { 
+                    message = format!("A user with the tag @{} does not exist!", user_tag);
+                    
+                    &*message
+                },
             }
         )
     }

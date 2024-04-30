@@ -69,6 +69,12 @@ enum PostsAction {
     /// Opens a users' profile.
     OpenProfile(User),
 
+    /// Update user tag input.
+    UpdateUserTagInput(String),
+
+    /// Get user by tag.
+    GetUserByTag,
+
     /// Updates the post report input.
     UpdateReportInput(String),
 
@@ -102,6 +108,8 @@ impl Action for PostsAction
             PostsAction::AddTag(_) => String::from("Add tag"),
             PostsAction::RemoveTag(_) => String::from("Remove tag"),
             PostsAction::OpenProfile(_) => String::from("Open profile"),
+            PostsAction::UpdateUserTagInput(_) => String::from("Update user tag input"),
+            PostsAction::GetUserByTag => String::from("Get user by tag"),
             PostsAction::UpdateReportInput(_) => String::from("Update report input"),
             PostsAction::SubmitReport(_) => String::from("Submit report"),
             PostsAction::SelectTab(_) => String::from("Select tab"),
@@ -148,6 +156,9 @@ pub struct Posts {
     /// The user currently being looked up.
     user_profile: User,
 
+    /// The user tag input.
+    user_tag_input: String,
+
     /// All necessary images, stored in a hashmap for avoiding storing the same image twice.
     images: HashMap<Uuid, Arc<Vec<u8>>>,
 
@@ -156,6 +167,9 @@ pub struct Posts {
 
     /// The user input of a report.
     report_input: String,
+
+    /// User error.
+    error: Option<Error>
 }
 
 impl Posts {
@@ -762,9 +776,11 @@ impl Scene for Posts {
             filter_input: String::from(""),
             profile: PostList::new(vec![]),
             user_profile: globals.get_user().unwrap().clone(),
+            user_tag_input: String::from(""),
             images: HashMap::new(),
             active_tab: PostTabs::Recommended,
             report_input: String::from(""),
+            error: None
         };
 
         if let Some(options) = options {
@@ -1005,6 +1021,7 @@ impl Scene for Posts {
                 Command::none()
             }
             PostsAction::OpenProfile(user) => {
+                self.error = None;
                 self.user_profile = user.clone();
                 self.active_tab = PostTabs::Profile;
 
@@ -1017,6 +1034,29 @@ impl Scene for Posts {
                         String::from("/default_profile_picture.webp")
                     },
                     globals.get_cache()
+                )
+            }
+            PostsAction::UpdateUserTagInput(user_tag_input) => {
+                self.user_tag_input = user_tag_input.clone();
+
+                Command::none()
+            }
+            PostsAction::GetUserByTag => {
+                let db = globals.get_db().unwrap();
+                let user_tag = self.user_tag_input.clone();
+
+                Command::perform(
+                    async move {
+                        database::posts::get_user_by_tag(&db, user_tag).await
+                    },
+                    |result| {
+                        match result {
+                            Ok(user) => Message::DoAction(Box::new(
+                                PostsAction::OpenProfile(user)
+                            )),
+                            Err(err) => Message::Error(err)
+                        }
+                    }
                 )
             }
             PostsAction::UpdateReportInput(report_input) => {
@@ -1091,7 +1131,11 @@ impl Scene for Posts {
 
                 Command::none()
             }
-            PostsAction::ErrorHandler(_) => { Command::none() }
+            PostsAction::ErrorHandler(error) => {
+                self.error = Some(error.clone());
+
+                Command::none()
+            }
         }
     }
 
@@ -1146,35 +1190,63 @@ impl Scene for Posts {
             .padding([20.0, 0.0, 0.0, 0.0])
             .into();
 
-        let profile_tab = Column::with_children(vec![
-            Button::new(
-                Image::new(Handle::from_memory(
-                    self.images.get(&self.user_profile.get_id()).map(
-                        |image| image.as_ref().clone()
-                    ).unwrap_or(LOADING_IMAGE.to_vec())
-                ))
-                    .height(Length::Fill)
-            )
-                .style(crate::theme::button::Button::Transparent)
-                .width(Length::Shrink)
-                .height(Length::FillPortion(1))
-                .on_press(Message::DoAction(Box::new(PostsAction::ToggleModal(
-                    ModalType::ShowingImage(
-                        Handle::from_memory(
-                            self.images.get(&self.user_profile.get_id()).map(
-                                |image| image.as_ref().clone()
-                            ).unwrap_or(LOADING_IMAGE.to_vec())
-                        )
-                    )
-                ))))
+        let user_tag_input = Row::with_children(vec![
+            TextInput::new("Input user tag...", &*self.user_tag_input)
+                .on_input(|input| Message::DoAction(Box::new(
+                    PostsAction::UpdateUserTagInput(input)
+                )))
+                .on_paste(|input| Message::DoAction(Box::new(
+                    PostsAction::UpdateUserTagInput(input)
+                )))
                 .into(),
-            Text::new(self.user_profile.get_username())
-                .size(30.0)
-                .into(),
-            self.gen_post_list(PostTabs::Profile, globals)
-                .height(Length::FillPortion(3))
+            Button::new("Search")
+                .on_press(Message::DoAction(Box::new(PostsAction::GetUserByTag)))
                 .into()
         ])
+            .spacing(10.0)
+            .padding([20.0, 400.0, 0.0, 400.0])
+            .into();
+
+        let profile_tab = if let Some(error) = &self.error {
+            Column::with_children(vec![
+                user_tag_input,
+                Text::new(error.to_string())
+                    .size(50.0)
+                    .style(crate::theme::text::Text::Error)
+                    .into()
+            ])
+        } else {
+            Column::with_children(vec![
+                user_tag_input,
+                Button::new(
+                    Image::new(Handle::from_memory(
+                        self.images.get(&self.user_profile.get_id()).map(
+                            |image| image.as_ref().clone()
+                        ).unwrap_or(LOADING_IMAGE.to_vec())
+                    ))
+                        .height(Length::Fill)
+                )
+                    .style(crate::theme::button::Button::Transparent)
+                    .width(Length::Shrink)
+                    .height(Length::FillPortion(1))
+                    .on_press(Message::DoAction(Box::new(PostsAction::ToggleModal(
+                        ModalType::ShowingImage(
+                            Handle::from_memory(
+                                self.images.get(&self.user_profile.get_id()).map(
+                                    |image| image.as_ref().clone()
+                                ).unwrap_or(LOADING_IMAGE.to_vec())
+                            )
+                        )
+                    ))))
+                    .into(),
+                Text::new(self.user_profile.get_username())
+                    .size(30.0)
+                    .into(),
+                self.gen_post_list(PostTabs::Profile, globals)
+                    .height(Length::FillPortion(3))
+                    .into()
+            ])
+        }
             .spacing(10.0)
             .align_items(Alignment::Center)
             .into();
@@ -1211,7 +1283,11 @@ impl Scene for Posts {
 
                     Self::gen_show_post(
                         post_index,
-                        Handle::from_memory(self.images[&post.get_id()].as_ref().clone()),
+                        Handle::from_memory(
+                            self.images.get(&post.get_id())
+                                .map(|data| data.as_ref().clone())
+                                .unwrap_or(LOADING_IMAGE.to_vec())
+                        ),
                         post,
                         globals
                     )

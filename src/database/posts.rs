@@ -4,6 +4,8 @@ use mongodb::options::{AggregateOptions, UpdateOptions};
 use crate::errors::debug::{debug_message, DebugError};
 use crate::errors::error::Error;
 use crate::database::base::resolve_cursor;
+use crate::errors::auth::AuthError;
+use crate::scenes::data::auth::User;
 use crate::scenes::data::posts::{Comment, Post};
 
 /// Gets a list of comments with the given filter, which will decide the parent of the comments.
@@ -516,4 +518,19 @@ pub async fn delete_rating(db: &Database, post_id: Uuid, user_id: Uuid) -> Resul
             },
         None
     ).await.map(|_| ()).map_err(|err| Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+}
+
+/// Returns the user that has the given tag.
+pub async fn get_user_by_tag(db: &Database, user_tag: String) -> Result<User, Error>
+{
+    match db.collection::<Document>("users").find_one(
+        doc! {
+            "user_tag": user_tag.clone()
+        },
+        None
+    ).await {
+        Ok(Some(ref user)) => Ok(crate::serde::Deserialize::deserialize(user)),
+        Ok(None) => Err(Error::AuthError(AuthError::UserTagDoesNotExist(user_tag))),
+        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+    }
 }
