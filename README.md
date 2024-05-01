@@ -17,13 +17,13 @@ A desktop application where users can create drawings and share them.
 
 
 ## Plans
-- Implement settings page(account deletion)
-- Complete posts page(profile page, tag search page, maybe notifications)
+- Fix post recommendation(move it to database daily trigger).
 - Finishing touches on drawing page(remove tags, fix style section, allow download in different filetypes, drawing name)
-- Stylize pages(details maybe later)
+- Stylize pages(replace all images with icons/widgets, other details maybe later)
 - App icon
 - As time constraints may allow
     - more tooling functionality
     - translate+scale drawing
     - add reference images(+ text notes)
+    - image rendering optimizations?
     - TBA
