@@ -47,175 +47,35 @@ pub async fn create_comment(db: &Database, comment: &Document) -> Result<(), Err
 /// Generates recommendations for the user with the given id.
 pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Post>, Error>
 {
-    match db.collection::<Document>("ratings").aggregate(
+    match db.collection::<Document>("similarities").aggregate(
         Vec::from([
-            // Groups all ratings by the post they were made on
-            doc! {
-                "$group": {
-                    "_id": "$post_id",
-                    "ratings": {
-                        "$push": "$$ROOT"
-                    }
-                }
-            },
-            // Filters out all posts that the currently authenticated user hasn't rated
+            // Get only the similarities with the authenticated user.
             doc! {
                 "$match": {
-                    "ratings": {
-                        "$elemMatch": { "user_id": user_id }
-                    }
+                    "user_id": user_id
                 }
             },
-            // Unwind all groups
-            doc! {
-                "$unwind": "$ratings"
-            },
-            // Join with the corresponding post
-            doc! {
-                "$lookup": {
-                    "from": "posts",
-                    "localField": "_id",
-                    "foreignField": "id",
-                    "as": "post"
-                }
-            },
-            // Unwind by post
-            doc! {
-                "$unwind": "$post"
-            },
-            // Unwind by tags
-            doc! {
-                "$unwind": "$post.tags"
-            },
-            // Restructure to keep the essential data
+            // Leave only the id of the other user.
             doc! {
                 "$project": {
-                    "_id": 0,
-                    "user_id": "$ratings.user_id",
-                    "tag": "$post.tags",
-                    "value": {
-                        "$subtract": [
-                            { "$divide":
-                                [
-                                    { "$subtract": ["$ratings.rating", 1.0] },
-                                    2.0
-                                ]
-                            },
-                            1.0
-                        ]
-                    },
-                }
-            },
-            // Average score by user and tag
-            doc! {
-                "$group": {
-                    "_id": { "user_id": "$user_id", "tag": "$tag" },
-                    "score": { "$avg": "$value" }
-                }
-            },
-            // Group by user, computing the magnitudes
-            doc! {
-                "$group": {
-                    "_id": "$_id.tag",
-                    "user_score": {
-                        "$max": {
-                            "$cond": {
-                                "if": { "$eq": ["$_id.user_id", user_id] },
-                                "then": "$score",
-                                "else": null
-                            }
-                        }
-                    },
-                    "groups": {
-                        "$push": {
-                            "user_id": "$_id.user_id",
-                            "score": "$score"
-                        }
-                    }
-                }
-            },
-            // Unwind; this way, each tag will have access to the authenticated users score for the same tag
-            doc! {
-                "$unwind": "$groups"
-            },
-            // Create the dot multiplication
-            doc! {
-                "$project": {
-                    "_id": 0,
-                    "user_id": "$groups.user_id",
-                    "tag": "$_id",
-                    "score": "$groups.score",
-                    "dot": {
-                        "$multiply": ["$groups.score", "$user_score"]
-                    }
-                }
-            },
-            // Group by user and compute magnitudes and dot product
-            doc! {
-                "$group": {
-                    "_id": "$user_id",
-                    "magnitude_square": {
-                        "$sum": {
-                            "$pow": ["$score", 2]
-                        }
-                    },
-                    "dot": {
-                        "$sum": "$dot"
-                    }
-                }
-            },
-            // Group to isolate authenticated user
-            doc! {
-                "$group": {
-                    "_id": null,
-                    "auth_user_magnitude": {
-                        "$max": {
-                            "$cond": {
-                                "if": { "$eq": [ "$_id", user_id ] },
-                                "then": { "$sqrt": "$magnitude_square" },
-                                "else": null
-                            }
-                        }
-                    },
-                    "users": {
-                        "$push": {
-                            "$cond": {
-                                "if": { "$eq": [ "$_id", user_id ] },
-                                "then": "$$REMOVE",
-                                "else": {
-                                    "_id": "$_id",
-                                    "magnitude": { "$sqrt": "$magnitude_square" },
-                                    "dot": "$dot"
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            // Unwind to get each user again, except the authenticated one
-            doc! {
-                "$unwind": "$users"
-            },
-            // Project to compute each user's similarity score
-            doc! {
-                "$project": {
-                    "_id": "$users._id",
-                    "score": {
-                        "$divide": [
-                            "$users.dot",
+                    "_id": {
+                        "$arrayElemAt": [
                             {
-                                "$max": [
-                                    {
-                                        "$multiply": [
-                                            "$users.magnitude",
-                                            "$auth_user_magnitude"
+                                "$filter": {
+                                    "input": "$user_id",
+                                    "as": "ids",
+                                    "cond": {
+                                        "$ne": [
+                                            "$$ids",
+                                            user_id
                                         ]
-                                    },
-                                    0.00001
-                                ]
-                            }
+                                    }
+                                }
+                            },
+                            0
                         ]
-                    }
+                    },
+                    "score": 1
                 }
             },
             // Join with users to get full data
