@@ -1,9 +1,66 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use iced::widget::image::Handle;
+use image::{DynamicImage, RgbaImage};
 use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
 use crate::scenes::data::auth::User;
 use crate::serde::{Deserialize, Serialize};
+
+/// An image represented by pixel data.
+#[derive(Debug, Clone)]
+pub struct PixelImage {
+    /// The width of the [PixelImage].
+    width: u32,
+    
+    /// The height of the [PixelImage].
+    height: u32,
+    
+    /// The pixel data.
+    data: Vec<u8>
+}
+
+impl PixelImage {
+    /// Initialize a [PixelImage].
+    pub fn new(width: u32, height: u32, data: Vec<u8>) -> Self {
+        PixelImage {
+            width,
+            height,
+            data
+        }
+    }
+    
+    pub fn get_width(&self) -> u32 {
+        self.width
+    }
+    
+    pub fn get_height(&self) -> u32 {
+        self.height
+    }
+    
+    pub fn get_data(&self) -> &Vec<u8> {
+        &self.data
+    }
+}
+
+impl From<DynamicImage> for PixelImage {
+    fn from(value: DynamicImage) -> Self {
+        Self::new(
+            value.width(),
+            value.height(),
+            value.to_rgba8().to_vec()
+        )
+    }
+}
+
+impl Into<DynamicImage> for PixelImage {
+    fn into(self) -> DynamicImage {
+        DynamicImage::ImageRgba8(RgbaImage::from_raw(
+            self.width,
+            self.height,
+            self.data
+        ).unwrap())
+    }
+}
 
 /// A comment on a post.
 #[derive(Clone)]
@@ -488,11 +545,6 @@ impl PostList {
         self.posts[..self.loaded].iter().enumerate().map(
             |val| (val.1, val.0)
         )
-    }
-
-    /// Tells whether the images have all been loaded.
-    pub fn done_loading(&self) -> bool {
-        self.loaded == self.posts.len()
     }
 }
 

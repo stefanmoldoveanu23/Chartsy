@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
+use std::io::Cursor;
 use std::sync::Arc;
 use iced::advanced::image::Handle;
 use iced::{Alignment, Element, Length, Renderer, Command};
@@ -7,6 +8,7 @@ use iced::alignment::Horizontal;
 use iced::widget::{Column, Row, Scrollable, Image, Text, TextInput, Button, Space, Tooltip, Container};
 use iced::widget::tooltip::Position;
 use iced_aw::{TabLabel, Tabs};
+use image::{ExtendedColorType, ImageFormat, load_from_memory_with_format};
 use lettre::message::{Attachment, MultiPart, SinglePart};
 use moka::future::Cache;
 use mongodb::bson::Uuid;
@@ -40,7 +42,7 @@ enum PostsAction {
     LoadedPosts(Vec<Post>, PostTabs),
 
     /// Triggers when the given amount of images from the posts have been loaded.
-    LoadedImage{ image: Arc<Vec<u8>>, id: Uuid},
+    LoadedImage{ image: Arc<PixelImage>, id: Uuid},
 
     /// Loads a batch of images.
     LoadBatch(PostTabs),
@@ -160,7 +162,7 @@ pub struct Posts {
     user_tag_input: String,
 
     /// All necessary images, stored in a hashmap for avoiding storing the same image twice.
-    images: HashMap<Uuid, Arc<Vec<u8>>>,
+    images: HashMap<Uuid, Arc<PixelImage>>,
 
     /// Currently active tab.
     active_tab: PostTabs,
@@ -173,8 +175,27 @@ pub struct Posts {
 }
 
 impl Posts {
+    /// Get an image handle or resort to the default.
+    fn get_handle(&self, image_id: Uuid) -> Handle
+    {
+        match self.images.get(&image_id) {
+            Some(image) => {
+                let data = image.get_data().clone();
+
+                Handle::from_pixels(
+                    image.get_width(),
+                    image.get_height(),
+                    data
+                )
+            }
+            None => {
+                Handle::from_memory(LOADING_IMAGE)
+            }
+        }
+    }
+
     /// Get an image if it is not in cache.
-    fn get_image(image_id: Uuid, image_path: String, cache: &Cache<Uuid, Arc<Vec<u8>>>) -> Command<Message>
+    fn get_image(image_id: Uuid, image_path: String, cache: &Cache<Uuid, Arc<PixelImage>>) -> Command<Message>
     {
         let cache = cache.clone();
 
@@ -183,9 +204,26 @@ impl Posts {
                 cache.try_get_with(
                     image_id,
                     async move {
-                        database::base::download_file(image_path).await.map(
-                            |data| Arc::new(data)
-                        )
+                        match database::base::download_file(image_path).await {
+                            Ok(data) => {
+                                match load_from_memory_with_format(
+                                    data.as_slice(),
+                                    ImageFormat::WebP
+                                ) {
+                                    Ok(data) => Ok(Arc::new(data.into())),
+                                    Err(err) => {
+                                        return Err(Error::DebugError(
+                                            DebugError::new(debug_message!(err.to_string()))
+                                        ));
+                                    }
+                                }
+                            }
+                            Err(err) => {
+                                return Err(Error::DebugError(
+                                    DebugError::new(debug_message!(err.to_string()))
+                                ));
+                            }
+                        }
                     }
                 ).await
             },
@@ -272,7 +310,7 @@ impl Posts {
         db: Database,
         user_id: Uuid,
         profile_picture_path: String,
-        cache: &Cache<Uuid, Arc<Vec<u8>>>
+        cache: &Cache<Uuid, Arc<PixelImage>>
     ) -> Command<Message> {
         Command::batch(vec![
             Command::perform(
@@ -394,11 +432,9 @@ impl Posts {
                                 Row::with_children(vec![
                                     Tooltip::new(
                                         Button::new(
-                                            Image::new(Handle::from_memory(
-                                                self.images.get(&post.get_user().get_id())
-                                                    .map(|image| image.as_ref().clone())
-                                                    .unwrap_or(LOADING_IMAGE.into())
-                                            ))
+                                            Image::new(
+                                                self.get_handle(post.get_user().get_id())
+                                            )
                                                 .width(50.0)
                                                 .height(50.0)
                                         )
@@ -450,19 +486,13 @@ impl Posts {
                                         .into()
                                 ])
                                     .spacing(10.0),
-                                Image::new(Handle::from_memory(
-                                    post.get_image(&self.images)
-                                        .map(|image| image.as_ref().clone())
-                                        .unwrap_or(LOADING_IMAGE.into())
-                                )).width(Length::Shrink)
+                                Image::new(self.get_handle(post.get_id()))
                             )
                                 .padding(40)
                                 .on_click_image(Message::DoAction(Box::new(PostsAction::ToggleModal(
-                                    ModalType::ShowingImage(Handle::from_memory(
-                                        post.get_image(&self.images)
-                                            .map(|image| image.as_ref().clone())
-                                            .unwrap_or(LOADING_IMAGE.into())
-                                    ))
+                                    ModalType::ShowingImage(
+                                        self.get_handle(post.get_id())
+                                    )
                                 ))))
                                 .on_click_data(Message::DoAction(Box::new(PostsAction::ToggleModal(
                                     ModalType::ShowingPost(index)
@@ -474,14 +504,14 @@ impl Posts {
                     .width(Length::Fill)
                     .align_items(Alignment::Center)
                     .spacing(50)
-            )
+            )/*
                 .on_scroll(move |viewport| {
                     if viewport.relative_offset().y == 1.0 && self.get_tab(tab).done_loading() {
                         Message::DoAction(Box::new(PostsAction::LoadBatch(tab)))
                     } else {
                         Message::None
                     }
-                })
+                })*/
                 .width(Length::Fill)
         )
             .padding([20.0, 0.0, 0.0, 0.0])
@@ -490,9 +520,7 @@ impl Posts {
     /// Generate the modal that shows an image.
     pub fn gen_show_image<'a>(image: Handle, _globals: &Globals) -> Element<'a, Message, Theme, Renderer>
     {
-        Closeable::new(Image::new(
-            image.clone()
-        ).width(Length::Shrink))
+        Closeable::new(Image::new(image.clone()).width(Length::Shrink))
             .width(Length::Fill)
             .height(Length::Fill)
             .on_close(
@@ -631,10 +659,7 @@ impl Posts {
 
         Row::with_children(
             vec![
-                Closeable::new(
-                    Image::new(image.clone())
-                        .width(Length::Shrink)
-                )
+                Closeable::new(Image::new(image.clone()).width(Length::Shrink))
                     .width(Length::FillPortion(3))
                     .height(Length::Fill)
                     .style(crate::theme::closeable::Closeable::SpotLight)
@@ -1068,7 +1093,28 @@ impl Scene for Posts {
                 let post_index = post_index.clone();
                 let report_description = self.report_input.clone();
                 let post = self.get_active_tab().get_post(post_index).unwrap();
-                let image = self.images.get(&post.get_id()).unwrap().as_ref().clone();
+                let image :PixelImage= self.images.get(&post.get_id()).unwrap().as_ref().clone();
+
+                let mut data = vec![];
+                let mut cursor = Cursor::new(&mut data);
+                match image::write_buffer_with_format(
+                    &mut cursor,
+                    image.get_data().as_slice(),
+                    image.get_width(),
+                    image.get_height(),
+                    ExtendedColorType::Rgba8,
+                    ImageFormat::WebP
+                ) {
+                    Ok(_) => { }
+                    Err(err) => {
+                        return Command::perform(
+                            async { },
+                            move |()| Message::Error(Error::DebugError(
+                                DebugError::new(debug_message!(err.to_string()))
+                            ))
+                        );
+                    }
+                }
 
                 let message = lettre::Message::builder()
                     .from(format!("Chartsy <{}>", config::email_address()).parse().unwrap())
@@ -1098,7 +1144,7 @@ impl Scene for Posts {
                                     .singlepart(
                                         Attachment::new_inline(String::from("post_image"))
                                             .body(
-                                                image.clone(),
+                                                data.clone(),
                                                 "image/*".parse().unwrap()
                                             )
                                     )
@@ -1106,7 +1152,7 @@ impl Scene for Posts {
                             .singlepart(
                                 Attachment::new(String::from("post_image.webp"))
                                     .body(
-                                        image,
+                                        data.clone(),
                                         "image/*".parse().unwrap()
                                     )
                             )
@@ -1219,24 +1265,14 @@ impl Scene for Posts {
             Column::with_children(vec![
                 user_tag_input,
                 Button::new(
-                    Image::new(Handle::from_memory(
-                        self.images.get(&self.user_profile.get_id()).map(
-                            |image| image.as_ref().clone()
-                        ).unwrap_or(LOADING_IMAGE.to_vec())
-                    ))
+                    Image::new(self.get_handle(self.user_profile.get_id()))
                         .height(Length::Fill)
                 )
                     .style(crate::theme::button::Button::Transparent)
                     .width(Length::Shrink)
                     .height(Length::FillPortion(1))
                     .on_press(Message::DoAction(Box::new(PostsAction::ToggleModal(
-                        ModalType::ShowingImage(
-                            Handle::from_memory(
-                                self.images.get(&self.user_profile.get_id()).map(
-                                    |image| image.as_ref().clone()
-                                ).unwrap_or(LOADING_IMAGE.to_vec())
-                            )
-                        )
+                        ModalType::ShowingImage(self.get_handle(self.user_profile.get_id()))
                     ))))
                     .into(),
                 Text::new(self.user_profile.get_username())
@@ -1283,11 +1319,7 @@ impl Scene for Posts {
 
                     Self::gen_show_post(
                         post_index,
-                        Handle::from_memory(
-                            self.images.get(&post.get_id())
-                                .map(|data| data.as_ref().clone())
-                                .unwrap_or(LOADING_IMAGE.to_vec())
-                        ),
+                        self.get_handle(post.get_id()),
                         post,
                         globals
                     )

@@ -12,6 +12,7 @@ use moka::future::Cache;
 use mongodb::bson::Uuid;
 use crate::debug_message;
 use crate::errors::debug::DebugError;
+use crate::scenes::data::posts::PixelImage;
 
 /// An individual scene that handles its actions internally.
 pub trait Scene: Send + Sync {
@@ -117,7 +118,7 @@ pub struct Globals {
     mongo_client: Option<Client>,
 
     /// The caching system.
-    cache: Cache<Uuid, Arc<Vec<u8>>>
+    cache: Cache<Uuid, Arc<PixelImage>>
 }
 
 impl Globals {
@@ -154,7 +155,7 @@ impl Globals {
     }
 
     /// Returns the cache.
-    pub fn get_cache(&self) -> &Cache<Uuid, Arc<Vec<u8>>> {
+    pub fn get_cache(&self) -> &Cache<Uuid, Arc<PixelImage>> {
         &self.cache
     }
 }

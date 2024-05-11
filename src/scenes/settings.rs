@@ -4,6 +4,7 @@ use std::ops::Deref;
 use iced::{Alignment, Command, Element, Length, Renderer};
 use iced::advanced::image::Handle;
 use iced::widget::{Button, Column, Row, Scrollable, Space, Text, TextInput};
+use image::load_from_memory;
 use mongodb::bson::doc;
 use rfd::AsyncFileDialog;
 use crate::errors::auth::AuthError;
@@ -359,7 +360,7 @@ impl Scene for Settings {
                     async move {
                         let data = match tokio::task::spawn_blocking(
                             move || {
-                                let dyn_image = match image::load_from_memory(data.as_slice()) {
+                                let dyn_image = match load_from_memory(data.as_slice()) {
                                     Ok(image) => image,
                                     Err(err) => {
                                         return Err(Error::DebugError(DebugError::new(
