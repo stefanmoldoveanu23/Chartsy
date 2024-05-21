@@ -10,7 +10,6 @@ use iced::widget::{Container, Row, Column, Text, Button, TextInput, Image, Scrol
 use iced::{Alignment, Command, Element, Length, Padding, Renderer};
 use iced::widget::image::Handle;
 use iced::widget::scrollable::{Direction, Properties};
-use iced_aw::Badge;
 use json::object::Object;
 use json::JsonValue;
 use mongodb::bson::Uuid;
@@ -44,6 +43,7 @@ use crate::widgets::grid::Grid;
 use crate::scenes::data::drawing::*;
 
 use crate::icons::{Icon, ICON, ToolIcon};
+use crate::widgets::close::Close;
 
 /// The [Messages](Action) for the [Drawing] scene.
 #[derive(Clone)]
@@ -106,7 +106,7 @@ pub struct Drawing {
 }
 
 impl Drawing {
-    /// Initialize the drawing scene from the database database.
+    /// Initialize the drawing scene from the database.
     /// If the uuid is 0, then insert a new drawing in the database.
     fn init_online(self: &mut Box<Self>, globals: &mut Globals) -> Command<Message> {
         let mut uuid = *self.canvas.get_id();
@@ -733,11 +733,27 @@ impl Scene for Box<Drawing> {
                                         .on_input(|new_value| Message::DoAction(Box::new(DrawingAction::UpdatePostData(UpdatePostData::Description(new_value)))))
                                         .into(),
                                     Text::new("Tags:").into(),
-                                    Grid::new(self.post_data.get_post_tags().iter().map(
-                                        |tag| Badge::new(
-                                            Text::new(tag.get_name().clone())
+                                    Grid::new(self.post_data.get_post_tags().iter().enumerate().map(
+                                        |(index, tag)| Container::new(
+                                            Row::with_children(vec![
+                                                Text::new(tag.get_name().clone()).into(),
+                                                Close::new(
+                                                    Message::DoAction(Box::new(
+                                                        DrawingAction::UpdatePostData(
+                                                            UpdatePostData::RemoveTag(index)
+                                                        )
+                                                    ))
+                                                )
+                                                    .size(15.0)
+                                                    .into()
+                                            ])
+                                                .spacing(5.0)
+                                                .align_items(Alignment::Center)
                                         )
-                                            .padding(3)
+                                            .style(crate::theme::container::Container::Badge(
+                                                crate::theme::pallete::TEXT
+                                            ))
+                                            .padding(10.0)
                                     ))
                                         .padding(Padding::from([5.0, 0.0, 5.0, 0.0]))
                                         .spacing(5.0)

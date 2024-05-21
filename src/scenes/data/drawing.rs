@@ -101,6 +101,7 @@ pub enum UpdatePostData {
     SelectedTag(Tag),
     AllTags(Vec<Tag>),
     TagInput(String),
+    RemoveTag(usize),
 }
 
 impl PostData {
@@ -124,6 +125,9 @@ impl PostData {
             }
             UpdatePostData::AllTags(tags) => self.all_tags = tags,
             UpdatePostData::TagInput(tag_input) => self.tag_input = tag_input,
+            UpdatePostData::RemoveTag(index) => {
+                self.post_tags.remove(index);
+            },
         }
     }
     

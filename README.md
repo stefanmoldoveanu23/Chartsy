@@ -17,11 +17,12 @@ A desktop application where users can create drawings and share them.
 
 
 ## Plans
-- Fix post recommendation(move it to database daily trigger).
-- Finishing touches on drawing page(remove tags, fix style section, allow download in different filetypes, drawing name)
+- Finishing touches on drawing page(fix style section, allow download in different filetypes, drawing name)
 - Stylize pages(replace all images with icons/widgets, other details maybe later)
+- Fix similarities trigger to take into consideration account deletion and reinstatement
 - App icon
 - As time constraints may allow
+    - take into consideration loss of connection
     - more tooling functionality
     - translate+scale drawing
     - add reference images(+ text notes)

@@ -154,7 +154,7 @@ impl Style {
                     .into(),
             );
             if visibility_color {
-                let picker = ColorPicker::new(StyleUpdate::StrokeColor).color(color);
+                let picker = ColorPicker::new(color.r, color.g, color.b, StyleUpdate::StrokeColor);
                 column.push(picker.into());
             }
         }
@@ -162,7 +162,7 @@ impl Style {
         if let Some((color, visibility)) = self.fill {
             column.push(Button::new(Text::new("Fill")).on_press(StyleUpdate::ToggleFill).into());
             if visibility {
-                let picker = ColorPicker::new(StyleUpdate::Fill).color(color);
+                let picker = ColorPicker::new(color.r, color.g, color.b, StyleUpdate::Fill);
                 column.push(picker.into());
             }
         }
