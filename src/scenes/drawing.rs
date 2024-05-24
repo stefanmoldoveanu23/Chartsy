@@ -5,7 +5,7 @@ use std::fs::{create_dir_all, File};
 use std::io::Write;
 
 use crate::canvas::canvas::Canvas;
-use iced::alignment::Horizontal;
+use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{Container, Row, Column, Text, Button, TextInput, Image, Scrollable, Space};
 use iced::{Alignment, Command, Element, Length, Padding, Renderer};
 use iced::widget::image::Handle;
@@ -426,11 +426,29 @@ impl Scene for Drawing {
     }
 
     fn view<'a>(&'a self, globals: &Globals) -> Element<'a, Message, Theme, Renderer> {
-        let tool_button :fn(String, Box<dyn Pending>) -> Element<'a, Message, Theme, Renderer>=
-            |name, pending| {
+        let current_tool = self.canvas.get_current_tool().id();
+
+        let tool_button =
+            |name, pending: Box<dyn Pending>| -> Element<'a, Message, Theme, Renderer> {
+                let style = if current_tool == pending.id() {
+                    crate::theme::button::Button::SelectedLayer
+                } else {
+                    crate::theme::button::Button::UnselectedLayer
+                };
+                let text_style = if current_tool == pending.id() {
+                    crate::theme::text::Text::Dark
+                } else {
+                    crate::theme::text::Text::Light
+                };
+
                 Button::<Message, Theme, Renderer>::new(
-                    Text::new(name).font(ICON).line_height(1.0).size(25.0)
+                    Text::new(name)
+                        .font(ICON)
+                        .line_height(1.0)
+                        .size(25.0)
+                        .style(text_style)
                 )
+                    .style(style)
                     .on_press(CanvasMessage::ChangeTool(pending).into())
                     .padding(10.0)
                     .into()
@@ -614,26 +632,57 @@ impl Scene for Drawing {
 
         let menu_section = Container::new(
             Column::with_children(vec![
-                Button::new(Text::new("Save"))
+                Space::with_height(Length::Fill).into(),
+                Button::new(
+                    Text::new("Save")
+                        .horizontal_alignment(Horizontal::Center)
+                        .width(Length::Fill)
+                        .size(20.0)
+                )
                     .on_press(CanvasMessage::Save.into())
+                    .width(Length::Fill)
+                    .padding(5.0)
                     .into(),
+                Space::with_height(Length::Fill).into(),
                 if globals.get_db().is_some() && globals.get_user().is_some() {
-                    Button::new(Text::new("Post"))
+                    Button::new(
+                        Text::new("Post")
+                            .horizontal_alignment(Horizontal::Center)
+                            .width(Length::Fill)
+                            .size(20.0)
+                    )
                         .on_press(DrawingMessage::ToggleModal(ModalTypes::PostPrompt).into())
                 } else {
-                    Button::new(Text::new("Post"))
+                    Button::new(
+                        Text::new("Post")
+                            .horizontal_alignment(Horizontal::Center)
+                            .width(Length::Fill)
+                            .size(20.0)
+                    )
                 }
+                    .padding(5.0)
+                    .width(Length::Fill)
                     .into(),
-                Button::new(Text::new("Back"))
+                Space::with_height(Length::Fill).into(),
+                Button::new(
+                    Text::new("Back")
+                        .horizontal_alignment(Horizontal::Center)
+                        .width(Length::Fill)
+                        .size(20.0)
+                )
                     .on_press(Message::ChangeScene(Scenes::Main(None)))
+                    .padding(5.0)
+                    .width(Length::Fill)
                     .into(),
+                Space::with_height(Length::Fill).into(),
             ])
-                .spacing(8.0)
+                .spacing(10.0)
                 .align_items(Alignment::Center)
         )
             .padding(10.0)
             .style(crate::theme::container::Container::Bordered)
             .align_x(Horizontal::Center)
+            .align_y(Vertical::Center)
             .width(Length::Fill)
             .height(Length::FillPortion(1));
 

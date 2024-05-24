@@ -3,7 +3,8 @@ use crate::scene::Message;
 use crate::serde::{Deserialize, Serialize};
 use crate::theme::Theme;
 use iced::widget::{Button, Column, Slider, Text};
-use iced::{Color, Command, Element, Renderer};
+use iced::{Color, Command, Element, Length, Renderer};
+use iced::alignment::Horizontal;
 use json::object::Object;
 use json::JsonValue;
 use mongodb::bson::{doc, Bson, Document};
@@ -138,10 +139,32 @@ impl Style {
     pub(crate) fn view<'a>(&self) -> Element<'a, StyleUpdate, Theme, Renderer> {
         let mut column: Vec<Element<'a, StyleUpdate, Theme, Renderer>> = vec![];
 
+        let get_button_style = |condition: bool| -> crate::theme::button::Button {
+            if condition {
+                crate::theme::button::Button::SelectedLayer
+            } else {
+                crate::theme::button::Button::UnselectedLayer
+            }
+        };
+
+        let get_text_style = |condition: bool| -> crate::theme::text::Text {
+            if condition {
+                crate::theme::text::Text::Dark
+            } else {
+                crate::theme::text::Text::Light
+            }
+        };
+
         if let Some((width, color, visibility_width, visibility_color)) = self.stroke {
             column.push(
-                Button::new(Text::new("Stroke width"))
+                Button::new(
+                    Text::new("Stroke width")
+                        .style(get_text_style(visibility_width))
+                        .horizontal_alignment(Horizontal::Center)
+                )
                     .on_press(StyleUpdate::ToggleStrokeWidth)
+                    .style(get_button_style(visibility_width))
+                    .width(Length::Fill)
                     .into(),
             );
             if visibility_width {
@@ -149,8 +172,14 @@ impl Style {
             }
 
             column.push(
-                Button::new(Text::new("Stroke color"))
+                Button::new(
+                    Text::new("Stroke color")
+                        .style(get_text_style(visibility_color))
+                        .horizontal_alignment(Horizontal::Center)
+                )
                     .on_press(StyleUpdate::ToggleStrokeColor)
+                    .style(get_button_style(visibility_color))
+                    .width(Length::Fill)
                     .into(),
             );
             if visibility_color {
@@ -160,7 +189,18 @@ impl Style {
         }
 
         if let Some((color, visibility)) = self.fill {
-            column.push(Button::new(Text::new("Fill")).on_press(StyleUpdate::ToggleFill).into());
+            column.push(
+                Button::new(
+                    Text::new("Fill")
+                        .style(get_text_style(visibility))
+                        .horizontal_alignment(Horizontal::Center)
+                )
+                    .on_press(StyleUpdate::ToggleFill)
+                    .style(get_button_style(visibility))
+                    .width(Length::Fill)
+                    .into()
+            );
+
             if visibility {
                 let picker = ColorPicker::new(color.r, color.g, color.b, StyleUpdate::Fill);
                 column.push(picker.into());
@@ -169,6 +209,7 @@ impl Style {
 
         Column::with_children(column)
             .padding(8.0)
+            .spacing(10.0)
             .into()
     }
 }

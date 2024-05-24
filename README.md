@@ -18,6 +18,7 @@ A desktop application where users can create drawings and share them.
 
 ## Plans
 - Finishing touches on drawing page(fix style section, allow download in different filetypes, drawing name)
+- Add loading screens where necessary
 - Stylize pages(replace all images with icons/widgets, other details maybe later)
 - Fix similarities trigger to take into consideration account deletion and reinstatement
 - App icon

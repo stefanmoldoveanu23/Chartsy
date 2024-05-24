@@ -129,6 +129,11 @@ impl Canvas {
     {
         &self.layers
     }
+    
+    pub fn get_current_tool(&self) -> &Box<dyn Pending>
+    {
+        &self.current_tool
+    }
 
     pub fn set_id(&mut self, id: impl Into<Uuid>) {
         self.id = id.into();
