@@ -1,4 +1,4 @@
-use crate::canvas::layer::CanvasAction;
+use crate::canvas::layer::CanvasMessage;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
 use iced::event::Status;
@@ -29,7 +29,7 @@ impl Pending for TrianglePending {
         event: Event,
         cursor: Point,
         style: Style,
-    ) -> (Status, Option<CanvasAction>) {
+    ) -> (Status, Option<CanvasMessage>) {
         match event {
             Event::Mouse(mouse_event) => {
                 let message = match mouse_event {
@@ -48,7 +48,7 @@ impl Pending for TrianglePending {
 
                             *self = TrianglePending::None;
                             Some(
-                                CanvasAction::UseTool(Arc::new(Triangle {
+                                CanvasMessage::UseTool(Arc::new(Triangle {
                                     point1: point1_clone,
                                     point2: point2_clone,
                                     point3: cursor,

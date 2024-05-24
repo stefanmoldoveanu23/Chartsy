@@ -1,4 +1,4 @@
-use crate::canvas::layer::CanvasAction;
+use crate::canvas::layer::CanvasMessage;
 use crate::canvas::style::Style;
 use crate::canvas::tools::brushes::{airbrush::Airbrush, eraser::Eraser, pen::Pen, pencil::Pencil};
 use crate::canvas::tools::{
@@ -120,7 +120,7 @@ pub trait Pending: Send + Sync {
         event: Event,
         cursor: Point,
         style: Style,
-    ) -> (event::Status, Option<CanvasAction>);
+    ) -> (event::Status, Option<CanvasMessage>);
 
     /// Draws the [pending tool](Pending) on the [canvas](crate::canvas::canvas::Canvas). To be
     /// used in the Programs' [draw function](iced::widget::canvas::Program::draw).

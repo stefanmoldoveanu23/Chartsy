@@ -1,4 +1,4 @@
-use crate::canvas::layer::CanvasAction;
+use crate::canvas::layer::CanvasMessage;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
 use iced::event::Status;
@@ -28,7 +28,7 @@ impl Pending for RectPending {
         event: Event,
         cursor: Point,
         style: Style,
-    ) -> (Status, Option<CanvasAction>) {
+    ) -> (Status, Option<CanvasMessage>) {
         match event {
             Event::Mouse(mouse_event) => {
                 let message = match mouse_event {
@@ -42,7 +42,7 @@ impl Pending for RectPending {
 
                             *self = RectPending::None;
                             Some(
-                                CanvasAction::UseTool(Arc::new(Rect {
+                                CanvasMessage::UseTool(Arc::new(Rect {
                                     start: start_clone,
                                     end: cursor,
                                     style,

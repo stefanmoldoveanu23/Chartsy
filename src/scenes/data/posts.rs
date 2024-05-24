@@ -3,7 +3,9 @@ use std::sync::Arc;
 use iced::widget::image::Handle;
 use image::{DynamicImage, RgbaImage};
 use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
+use crate::scene::Message;
 use crate::scenes::data::auth::User;
+use crate::scenes::posts::PostsMessage;
 use crate::serde::{Deserialize, Serialize};
 
 /// An image represented by pixel data.
@@ -238,6 +240,12 @@ pub enum CommentMessage {
 
     /// Loads comments that are replies to another comment.
     Loaded{ post: usize, parent: Option<(usize, usize)>, comments: Vec<Comment>, tab: PostTabs },
+}
+
+impl Into<Message> for CommentMessage {
+    fn into(self) -> Message {
+        PostsMessage::CommentMessage(self).into()
+    }
 }
 
 /// The data for a loaded post.
@@ -545,6 +553,11 @@ impl PostList {
         self.posts[..self.loaded].iter().enumerate().map(
             |val| (val.1, val.0)
         )
+    }
+    
+    /// Tells whether the images have all been loaded.
+    pub fn done_loading(&self) -> bool {
+        self.loaded == self.posts.len()
     }
 }
 

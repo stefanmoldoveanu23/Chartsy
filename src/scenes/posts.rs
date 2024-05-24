@@ -20,7 +20,7 @@ use crate::{config, database, LOADING_IMAGE};
 use crate::errors::debug::{debug_message, DebugError};
 use crate::errors::error::Error;
 use crate::icons::{ICON, Icon};
-use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
+use crate::scene::{SceneMessage, Globals, Message, Scene};
 use crate::scenes::data::auth::User;
 use crate::scenes::data::drawing::Tag;
 use crate::theme::Theme;
@@ -32,9 +32,9 @@ use crate::widgets::close::Close;
 use crate::widgets::combo_box::ComboBox;
 use crate::widgets::grid::Grid;
 
-/// The [messages](Action) that can be triggered on the [Posts] scene.
+/// The [messages](SceneMessage) that can be triggered on the [Posts] scene.
 #[derive(Clone)]
-enum PostsAction {
+pub enum PostsMessage {
     /// Loads posts for the active tab.
     LoadPosts,
 
@@ -90,7 +90,13 @@ enum PostsAction {
     ErrorHandler(Error),
 }
 
-impl Action for PostsAction
+impl Into<Message> for PostsMessage {
+    fn into(self) -> Message {
+        Message::DoAction(Box::new(self))
+    }
+}
+
+impl SceneMessage for PostsMessage
 {
     fn as_any(&self) -> &dyn Any {
         self
@@ -98,35 +104,35 @@ impl Action for PostsAction
 
     fn get_name(&self) -> String {
         match self {
-            PostsAction::LoadPosts => String::from("Load posts"),
-            PostsAction::LoadedPosts(_, _) => String::from("Loaded posts"),
-            PostsAction::LoadedImage{ .. } => String::from("Loaded image"),
-            PostsAction::LoadBatch(_) => String::from("Load batch"),
-            PostsAction::CommentMessage(_) => String::from("Loaded comments"),
-            PostsAction::ToggleModal(_) => String::from("Toggle modal"),
-            PostsAction::RatePost { .. } => String::from("Rate post"),
-            PostsAction::LoadedTags(_) => String::from("Loaded tags"),
-            PostsAction::UpdateFilterInput(_) => String::from("Update filter input"),
-            PostsAction::AddTag(_) => String::from("Add tag"),
-            PostsAction::RemoveTag(_) => String::from("Remove tag"),
-            PostsAction::OpenProfile(_) => String::from("Open profile"),
-            PostsAction::UpdateUserTagInput(_) => String::from("Update user tag input"),
-            PostsAction::GetUserByTag => String::from("Get user by tag"),
-            PostsAction::UpdateReportInput(_) => String::from("Update report input"),
-            PostsAction::SubmitReport(_) => String::from("Submit report"),
-            PostsAction::SelectTab(_) => String::from("Select tab"),
-            PostsAction::ErrorHandler(_) => String::from("Error handler"),
+            Self::LoadPosts => String::from("Load posts"),
+            Self::LoadedPosts(_, _) => String::from("Loaded posts"),
+            Self::LoadedImage{ .. } => String::from("Loaded image"),
+            Self::LoadBatch(_) => String::from("Load batch"),
+            Self::CommentMessage(_) => String::from("Loaded comments"),
+            Self::ToggleModal(_) => String::from("Toggle modal"),
+            Self::RatePost { .. } => String::from("Rate post"),
+            Self::LoadedTags(_) => String::from("Loaded tags"),
+            Self::UpdateFilterInput(_) => String::from("Update filter input"),
+            Self::AddTag(_) => String::from("Add tag"),
+            Self::RemoveTag(_) => String::from("Remove tag"),
+            Self::OpenProfile(_) => String::from("Open profile"),
+            Self::UpdateUserTagInput(_) => String::from("Update user tag input"),
+            Self::GetUserByTag => String::from("Get user by tag"),
+            Self::UpdateReportInput(_) => String::from("Update report input"),
+            Self::SubmitReport(_) => String::from("Submit report"),
+            Self::SelectTab(_) => String::from("Select tab"),
+            Self::ErrorHandler(_) => String::from("Error handler"),
         }
     }
 
-    fn boxed_clone(&self) -> Box<dyn Action + 'static> {
+    fn boxed_clone(&self) -> Box<dyn SceneMessage + 'static> {
         Box::new((*self).clone())
     }
 }
 
-impl Into<Box<dyn Action + 'static>> for Box<PostsAction>
+impl Into<Box<dyn SceneMessage + 'static>> for Box<PostsMessage>
 {
-    fn into(self) -> Box<dyn Action + 'static> {
+    fn into(self) -> Box<dyn SceneMessage + 'static> {
         Box::new(*self)
     }
 }
@@ -229,12 +235,7 @@ impl Posts {
             },
             move |result| {
                 match result {
-                    Ok(data) => Message::DoAction(
-                        Box::new(PostsAction::LoadedImage {
-                            image: data,
-                            id: image_id,
-                        })
-                    ),
+                    Ok(data) => PostsMessage::LoadedImage { image: data, id: image_id}.into(),
                     Err(err) => Message::Error(err.as_ref().clone())
                 }
             }
@@ -278,9 +279,7 @@ impl Posts {
             },
             |result| {
                 match result {
-                    Ok(posts) => Message::DoAction(Box::new(
-                        PostsAction::LoadedPosts(posts, PostTabs::Recommended)
-                    )),
+                    Ok(posts) => PostsMessage::LoadedPosts(posts, PostTabs::Recommended).into(),
                     Err(err) => Message::Error(err)
                 }
             }
@@ -296,9 +295,7 @@ impl Posts {
             },
             |result| {
                 match result {
-                    Ok(posts) => Message::DoAction(Box::new(
-                        PostsAction::LoadedPosts(posts, PostTabs::Filtered)
-                    )),
+                    Ok(posts) => PostsMessage::LoadedPosts(posts, PostTabs::Filtered).into(),
                     Err(err) => Message::Error(err)
                 }
             }
@@ -319,9 +316,7 @@ impl Posts {
                 },
                 |result| {
                     match result {
-                        Ok(posts) => Message::DoAction(Box::new(
-                            PostsAction::LoadedPosts(posts, PostTabs::Profile)
-                        )),
+                        Ok(posts) => PostsMessage::LoadedPosts(posts, PostTabs::Profile).into(),
                         Err(err) => Message::Error(err)
                     }
                 }
@@ -397,16 +392,13 @@ impl Posts {
                     },
                     move |result| {
                         match result {
-                            Ok(comments) => {
-                                Message::DoAction(Box::new(PostsAction::CommentMessage(
-                                    CommentMessage::Loaded {
-                                        post,
-                                        parent,
-                                        comments,
-                                        tab: active_tab
-                                    }
-                                )))
-                            }
+                            Ok(comments) =>
+                                CommentMessage::Loaded {
+                                    post,
+                                    parent,
+                                    comments,
+                                    tab: active_tab
+                                }.into(),
                             Err(err) => Message::Error(err)
                         }
                     }
@@ -438,9 +430,9 @@ impl Posts {
                                                 .width(50.0)
                                                 .height(50.0)
                                         )
-                                            .on_press(Message::DoAction(Box::new(
-                                                PostsAction::OpenProfile(post.get_user().clone())
-                                            )))
+                                            .on_press(
+                                                PostsMessage::OpenProfile(post.get_user().clone()).into()
+                                            )
                                             .style(crate::theme::button::Button::Transparent),
                                         Text::new(format!("{}'s profile", post.get_user().get_user_tag())),
                                         Position::FollowCursor
@@ -454,9 +446,9 @@ impl Posts {
                                                     .style(crate::theme::text::Text::Gray)
                                             )
                                                 .style(crate::theme::button::Button::Transparent)
-                                                .on_press(Message::DoAction(Box::new(
-                                                    PostsAction::OpenProfile(post.get_user().clone())
-                                                ))),
+                                                .on_press(
+                                                    PostsMessage::OpenProfile(post.get_user().clone()).into()
+                                                ),
                                             Text::new(format!("{}'s profile", post.get_user().get_user_tag())),
                                             Position::FollowCursor
                                         )
@@ -471,11 +463,11 @@ impl Posts {
                                             Button::new(Text::new(
                                                 Icon::Report.to_string()
                                             ).font(ICON).style(crate::theme::text::Text::Error).size(30.0))
-                                                .on_press(Message::DoAction(Box::new(
-                                                    PostsAction::ToggleModal(ModalType::ShowingReport(
-                                                        index
-                                                    ))
-                                                )))
+                                                .on_press(
+                                                    PostsMessage::ToggleModal(
+                                                        ModalType::ShowingReport(index)
+                                                    ).into()
+                                                )
                                                 .padding(0.0)
                                                 .style(crate::theme::button::Button::Transparent),
                                             Text::new("Report post"),
@@ -489,14 +481,14 @@ impl Posts {
                                 Image::new(self.get_handle(post.get_id()))
                             )
                                 .padding(40)
-                                .on_click_image(Message::DoAction(Box::new(PostsAction::ToggleModal(
+                                .on_click_image(Into::<Message>::into(PostsMessage::ToggleModal(
                                     ModalType::ShowingImage(
                                         self.get_handle(post.get_id())
                                     )
-                                ))))
-                                .on_click_data(Message::DoAction(Box::new(PostsAction::ToggleModal(
+                                )))
+                                .on_click_data(Into::<Message>::into(PostsMessage::ToggleModal(
                                     ModalType::ShowingPost(index)
-                                ))))
+                                )))
                                 .into()
                         }
                     ).collect::<Vec<Element<Message, Theme, Renderer>>>()
@@ -504,14 +496,16 @@ impl Posts {
                     .width(Length::Fill)
                     .align_items(Alignment::Center)
                     .spacing(50)
-            )/*
+            )
+                /* Severely slows down app; suspect it's because of sync image rendering
                 .on_scroll(move |viewport| {
-                    if viewport.relative_offset().y == 1.0 && self.get_tab(tab).done_loading() {
-                        Message::DoAction(Box::new(PostsAction::LoadBatch(tab)))
+                    if viewport.relative_offset().y == 1.0 && !self.get_tab(tab).done_loading() {
+                        PostsMessage::LoadBatch(tab).into()
                     } else {
                         Message::None
                     }
-                })*/
+                })
+                 */
                 .width(Length::Fill)
         )
             .padding([20.0, 0.0, 0.0, 0.0])
@@ -524,9 +518,7 @@ impl Posts {
             .width(Length::Fill)
             .height(Length::Fill)
             .on_close(
-                Message::DoAction(Box::new(PostsAction::ToggleModal(
-                    ModalType::ShowingImage(image)
-                ))),
+                Into::<Message>::into(PostsMessage::ToggleModal(ModalType::ShowingImage(image))),
                 40.0
             )
             .style(crate::theme::closeable::Closeable::SpotLight)
@@ -542,21 +534,16 @@ impl Posts {
                     vec![
                         TextInput::new("Write comment here...", &*post.get_comment_input())
                             .width(Length::Fill)
-                            .on_input(move |value| Message::DoAction(Box::new(
-                                PostsAction::CommentMessage(CommentMessage::UpdateInput {
+                            .on_input(move |value|
+                                CommentMessage::UpdateInput {
                                     post: post_index,
                                     position: None,
                                     input: value,
-                                })
-                            )))
+                                }.into()
+                            )
                             .into(),
                         Button::new("Add comment")
-                            .on_press(Message::DoAction(Box::new(
-                                PostsAction::CommentMessage(CommentMessage::Add {
-                                    post: post_index,
-                                    parent: None,
-                                })
-                            )))
+                            .on_press(CommentMessage::Add { post: post_index, parent: None}.into())
                             .into()
                     ]
                 )
@@ -594,33 +581,31 @@ impl Posts {
                                             "Write reply here...",
                                             &*post.get_comments()[line][index].get_reply_input()
                                         )
-                                            .on_input(move |value| Message::DoAction(Box::new(
-                                                PostsAction::CommentMessage(CommentMessage::UpdateInput {
+                                            .on_input(move |value|
+                                                CommentMessage::UpdateInput {
                                                     post: post_index,
                                                     position: Some((line, index)),
                                                     input: value.clone(),
-                                                })
-                                            )))
+                                                }.into()
+                                            )
                                             .into(),
                                         Button::new("Add reply")
-                                            .on_press(Message::DoAction(Box::new(
-                                                PostsAction::CommentMessage(CommentMessage::Add {
+                                            .on_press(
+                                                CommentMessage::Add {
                                                     post: post_index,
                                                     parent: Some((line, index))
-                                                })
-                                            )))
+                                                }.into()
+                                            )
                                             .into()
                                     ])
                                         .into()
                                 ])
                             )
                                 .on_close(
-                                    Message::DoAction(Box::new(PostsAction::CommentMessage(
-                                        CommentMessage::Close {
+                                        Into::<Message>::into(CommentMessage::Close {
                                             post: post_index,
                                             position: (line, index),
-                                        }
-                                    ))),
+                                        }),
                                     20.0
                                 )
                         )
@@ -641,12 +626,12 @@ impl Posts {
                                             .into()
                                     ]))
                                         .style(crate::theme::button::Button::Transparent)
-                                        .on_press(Message::DoAction(Box::new(
-                                            PostsAction::CommentMessage(CommentMessage::Open {
+                                        .on_press(
+                                            CommentMessage::Open {
                                                 post: post_index,
                                                 position: (line, index)
-                                            })
-                                        )))
+                                            }.into()
+                                        )
                                         .into()
                                 ).collect::<Vec<Element<Message, Theme, Renderer>>>()
                             )
@@ -663,9 +648,9 @@ impl Posts {
                     .width(Length::FillPortion(3))
                     .height(Length::Fill)
                     .style(crate::theme::closeable::Closeable::SpotLight)
-                    .on_click(Message::DoAction(Box::new(PostsAction::ToggleModal(
+                    .on_click(Into::<Message>::into(PostsMessage::ToggleModal(
                         ModalType::ShowingImage(image)
-                    ))))
+                    )))
                     .into(),
                 Closeable::new(
                     Column::with_children(vec![
@@ -675,18 +660,18 @@ impl Posts {
                         Text::new(post.get_description().clone())
                             .into(),
                         Rating::new()
-                            .on_rate(move |value| Message::DoAction(Box::new(
-                                PostsAction::RatePost {
+                            .on_rate(move |value|
+                                PostsMessage::RatePost {
                                     post_index: post_index.clone(),
                                     rating: value
-                                }
-                            )))
-                            .on_unrate(Message::DoAction(Box::new(
-                                PostsAction::RatePost {
+                                }.into()
+                            )
+                            .on_unrate(
+                                Into::<Message>::into(PostsMessage::RatePost {
                                     post_index,
                                     rating: 0
-                                }
-                            )))
+                                })
+                            )
                             .value(*post.get_rating())
                             .into(),
                         comment_chain.into()
@@ -699,7 +684,9 @@ impl Posts {
                     .padding([30.0, 0.0, 0.0, 10.0])
                     .style(crate::theme::closeable::Closeable::Default)
                     .on_close(
-                        Message::DoAction(Box::new(PostsAction::ToggleModal(ModalType::ShowingPost(post_index)))),
+                        Into::<Message>::into(PostsMessage::ToggleModal(
+                            ModalType::ShowingPost(post_index)
+                        )),
                         40.0
                     )
                     .into()
@@ -719,15 +706,11 @@ impl Posts {
                         "Give a summary of the issue...",
                         &*self.report_input.clone()
                     )
-                        .on_input(|value| Message::DoAction(Box::new(
-                            PostsAction::UpdateReportInput(value.clone())
-                        )))
+                        .on_input(|value| PostsMessage::UpdateReportInput(value.clone()).into())
                         .into(),
                     Container::new(
                         Button::new("Submit")
-                            .on_press(Message::DoAction(Box::new(
-                                PostsAction::SubmitReport(post_index)
-                            )))
+                            .on_press(PostsMessage::SubmitReport(post_index).into())
                     )
                         .width(Length::Fill)
                         .align_x(Horizontal::Center)
@@ -739,9 +722,7 @@ impl Posts {
                 .width(300.0)
         )
             .on_close(
-                Message::DoAction(Box::new(PostsAction::ToggleModal(
-                    ModalType::ShowingReport(post_index)
-                ))),
+                Into::<Message>::into(PostsMessage::ToggleModal(ModalType::ShowingReport(post_index))),
                 25.0
             )
             .into()
@@ -776,19 +757,11 @@ impl Posts {
 #[derive(Debug, Clone, Copy)]
 pub struct PostsOptions {}
 
-impl SceneOptions<Posts> for PostsOptions {
-    fn apply_options(&self, _scene: &mut Posts) { }
-
-    fn boxed_clone(&self) -> Box<dyn SceneOptions<Posts>> {
-        Box::new((*self).clone())
-    }
-}
-
 impl Scene for Posts {
-    fn new(
-        options: Option<Box<dyn SceneOptions<Self>>>,
-        globals: &mut Globals
-    ) -> (Self, Command<Message>)
+    type Message = PostsMessage;
+    type Options = PostsOptions;
+
+    fn new(options: Option<Self::Options>, globals: &mut Globals) -> (Self, Command<Message>)
     where
         Self: Sized,
     {
@@ -809,7 +782,7 @@ impl Scene for Posts {
         };
 
         if let Some(options) = options {
-            options.apply_options(&mut posts);
+            posts.apply_options(options);
         }
 
         let db = globals.get_db().unwrap();
@@ -826,9 +799,7 @@ impl Scene for Posts {
                     },
                     |tags| {
                         match tags {
-                            Ok(tags) => Message::DoAction(Box::new(
-                                PostsAction::LoadedTags(tags)
-                            )),
+                            Ok(tags) => PostsMessage::LoadedTags(tags).into(),
                             Err(err) => Message::Error(err)
                         }
                     }
@@ -851,22 +822,12 @@ impl Scene for Posts {
         String::from("Posts")
     }
 
-    fn update(&mut self, globals: &mut Globals, message: Box<dyn Action>) -> Command<Message> {
-        let as_option: Option<&PostsAction> = message
-            .as_any()
-            .downcast_ref::<PostsAction>();
-        let message = if let Some(message) = as_option {
-            message
-        } else {
-            return Command::perform(async {}, move |()| Message::Error(
-                Error::DebugError(DebugError::new(
-                    debug_message!(format!("Message doesn't belong to posts scene: {}.", message.get_name()))
-                ))
-            ))
-        };
+    fn apply_options(&mut self, _options: Self::Options) { }
+
+    fn update(&mut self, globals: &mut Globals, message: &Self::Message) -> Command<Message> {
 
         match message {
-            PostsAction::LoadPosts => {
+            PostsMessage::LoadPosts => {
                 let db = globals.get_db().unwrap();
                 let user_id = globals.get_user().unwrap().get_id();
 
@@ -889,19 +850,19 @@ impl Scene for Posts {
                     )
                 }
             }
-            PostsAction::LoadedPosts(posts, tab) => {
+            PostsMessage::LoadedPosts(posts, tab) => {
                 let tab = tab.clone();
                 *self.get_tab_mut(tab.clone()) = PostList::new(posts.clone());
                 let length = posts.len();
 
                 if length > 0 {
-                    self.update(globals, Box::new(PostsAction::LoadBatch(tab)))
+                    self.update(globals, &PostsMessage::LoadBatch(tab))
                 } else {
                     Command::none()
                 }
             }
-            PostsAction::LoadedImage { image, id } => {
-                if self.images.contains_key(id) {
+            PostsMessage::LoadedImage { image, id } => {
+                if self.images.contains_key(&id) {
                     return Command::none();
                 }
 
@@ -920,7 +881,7 @@ impl Scene for Posts {
                     |()| Message::None
                 )
             }
-            PostsAction::LoadBatch(tab) => {
+            PostsMessage::LoadBatch(tab) => {
                 let tab = tab.clone();
                 let posts = self.get_tab_mut(tab).load_batch();
                 let mut user_ids = HashSet::<Uuid>::new();
@@ -955,10 +916,10 @@ impl Scene for Posts {
 
                 Command::batch(commands)
             }
-            PostsAction::CommentMessage(message) => {
-                self.update_comment(message, globals)
+            PostsMessage::CommentMessage(message) => {
+                self.update_comment(&message, globals)
             }
-            PostsAction::ToggleModal(modal) => {
+            PostsMessage::ToggleModal(modal) => {
                 self.modals.toggle_modal(modal.clone());
 
                 match modal {
@@ -982,7 +943,7 @@ impl Scene for Posts {
                     _ => Command::none()
                 }
             }
-            PostsAction::RatePost { post_index, rating } => {
+            PostsMessage::RatePost { post_index, rating } => {
                 let user_id = globals.get_user().unwrap().get_id();
                 let db = globals.get_db().unwrap();
 
@@ -1024,28 +985,28 @@ impl Scene for Posts {
                     )
                 }
             }
-            PostsAction::LoadedTags(tags) => {
+            PostsMessage::LoadedTags(tags) => {
                 self.all_tags = HashSet::from_iter(tags.iter().map(|tag| tag.clone()));
 
                 Command::none()
             }
-            PostsAction::UpdateFilterInput(filter_input) => {
+            PostsMessage::UpdateFilterInput(filter_input) => {
                 self.filter_input = filter_input.clone();
 
                 Command::none()
             }
-            PostsAction::AddTag(tag) => {
+            PostsMessage::AddTag(tag) => {
                 self.tags.insert(tag.clone());
                 self.filter_input = String::from("");
 
                 Command::none()
             }
-            PostsAction::RemoveTag(tag) => {
-                self.tags.remove(tag);
+            PostsMessage::RemoveTag(tag) => {
+                self.tags.remove(&tag);
 
                 Command::none()
             }
-            PostsAction::OpenProfile(user) => {
+            PostsMessage::OpenProfile(user) => {
                 self.error = None;
                 self.user_profile = user.clone();
                 self.active_tab = PostTabs::Profile;
@@ -1061,12 +1022,12 @@ impl Scene for Posts {
                     globals.get_cache()
                 )
             }
-            PostsAction::UpdateUserTagInput(user_tag_input) => {
+            PostsMessage::UpdateUserTagInput(user_tag_input) => {
                 self.user_tag_input = user_tag_input.clone();
 
                 Command::none()
             }
-            PostsAction::GetUserByTag => {
+            PostsMessage::GetUserByTag => {
                 let db = globals.get_db().unwrap();
                 let user_tag = self.user_tag_input.clone();
 
@@ -1076,20 +1037,18 @@ impl Scene for Posts {
                     },
                     |result| {
                         match result {
-                            Ok(user) => Message::DoAction(Box::new(
-                                PostsAction::OpenProfile(user)
-                            )),
+                            Ok(user) => PostsMessage::OpenProfile(user).into(),
                             Err(err) => Message::Error(err)
                         }
                     }
                 )
             }
-            PostsAction::UpdateReportInput(report_input) => {
+            PostsMessage::UpdateReportInput(report_input) => {
                 self.report_input = report_input.clone();
 
                 Command::none()
             }
-            PostsAction::SubmitReport(post_index) => {
+            PostsMessage::SubmitReport(post_index) => {
                 let post_index = post_index.clone();
                 let report_description = self.report_input.clone();
                 let post = self.get_active_tab().get_post(post_index).unwrap();
@@ -1166,18 +1125,16 @@ impl Scene for Posts {
                     ),
                     Command::perform(
                         async { },
-                        move |()| Message::DoAction(Box::new(PostsAction::ToggleModal(
-                            ModalType::ShowingReport(post_index)
-                        )))
+                        move |()| PostsMessage::ToggleModal(ModalType::ShowingReport(post_index)).into()
                     )
                 ])
             }
-            PostsAction::SelectTab(tab_id) => {
+            PostsMessage::SelectTab(tab_id) => {
                 self.active_tab = *tab_id;
 
                 Command::none()
             }
-            PostsAction::ErrorHandler(error) => {
+            PostsMessage::ErrorHandler(error) => {
                 self.error = Some(error.clone());
 
                 Command::none()
@@ -1195,14 +1152,12 @@ impl Scene for Posts {
                         self.all_tags.clone(),
                         "Add filter...",
                         &*self.filter_input,
-                        |tag| Message::DoAction(Box::new(PostsAction::AddTag(tag)))
+                        |tag| PostsMessage::AddTag(tag).into()
                     )
-                        .on_input(|input| Message::DoAction(Box::new(
-                            PostsAction::UpdateFilterInput(input))
-                        ))
+                        .on_input(|input| PostsMessage::UpdateFilterInput(input).into())
                         .into(),
                     Button::new("Submit")
-                        .on_press(Message::DoAction(Box::new(PostsAction::LoadPosts)))
+                        .on_press(PostsMessage::LoadPosts.into())
                         .into()
                 ])
                     .spacing(10.0)
@@ -1211,9 +1166,7 @@ impl Scene for Posts {
                     |tag| Container::new(
                         Row::with_children(vec![
                             Text::new(tag.get_name().clone()).into(),
-                            Close::new(
-                                Message::DoAction(Box::new(PostsAction::RemoveTag(tag.clone())))
-                            )
+                            Close::new(Into::<Message>::into(PostsMessage::RemoveTag(tag.clone())))
                                 .size(15.0)
                                 .into()
                         ])
@@ -1238,15 +1191,11 @@ impl Scene for Posts {
 
         let user_tag_input = Row::with_children(vec![
             TextInput::new("Input user tag...", &*self.user_tag_input)
-                .on_input(|input| Message::DoAction(Box::new(
-                    PostsAction::UpdateUserTagInput(input)
-                )))
-                .on_paste(|input| Message::DoAction(Box::new(
-                    PostsAction::UpdateUserTagInput(input)
-                )))
+                .on_input(|input| PostsMessage::UpdateUserTagInput(input).into())
+                .on_paste(|input| PostsMessage::UpdateUserTagInput(input).into())
                 .into(),
             Button::new("Search")
-                .on_press(Message::DoAction(Box::new(PostsAction::GetUserByTag)))
+                .on_press(PostsMessage::GetUserByTag.into())
                 .into()
         ])
             .spacing(10.0)
@@ -1271,9 +1220,9 @@ impl Scene for Posts {
                     .style(crate::theme::button::Button::Transparent)
                     .width(Length::Shrink)
                     .height(Length::FillPortion(1))
-                    .on_press(Message::DoAction(Box::new(PostsAction::ToggleModal(
+                    .on_press(PostsMessage::ToggleModal(
                         ModalType::ShowingImage(self.get_handle(self.user_profile.get_id()))
-                    ))))
+                    ).into())
                     .into(),
                 Text::new(self.user_profile.get_username())
                     .size(30.0)
@@ -1305,7 +1254,7 @@ impl Scene for Posts {
                     profile_tab
                 )
             ],
-            |tab_id| Message::DoAction(Box::new(PostsAction::SelectTab(tab_id)))
+            |tab_id| PostsMessage::SelectTab(tab_id).into()
         )
             .set_active_tab(&self.active_tab);
 
@@ -1333,8 +1282,8 @@ impl Scene for Posts {
         self.modals.get_modal(underlay, modal_generator)
     }
 
-    fn get_error_handler(&self, error: Error) -> Box<dyn Action> {
-        Box::new(PostsAction::ErrorHandler(error))
+    fn handle_error(&mut self, globals: &mut Globals, error: &Error) -> Command<Message> {
+        self.update(globals, &PostsMessage::ErrorHandler(error.clone()))
     }
 
     fn clear(&self, _globals: &mut Globals) { }

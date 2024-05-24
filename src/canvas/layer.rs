@@ -9,6 +9,8 @@ use json::JsonValue;
 use std::sync::Arc;
 use iced::keyboard::Key;
 use mongodb::bson::Uuid;
+use crate::scene::Message;
+use crate::scenes::drawing::DrawingMessage;
 
 /// A layer in the [canvas](crate::canvas::canvas::Canvas).
 pub struct Layer {
@@ -142,7 +144,7 @@ impl<'a> LayerVessel<'a>
     }
 }
 
-impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for LayerVessel<'a> {
+impl<'a> canvas::Program<CanvasMessage, Theme, Renderer> for LayerVessel<'a> {
     type State = Option<Box<dyn Pending>>;
 
     fn update(
@@ -151,7 +153,7 @@ impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for LayerVessel<'a> {
         event: canvas::Event,
         bounds: Rectangle,
         cursor: Cursor,
-    ) -> (event::Status, Option<CanvasAction>) {
+    ) -> (event::Status, Option<CanvasMessage>) {
         if !self.active {
             return (event::Status::Ignored, None);
         }
@@ -166,13 +168,13 @@ impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for LayerVessel<'a> {
                     let value :&str= key.as_str();
 
                     if (value == "Z" || value == "z") && modifiers == keyboard::Modifiers::CTRL {
-                        return (event::Status::Captured, Some(CanvasAction::Undo));
+                        return (event::Status::Captured, Some(CanvasMessage::Undo));
                     } else if (value == "S" || value == "s") && modifiers == keyboard::Modifiers::CTRL
                     {
-                        return (event::Status::Captured, Some(CanvasAction::Save));
+                        return (event::Status::Captured, Some(CanvasMessage::Save));
                     } else if (value == "Y" || value == "y") && modifiers == keyboard::Modifiers::CTRL
                     {
-                        return (event::Status::Captured, Some(CanvasAction::Redo));
+                        return (event::Status::Captured, Some(CanvasMessage::Redo));
                     } else {
                         return (event::Status::Ignored, None);
                     }
@@ -248,7 +250,7 @@ impl<'a> canvas::Program<CanvasAction, Theme, Renderer> for LayerVessel<'a> {
 
 /// Scene messages that relate to the [canvas](crate::canvas::canvas::Canvas).
 #[derive(Clone)]
-pub enum CanvasAction {
+pub enum CanvasMessage {
     /// Adds a [Tool] to the active [Layer].
     UseTool(Arc<dyn Tool>),
 
@@ -294,4 +296,16 @@ pub enum CanvasAction {
 
     /// Adds the last removed [Tool].
     Redo,
+}
+
+impl Into<Message> for CanvasMessage {
+    fn into(self) -> Message {
+        DrawingMessage::CanvasMessage(self).into()
+    }
+}
+
+impl Into<DrawingMessage> for CanvasMessage {
+    fn into(self) -> DrawingMessage {
+        DrawingMessage::CanvasMessage(self)
+    }
 }

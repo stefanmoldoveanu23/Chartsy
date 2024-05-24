@@ -15,7 +15,7 @@ use json::JsonValue;
 use mongodb::bson::Uuid;
 use svg2webp::svg2webp;
 
-use crate::canvas::layer::CanvasAction;
+use crate::canvas::layer::CanvasMessage;
 use crate::canvas::tool;
 use crate::canvas::tool::Pending;
 use crate::canvas::tools::{
@@ -27,9 +27,8 @@ use crate::canvas::tools::{
     rect::RectPending, triangle::TrianglePending,
 };
 use crate::database;
-use crate::errors::debug::{debug_message, DebugError};
 use crate::errors::error::Error;
-use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
+use crate::scene::{Globals, Message, Scene, SceneMessage};
 use crate::scenes::scenes::Scenes;
 
 use crate::theme::Theme;
@@ -45,11 +44,11 @@ use crate::scenes::data::drawing::*;
 use crate::icons::{Icon, ICON, ToolIcon};
 use crate::widgets::close::Close;
 
-/// The [Messages](Action) for the [Drawing] scene.
+/// The [Messages](SceneMessage) for the [Drawing] scene.
 #[derive(Clone)]
-pub(crate) enum DrawingAction {
+pub enum DrawingMessage {
     /// Triggered when the user has interacted with the canvas.
-    CanvasAction(CanvasAction),
+    CanvasMessage(CanvasMessage),
 
     /// Creates a new post given the canvas and the [PostData].
     PostDrawing,
@@ -64,28 +63,34 @@ pub(crate) enum DrawingAction {
     ErrorHandler(Error),
 }
 
-impl Action for DrawingAction {
+impl Into<Message> for DrawingMessage {
+    fn into(self) -> Message {
+        Message::DoAction(Box::new(self))
+    }
+}
+
+impl SceneMessage for DrawingMessage {
     fn as_any(&self) -> &dyn Any {
         self
     }
 
     fn get_name(&self) -> String {
         match self {
-            DrawingAction::CanvasAction(_) => String::from("Canvas action"),
-            DrawingAction::PostDrawing => String::from("Post drawing"),
-            DrawingAction::UpdatePostData(_) => String::from("Update post data"),
-            DrawingAction::ToggleModal(_) => String::from("Toggle modal"),
-            DrawingAction::ErrorHandler(_) => String::from("Handle error"),
+            Self::CanvasMessage(_) => String::from("Canvas action"),
+            Self::PostDrawing => String::from("Post drawing"),
+            Self::UpdatePostData(_) => String::from("Update post data"),
+            Self::ToggleModal(_) => String::from("Toggle modal"),
+            Self::ErrorHandler(_) => String::from("Handle error"),
         }
     }
 
-    fn boxed_clone(&self) -> Box<dyn Action + 'static> {
+    fn boxed_clone(&self) -> Box<dyn SceneMessage + 'static> {
         Box::new((*self).clone())
     }
 }
 
-impl Into<Box<dyn Action + 'static>> for Box<DrawingAction> {
-    fn into(self) -> Box<dyn Action + 'static> {
+impl Into<Box<dyn SceneMessage + 'static>> for Box<DrawingMessage> {
+    fn into(self) -> Box<dyn SceneMessage + 'static> {
         self
     }
 }
@@ -108,7 +113,7 @@ pub struct Drawing {
 impl Drawing {
     /// Initialize the drawing scene from the database.
     /// If the uuid is 0, then insert a new drawing in the database.
-    fn init_online(self: &mut Box<Self>, globals: &mut Globals) -> Command<Message> {
+    fn init_online(self: &mut Self, globals: &mut Globals) -> Command<Message> {
         let mut uuid = *self.canvas.get_id();
         if uuid != Uuid::from_bytes([0; 16]) {
             if let Some(db) = globals.get_db() {
@@ -122,11 +127,11 @@ impl Drawing {
                     move |res| {
                         match res {
                             Ok((layers, tools)) => {
-                                Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Loaded {
+                                CanvasMessage::Loaded {
                                     layers,
                                     tools,
                                     json_tools: None,
-                                })))
+                                }.into()
                             }
                             Err(err) => Message::Error(err)
                         }
@@ -153,11 +158,11 @@ impl Drawing {
                     move |result| {
                         match result {
                             Ok(layer) => {
-                                Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Loaded {
+                                CanvasMessage::Loaded {
                                     layers: vec![layer],
                                     tools: vec![],
                                     json_tools: None,
-                                })))
+                                }.into()
                             }
                             Err(err) => {
                                 Message::Error(err)
@@ -173,7 +178,7 @@ impl Drawing {
 
     /// Initialize the drawing scene from the user's computer.
     /// If the uuid is 0, then create a new directory.
-    fn init_offline(self: &mut Box<Self>, globals: &mut Globals) -> Command<Message> {
+    fn init_offline(self: &mut Self, globals: &mut Globals) -> Command<Message> {
         let default_id = Uuid::new();
         let mut default_layer = Object::new();
         default_layer.insert("id", JsonValue::String(default_id.to_string()));
@@ -232,13 +237,11 @@ impl Drawing {
                     }
                 },
                 |(layers, tools, json_tools)| {
-                    Message::DoAction(Box::new(DrawingAction::CanvasAction(
-                        CanvasAction::Loaded {
-                            layers,
-                            tools,
-                            json_tools: Some(json_tools),
-                        },
-                    )))
+                    CanvasMessage::Loaded {
+                        layers,
+                        tools,
+                        json_tools: Some(json_tools),
+                    }.into()
                 },
             )
         } else {
@@ -256,13 +259,13 @@ impl Drawing {
             file.write(json::stringify(JsonValue::Object(default_json)).as_bytes())
                 .unwrap();
 
-            self.update(globals, Box::new(DrawingAction::CanvasAction(
-                CanvasAction::Loaded {
+            self.update(globals,
+                &CanvasMessage::Loaded {
                     layers: vec![(default_id, "New layer".to_string())],
                     tools: vec![],
                     json_tools: Some(vec![]),
-                },
-            )))
+                }.into(),
+            )
         }
     }
 }
@@ -279,52 +282,37 @@ pub struct DrawingOptions {
 
 impl DrawingOptions {
     /// Returns a new instance with the given parameters.
-    pub(crate) fn new(uuid: Option<Uuid>, save_mode: Option<SaveMode>) -> Self {
+    pub fn new(uuid: Option<Uuid>, save_mode: Option<SaveMode>) -> Self {
         DrawingOptions { uuid, save_mode }
     }
 }
 
-impl SceneOptions<Box<Drawing>> for DrawingOptions {
-    fn apply_options(&self, scene: &mut Box<Drawing>) {
-        if let Some(uuid) = self.uuid {
-            scene.canvas.set_id(uuid);
-        }
+impl Scene for Drawing {
+    type Message = DrawingMessage;
+    type Options = DrawingOptions;
 
-        if let Some(save_mode) = self.save_mode {
-            scene.save_mode = save_mode;
-        }
-    }
-
-    fn boxed_clone(&self) -> Box<dyn SceneOptions<Box<Drawing>>> {
-        Box::new((*self).clone())
-    }
-}
-
-impl Scene for Box<Drawing> {
     fn new(
-        options: Option<Box<dyn SceneOptions<Box<Drawing>>>>,
+        options: Option<Self::Options>,
         globals: &mut Globals,
     ) -> (Self, Command<Message>)
     where
         Self: Sized,
     {
-        let mut drawing = Box::new(Drawing {
+        let mut drawing = Drawing {
             canvas: Canvas::new()
                 .width(Length::Fixed(800.0))
                 .height(Length::Fixed(600.0)),
             post_data: Default::default(),
             save_mode: SaveMode::Online,
             modal_stack: ModalStack::new(),
-        });
+        };
 
         let set_tool = Command::perform(async {}, |_| {
-            Message::DoAction(Box::new(DrawingAction::CanvasAction(
-                CanvasAction::ChangeTool(Box::new(LinePending::None)),
-            )))
+            CanvasMessage::ChangeTool(Box::new(LinePending::None)).into()
         });
 
         if let Some(options) = options {
-            options.apply_options(&mut drawing);
+            drawing.apply_options(options);
         }
 
         let init_data: Command<Message> = match drawing.save_mode {
@@ -339,27 +327,25 @@ impl Scene for Box<Drawing> {
         String::from("Drawing")
     }
 
-    fn update(&mut self, globals: &mut Globals, message: Box<dyn Action>) -> Command<Message> {
-        let as_option: Option<&DrawingAction> = message
-            .as_any()
-            .downcast_ref::<DrawingAction>();
-        let message = if let Some(message) = as_option {
-            message
-        } else {
-            return Command::perform(async {}, move |()| Message::Error(
-                Error::DebugError(DebugError::new(
-                    debug_message!(format!("Message doesn't belong to drawing scene: {}.", message.get_name()))
-                ))
-            ))
-        };
+    fn apply_options(&mut self, options: Self::Options) {
+        if let Some(uuid) = options.uuid {
+            self.canvas.set_id(uuid);
+        }
+
+        if let Some(save_mode) = options.save_mode {
+            self.save_mode = save_mode;
+        }
+    }
+
+    fn update(&mut self, globals: &mut Globals, message: &Self::Message) -> Command<Message> {
 
         match message {
-            DrawingAction::CanvasAction(action) => self.canvas.update(globals, action.clone()),
-            DrawingAction::UpdatePostData(update) => {
+            DrawingMessage::CanvasMessage(action) => self.canvas.update(globals, action.clone()),
+            DrawingMessage::UpdatePostData(update) => {
                 self.post_data.update(update.clone());
                 Command::none()
             }
-            DrawingAction::PostDrawing => {
+            DrawingMessage::PostDrawing => {
                 let document = self.canvas.get_svg().as_document();
                 let db = globals.get_db().unwrap();
                 let user_id = globals.get_user().unwrap().get_id();
@@ -399,15 +385,13 @@ impl Scene for Box<Drawing> {
                     },
                     |res| {
                         match res {
-                            Ok(_) => Message::DoAction(Box::new(
-                                DrawingAction::ToggleModal(ModalTypes::PostPrompt)
-                            )),
+                            Ok(_) => DrawingMessage::ToggleModal(ModalTypes::PostPrompt).into(),
                             Err(err) => Message::Error(err)
                         }
                     },
                 )
             }
-            DrawingAction::ToggleModal(modal) => {
+            DrawingMessage::ToggleModal(modal) => {
                 self.modal_stack.toggle_modal(modal.clone());
 
                 match modal {
@@ -420,11 +404,10 @@ impl Scene for Box<Drawing> {
                                     },
                                     |res| {
                                         match res {
-                                            Ok(tags) => {
-                                                Message::DoAction(Box::new(DrawingAction::UpdatePostData(
+                                            Ok(tags) =>
+                                                DrawingMessage::UpdatePostData(
                                                     UpdatePostData::AllTags(tags)
-                                                )))
-                                            }
+                                                ).into(),
                                             Err(err) => Message::Error(err)
                                         }
                                     }
@@ -438,7 +421,7 @@ impl Scene for Box<Drawing> {
                     }
                 }
             }
-            DrawingAction::ErrorHandler(_) => Command::none(),
+            DrawingMessage::ErrorHandler(_) => Command::none(),
         }
     }
 
@@ -448,9 +431,7 @@ impl Scene for Box<Drawing> {
                 Button::<Message, Theme, Renderer>::new(
                     Text::new(name).font(ICON).line_height(1.0).size(25.0)
                 )
-                    .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
-                        CanvasAction::ChangeTool(pending)
-                    ))))
+                    .on_press(CanvasMessage::ChangeTool(pending).into())
                     .padding(10.0)
                     .into()
             };
@@ -516,9 +497,7 @@ impl Scene for Box<Drawing> {
             self.canvas
                 .get_style()
                 .view()
-                .map(|update| Message::DoAction(Box::new(
-                    DrawingAction::CanvasAction(CanvasAction::UpdateStyle(update))
-                )))
+                .map(|update| CanvasMessage::UpdateStyle(update).into())
         ))
             .padding(2.0)
             .width(Length::Fill)
@@ -539,9 +518,7 @@ impl Scene for Box<Drawing> {
                     )
                         .padding(0.0)
                         .style(crate::theme::button::Button::Transparent)
-                        .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
-                            CanvasAction::AddLayer
-                        ))))
+                        .on_press(CanvasMessage::AddLayer.into())
                         .into()
                 ])
                     .padding(8.0)
@@ -572,13 +549,9 @@ impl Scene for Box<Drawing> {
                                             &*new_name.clone()
                                         )
                                             .on_input(|input|
-                                                Message::DoAction(Box::new(DrawingAction::CanvasAction(
-                                                    CanvasAction::UpdateLayerName(*id, input)
-                                                )))
+                                                    CanvasMessage::UpdateLayerName(*id, input).into()
                                             )
-                                            .on_submit(Message::DoAction(Box::new(DrawingAction::CanvasAction(
-                                                CanvasAction::ToggleEditLayerName(*id)
-                                            ))))
+                                            .on_submit(CanvasMessage::ToggleEditLayerName(*id).into())
                                             .into()
                                     } else {
                                         Row::with_children(vec![
@@ -590,9 +563,7 @@ impl Scene for Box<Drawing> {
                                                     .style(text_style())
                                             )
                                                 .style(crate::theme::button::Button::Transparent)
-                                                .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
-                                                    CanvasAction::ToggleEditLayerName(*id)
-                                                ))))
+                                                .on_press(CanvasMessage::ToggleEditLayerName(*id).into())
                                                 .into()
                                         ])
                                             .align_items(Alignment::Center)
@@ -607,9 +578,7 @@ impl Scene for Box<Drawing> {
                                             .font(ICON)
                                     )
                                         .style(crate::theme::button::Button::Transparent)
-                                        .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
-                                            CanvasAction::ToggleLayer(*id)
-                                        ))))
+                                        .on_press(CanvasMessage::ToggleLayer(*id).into())
                                         .into(),
                                     if layer_count > 1 {
                                         Button::new(
@@ -617,9 +586,7 @@ impl Scene for Box<Drawing> {
                                                 .style(text_style())
                                         )
                                             .style(crate::theme::button::Button::Transparent)
-                                            .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(
-                                                CanvasAction::RemoveLayer(*id)
-                                            ))))
+                                            .on_press(CanvasMessage::RemoveLayer(*id).into())
                                             .into()
                                     } else {
                                         Space::with_width(Length::Shrink)
@@ -630,9 +597,7 @@ impl Scene for Box<Drawing> {
                             )
                                 .width(Length::Fill)
                                 .style(style)
-                                .on_press(Message::DoAction(Box::new(
-                                    DrawingAction::CanvasAction(CanvasAction::ActivateLayer(*id))
-                                )))
+                                .on_press(CanvasMessage::ActivateLayer(*id).into())
                                 .into()
                         }
                     ).collect::<Vec<Element<Message, Theme, Renderer>>>()
@@ -650,11 +615,11 @@ impl Scene for Box<Drawing> {
         let menu_section = Container::new(
             Column::with_children(vec![
                 Button::new(Text::new("Save"))
-                    .on_press(Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Save))))
+                    .on_press(CanvasMessage::Save.into())
                     .into(),
                 if globals.get_db().is_some() && globals.get_user().is_some() {
                     Button::new(Text::new("Post"))
-                        .on_press(Message::DoAction(Box::new(DrawingAction::ToggleModal(ModalTypes::PostPrompt))))
+                        .on_press(DrawingMessage::ToggleModal(ModalTypes::PostPrompt).into())
                 } else {
                     Button::new(Text::new("Post"))
                 }
@@ -730,7 +695,9 @@ impl Scene for Box<Drawing> {
                                         "Write description here...",
                                         &*self.post_data.get_description()
                                     )
-                                        .on_input(|new_value| Message::DoAction(Box::new(DrawingAction::UpdatePostData(UpdatePostData::Description(new_value)))))
+                                        .on_input(|new_value| DrawingMessage::UpdatePostData(
+                                            UpdatePostData::Description(new_value)
+                                        ).into())
                                         .into(),
                                     Text::new("Tags:").into(),
                                     Grid::new(self.post_data.get_post_tags().iter().enumerate().map(
@@ -738,11 +705,11 @@ impl Scene for Box<Drawing> {
                                             Row::with_children(vec![
                                                 Text::new(tag.get_name().clone()).into(),
                                                 Close::new(
-                                                    Message::DoAction(Box::new(
-                                                        DrawingAction::UpdatePostData(
+                                                    Into::<Message>::into(
+                                                        DrawingMessage::UpdatePostData(
                                                             UpdatePostData::RemoveTag(index)
                                                         )
-                                                    ))
+                                                    )
                                                 )
                                                     .size(15.0)
                                                     .into()
@@ -764,14 +731,17 @@ impl Scene for Box<Drawing> {
                                                 self.post_data.get_all_tags().clone(),
                                                 "Add a new tag...",
                                                 &*self.post_data.get_tag_input(),
-                                                |tag| Message::DoAction(Box::new(
-                                                    DrawingAction::UpdatePostData(UpdatePostData::SelectedTag(tag))
-                                                ))
+                                                |tag|
+                                                    DrawingMessage::UpdatePostData(
+                                                        UpdatePostData::SelectedTag(tag)
+                                                    ).into()
                                             )
                                                 .width(Length::Fill)
-                                                .on_input(|new_value| Message::DoAction(Box::new(
-                                                    DrawingAction::UpdatePostData(UpdatePostData::TagInput(new_value))
-                                                )))
+                                                .on_input(|new_value|
+                                                    DrawingMessage::UpdatePostData(
+                                                        UpdatePostData::TagInput(new_value)
+                                                    ).into()
+                                                )
                                                 .into(),
                                             Button::new(
                                                 Image::new(Handle::from_memory(
@@ -780,9 +750,9 @@ impl Scene for Box<Drawing> {
                                                     .width(30.0)
                                                     .height(30.0)
                                             )
-                                                .on_press(Message::DoAction(Box::new(DrawingAction::UpdatePostData(
+                                                .on_press(DrawingMessage::UpdatePostData(
                                                     UpdatePostData::NewTag(self.post_data.get_tag_input().clone())
-                                                ))))
+                                                ).into())
                                                 .padding(0)
                                                 .into()
                                         ]
@@ -795,13 +765,13 @@ impl Scene for Box<Drawing> {
                         )
                             .footer(
                                 Button::new("Post")
-                                    .on_press(Message::DoAction(Box::new(DrawingAction::PostDrawing)))
+                                    .on_press(DrawingMessage::PostDrawing.into())
                             )
                             .width(Length::Fixed(300.0))
                     )
                         .style(crate::theme::closeable::Closeable::Transparent)
                         .on_close(
-                            Message::DoAction(Box::new(DrawingAction::ToggleModal(ModalTypes::PostPrompt))),
+                            Into::<Message>::into(DrawingMessage::ToggleModal(ModalTypes::PostPrompt)),
                             32.0
                         )
                         .width(Length::Shrink)
@@ -814,8 +784,8 @@ impl Scene for Box<Drawing> {
         self.modal_stack.get_modal(underlay, modal_transform)
     }
 
-    fn get_error_handler(&self, error: Error) -> Box<dyn Action> {
-        Box::new(DrawingAction::ErrorHandler(error))
+    fn handle_error(&mut self, globals: &mut Globals, error: &Error) -> Command<Message> {
+        self.update(globals, &DrawingMessage::ErrorHandler(error.clone()))
     }
 
     fn clear(&self, _globals: &mut Globals) {}

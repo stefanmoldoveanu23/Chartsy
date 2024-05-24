@@ -1,4 +1,4 @@
-use crate::canvas::layer::CanvasAction;
+use crate::canvas::layer::CanvasMessage;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
 use iced::event::Status;
@@ -26,7 +26,7 @@ impl Pending for LinePending {
         event: Event,
         cursor: Point,
         style: Style,
-    ) -> (Status, Option<CanvasAction>) {
+    ) -> (Status, Option<CanvasMessage>) {
         match event {
             Event::Mouse(mouse_event) => {
                 let message = match mouse_event {
@@ -40,7 +40,7 @@ impl Pending for LinePending {
 
                             *self = LinePending::None;
                             Some(
-                                CanvasAction::UseTool(Arc::new(Line {
+                                CanvasMessage::UseTool(Arc::new(Line {
                                     start: start_clone,
                                     end: cursor,
                                     style,

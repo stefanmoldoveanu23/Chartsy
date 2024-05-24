@@ -1,4 +1,4 @@
-use crate::canvas::layer::CanvasAction;
+use crate::canvas::layer::CanvasMessage;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
 use iced::event::Status;
@@ -30,7 +30,7 @@ impl Pending for PolygonPending {
         event: Event,
         cursor: Point,
         style: Style,
-    ) -> (Status, Option<CanvasAction>) {
+    ) -> (Status, Option<CanvasMessage>) {
         match event {
             Event::Mouse(mouse_event) => {
                 let message = match mouse_event {
@@ -55,7 +55,7 @@ impl Pending for PolygonPending {
                                     offsets_clone.push(first_clone.sub(last_clone));
                                     *self = PolygonPending::None;
                                     Some(
-                                        CanvasAction::UseTool(Arc::new(Polygon {
+                                        CanvasMessage::UseTool(Arc::new(Polygon {
                                             first: first_clone,
                                             offsets: offsets_clone,
                                             style,

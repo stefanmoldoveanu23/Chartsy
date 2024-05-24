@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 use super::tool::{Pending, Tool};
 use super::tools::line::LinePending;
-use crate::canvas::layer::{CanvasAction, Layer, LayerVessel};
+use crate::canvas::layer::{CanvasMessage, Layer, LayerVessel};
 use crate::canvas::style::Style;
 use crate::canvas::svg::SVG;
 use crate::scene::{Globals, Message};
-use crate::scenes::drawing::DrawingAction;
 use crate::serde::Serialize;
 use crate::theme::Theme;
 use directories::ProjectDirs;
@@ -214,18 +213,18 @@ impl Canvas {
     }
 
     /// Update function, all canvas related messages are handled here.
-    pub fn update(&mut self, globals: &mut Globals, message: CanvasAction) -> Command<Message> {
+    pub fn update(&mut self, globals: &mut Globals, message: CanvasMessage) -> Command<Message> {
         match message {
-            CanvasAction::UseTool(tool) => {
+            CanvasMessage::UseTool(tool) => {
                 self.tools.push((tool.clone(), self.current_layer));
                 self.layers.get_mut(&self.current_layer).unwrap().get_mut_tools().push(tool.clone());
                 self.undo_stack = Box::new(vec![]);
                 self.clear_cache(self.current_layer);
             }
-            CanvasAction::UpdateStyle(update) => {
+            CanvasMessage::UpdateStyle(update) => {
                 return self.style.update(update);
             }
-            CanvasAction::AddLayer => {
+            CanvasMessage::AddLayer => {
                 let layer_id = Uuid::new();
 
                 self.svg.add_layer(layer_id);
@@ -235,21 +234,21 @@ impl Canvas {
                 self.current_layer = layer_id;
                 self.edited_layers = true;
             }
-            CanvasAction::ActivateLayer(layer) => {
+            CanvasMessage::ActivateLayer(layer) => {
                 self.current_tool = self.current_tool.dyn_default();
                 self.current_layer = layer;
             }
-            CanvasAction::ToggleLayer(layer) => {
+            CanvasMessage::ToggleLayer(layer) => {
                 self.layers.get_mut(&layer).unwrap().toggle_visibility();
             }
-            CanvasAction::ToggleEditLayerName(layer) => {
+            CanvasMessage::ToggleEditLayerName(layer) => {
                 self.layers.get_mut(&layer).unwrap().toggle_name();
                 self.edited_layers = true;
             }
-            CanvasAction::UpdateLayerName(id, name) => {
+            CanvasMessage::UpdateLayerName(id, name) => {
                 self.layers.get_mut(&id).unwrap().set_new_name(name);
             }
-            CanvasAction::RemoveLayer(id) => {
+            CanvasMessage::RemoveLayer(id) => {
                 if let Some(ref mut json_tools) = self.json_tools {
                     json_tools.retain(
                         |tool| {
@@ -275,13 +274,10 @@ impl Canvas {
                 self.removed_layers.push(id);
 
                 if self.current_layer == id {
-                    return self.update(
-                        globals,
-                        CanvasAction::ActivateLayer(self.layer_order[0])
-                    );
+                    return self.update(globals, CanvasMessage::ActivateLayer(self.layer_order[0]));
                 }
             }
-            CanvasAction::Save => {
+            CanvasMessage::Save => {
                 let tools_svg = self.get_tools_svg();
                 if tools_svg.is_empty() && self.count_saved == self.last_saved && !self.edited_layers {
                     return Command::none();
@@ -336,11 +332,7 @@ impl Canvas {
                             file.write(json::stringify(JsonValue::Object(data)).as_ref())
                                 .unwrap();
                         },
-                        |()| {
-                            Message::DoAction(Box::new(DrawingAction::CanvasAction(
-                                CanvasAction::Saved,
-                            )))
-                        },
+                        |()| CanvasMessage::Saved.into(),
                     )
                 } else {
                     let tools_mongo = self.get_tools_serialized();
@@ -370,9 +362,7 @@ impl Canvas {
                         },
                         move |result| {
                             match result {
-                                Ok(()) => {
-                                    Message::DoAction(Box::new(DrawingAction::CanvasAction(CanvasAction::Saved)))
-                                }
+                                Ok(()) => CanvasMessage::Saved.into(),
                                 Err(err) => Message::Error(err)
                             }
 
@@ -382,7 +372,7 @@ impl Canvas {
                     }
                 };
             }
-            CanvasAction::Undo => {
+            CanvasMessage::Undo => {
                 let opt = self.tools.pop();
                 if let Some((tool, layer)) = opt {
                     self.layers.get_mut(&layer).unwrap().get_mut_tools().pop();
@@ -395,7 +385,7 @@ impl Canvas {
                     self.count_saved = self.count_saved - 1;
                 }
             }
-            CanvasAction::Redo => {
+            CanvasMessage::Redo => {
                 let opt = self.undo_stack.pop();
 
                 if let Some((tool, layer)) = opt {
@@ -404,26 +394,18 @@ impl Canvas {
                     self.clear_cache(layer);
                 }
             }
-            CanvasAction::ChangeTool(tool) => {
+            CanvasMessage::ChangeTool(tool) => {
                 self.current_tool = (*tool).boxed_clone();
                 self.current_tool.shape_style(&mut self.style);
             }
-            CanvasAction::Saved => {
+            CanvasMessage::Saved => {
                 self.count_saved = self.tools.len();
                 self.last_saved = self.count_saved;
             }
-            CanvasAction::Loaded {
-                layers,
-                tools,
-                json_tools,
-            } => {
+            CanvasMessage::Loaded { layers, tools, json_tools, } => {
                 self.tools = Box::new(vec![]);
                 self.layers = Box::new(HashMap::from_iter(layers.iter().map(
-                    |(id, name)|
-                        (
-                            *id,
-                            Layer::new(name.clone())
-                        )
+                    |(id, name)| (*id, Layer::new(name.clone()))
                 )));
                 self.layer_order = layers.iter().map(|(id, _)| *id).collect();
                 self.svg = SVG::new(&self.layer_order);
@@ -451,7 +433,7 @@ impl Canvas {
 impl<'a> From<&'a Canvas> for Element<'a, Message, Theme, Renderer> {
     fn from(value: &'a Canvas) -> Self {
         Element::new(CanvasVessel::new(value))
-            .map(|action| Message::DoAction(Box::new(DrawingAction::CanvasAction(action))))
+            .map(Into::into)
     }
 }
 
@@ -471,7 +453,7 @@ struct CanvasVessel<'a>
     states: &'a HashMap<Uuid, Layer>,
 
     /// The list of [canvas layers](Canvas).
-    layers: HashMap<Uuid, canvas::Canvas<LayerVessel<'a>, CanvasAction, Theme, Renderer>>,
+    layers: HashMap<Uuid, canvas::Canvas<LayerVessel<'a>, CanvasMessage, Theme, Renderer>>,
 
     /// The index of the currently active [Layer].
     current_layer: Uuid,
@@ -512,7 +494,7 @@ impl<'a> CanvasVessel<'a>
     }
 }
 
-impl<'a> Widget<CanvasAction, Theme, Renderer> for CanvasVessel<'a>
+impl<'a> Widget<CanvasMessage, Theme, Renderer> for CanvasVessel<'a>
 {
     fn size(&self) -> Size<Length> {
         Size::new(
@@ -579,28 +561,27 @@ impl<'a> Widget<CanvasAction, Theme, Renderer> for CanvasVessel<'a>
 
     fn tag(&self) -> tree::Tag {
         struct Tag<T>(T);
-        tree::Tag::of::<Tag<<LayerVessel<'_> as canvas::Program<CanvasAction, Theme, Renderer>>::State>>()
+        tree::Tag::of::<Tag<<LayerVessel<'_> as canvas::Program<CanvasMessage, Theme, Renderer>>::State>>()
     }
 
     fn state(&self) -> tree::State {
-        tree::State::new(<LayerVessel<'_> as canvas::Program<
-            CanvasAction,
-            Theme,
-            Renderer,
-        >>::State::default())
+        tree::State::new(
+            <LayerVessel<'_> as canvas::Program<CanvasMessage, Theme, Renderer>>::State::default()
+        )
     }
 
     fn children(&self) -> Vec<Tree> {
         self.layer_order.iter().map(
-            |layer| Tree::new(&self.layers[&layer] as &dyn Widget<CanvasAction, Theme, Renderer>)
+            |layer|
+                Tree::new(&self.layers[&layer] as &dyn Widget<CanvasMessage, Theme, Renderer>)
         ).collect()
     }
 
     fn diff(&self, tree: &mut Tree) {
         tree.diff_children(
             self.layer_order.iter().map(
-                |layer| &self.layers[&layer] as &dyn Widget<CanvasAction, Theme, Renderer>
-            ).collect::<Vec<&dyn Widget<CanvasAction, Theme, Renderer>>>().as_slice()
+                |layer| &self.layers[&layer] as &dyn Widget<CanvasMessage, Theme, Renderer>
+            ).collect::<Vec<&dyn Widget<CanvasMessage, Theme, Renderer>>>().as_slice()
         )
     }
 
@@ -612,7 +593,7 @@ impl<'a> Widget<CanvasAction, Theme, Renderer> for CanvasVessel<'a>
         cursor: Cursor,
         renderer: &Renderer,
         clipboard: &mut dyn Clipboard,
-        shell: &mut Shell<'_, CanvasAction>,
+        shell: &mut Shell<'_, CanvasMessage>,
         viewport: &Rectangle,
     ) -> Status {
         if self.layer_order.len() == 0 {

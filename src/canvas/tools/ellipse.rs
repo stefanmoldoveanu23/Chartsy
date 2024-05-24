@@ -1,4 +1,4 @@
-use crate::canvas::layer::CanvasAction;
+use crate::canvas::layer::CanvasMessage;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
 use iced::event::Status;
@@ -52,7 +52,7 @@ impl Pending for EllipsePending {
         event: Event,
         cursor: Point,
         style: Style,
-    ) -> (Status, Option<CanvasAction>) {
+    ) -> (Status, Option<CanvasMessage>) {
         match event {
             Event::Mouse(mouse_event) => {
                 let message = match mouse_event {
@@ -74,7 +74,7 @@ impl Pending for EllipsePending {
                             let (center, radii, rotation) =
                                 EllipsePending::convert_data(center_clone, point1_clone, cursor);
                             Some(
-                                CanvasAction::UseTool(Arc::new(Ellipse {
+                                CanvasMessage::UseTool(Arc::new(Ellipse {
                                     center,
                                     radii,
                                     rotation,

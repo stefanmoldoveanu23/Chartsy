@@ -24,6 +24,12 @@ impl Debug for DebugError {
     }
 }
 
+impl Into<Error> for String {
+    fn into(self) -> Error {
+        Error::DebugError(DebugError::new(self))
+    }
+}
+
 #[macro_export]
 macro_rules! debug_message {
     ($message: expr) => {
@@ -32,3 +38,4 @@ macro_rules! debug_message {
 }
 
 pub use debug_message;
+use crate::errors::error::Error;

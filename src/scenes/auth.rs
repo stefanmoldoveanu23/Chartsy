@@ -1,6 +1,6 @@
 use crate::errors::auth::AuthError;
 use crate::errors::error::Error;
-use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
+use crate::scene::{SceneMessage, Globals, Message, Scene};
 use crate::scenes::scenes::Scenes;
 use crate::theme::Theme;
 use iced::widget::{Button, Column, Container, Row, Space, Text, TextInput};
@@ -8,13 +8,12 @@ use iced::{Element, Length, Renderer, Command};
 use iced_aw::{TabLabel, Tabs};
 use std::any::Any;
 use crate::database;
-use crate::errors::debug::{debug_message, DebugError};
 use crate::scenes::data::auth::*;
 use crate::serde::Serialize;
 
 /// Possible messages for the authentication page.
 #[derive(Clone)]
-enum AuthAction {
+pub enum AuthMessage {
     /// Triggered when a field in the registration form has been updated.
     RegisterTextFieldUpdate(RegisterField),
 
@@ -48,35 +47,41 @@ enum AuthAction {
     HandleError(Error),
 }
 
-impl Action for AuthAction {
+impl SceneMessage for AuthMessage {
     fn as_any(&self) -> &dyn Any {
         self
     }
 
     fn get_name(&self) -> String {
         match self {
-            AuthAction::RegisterTextFieldUpdate(_) => {
+            Self::RegisterTextFieldUpdate(_) => {
                 String::from("Modified register text input field")
             }
-            AuthAction::LogInTextFieldUpdate(_) => String::from("Modified log in text input field"),
-            AuthAction::SendRegister(_) => String::from("Register attempt"),
-            AuthAction::ValidateEmail => String::from("Validate email address"),
-            AuthAction::ResetRegisterCode => String::from("Reset email validation code"),
-            AuthAction::DoneRegistration => String::from("Successful registration"),
-            AuthAction::SendLogIn => String::from("Log In attempt"),
-            AuthAction::LoggedIn(_) => String::from("Logged in successfully"),
-            AuthAction::TabSelection(_) => String::from("Select tab"),
-            AuthAction::HandleError(_) => String::from("Handle an error"),
+            Self::LogInTextFieldUpdate(_) => String::from("Modified log in text input field"),
+            Self::SendRegister(_) => String::from("Register attempt"),
+            Self::ValidateEmail => String::from("Validate email address"),
+            Self::ResetRegisterCode => String::from("Reset email validation code"),
+            Self::DoneRegistration => String::from("Successful registration"),
+            Self::SendLogIn => String::from("Log In attempt"),
+            Self::LoggedIn(_) => String::from("Logged in successfully"),
+            Self::TabSelection(_) => String::from("Select tab"),
+            Self::HandleError(_) => String::from("Handle an error"),
         }
     }
 
-    fn boxed_clone(&self) -> Box<dyn Action + 'static> {
+    fn boxed_clone(&self) -> Box<dyn SceneMessage + 'static> {
         Box::new((*self).clone())
     }
 }
 
-impl Into<Box<dyn Action + 'static>> for Box<AuthAction> {
-    fn into(self) -> Box<dyn Action + 'static> {
+impl Into<Message> for AuthMessage {
+    fn into(self) -> Message {
+        Message::DoAction(Box::new(self))
+    }
+}
+
+impl Into<Box<dyn SceneMessage + 'static>> for Box<AuthMessage> {
+    fn into(self) -> Box<dyn SceneMessage + 'static> {
         Box::new(*self)
     }
 }
@@ -115,21 +120,13 @@ impl AuthOptions {
     }
 }
 
-impl SceneOptions<Auth> for AuthOptions {
-    fn apply_options(&self, scene: &mut Auth) {
-        if let Some(active_tab) = self.active_tab {
-            scene.active_tab = active_tab;
-        }
-    }
-
-    fn boxed_clone(&self) -> Box<dyn SceneOptions<Auth>> {
-        Box::new(*self)
-    }
-}
-
 impl Scene for Auth {
+    type Message = AuthMessage;
+
+    type Options = AuthOptions;
+
     fn new(
-        options: Option<Box<dyn SceneOptions<Self>>>,
+        options: Option<Self::Options>,
         _: &mut Globals,
     ) -> (Self, Command<Message>)
     where
@@ -143,7 +140,7 @@ impl Scene for Auth {
             code_error: None,
         };
         if let Some(options) = options {
-            options.apply_options(&mut auth);
+            auth.apply_options(options);
         }
 
         (auth, Command::none())
@@ -153,22 +150,15 @@ impl Scene for Auth {
         String::from("Authentication")
     }
 
-    fn update(&mut self, globals: &mut Globals, message: Box<dyn Action>) -> Command<Message> {
-        let as_option: Option<&AuthAction> = message
-            .as_any()
-            .downcast_ref::<AuthAction>();
-        let message = if let Some(message) = as_option {
-            message
-        } else {
-            return Command::perform(async {}, move |()| Message::Error(
-                Error::DebugError(DebugError::new(
-                    debug_message!(format!("Message doesn't belong to auth scene: {}.", message.get_name()))
-                ))
-            ))
-        };
+    fn apply_options(&mut self, options: Self::Options) {
+        if let Some(active_tab) = options.active_tab {
+            self.active_tab = active_tab;
+        }
+    }
 
+    fn update(&mut self, globals: &mut Globals, message: &Self::Message) -> Command<Message> {
         match message {
-            AuthAction::RegisterTextFieldUpdate(field) => match field {
+            AuthMessage::RegisterTextFieldUpdate(field) => match field {
                 RegisterField::Email(email) => {
                     self.register_form.set_email(email.clone());
                 }
@@ -182,7 +172,7 @@ impl Scene for Auth {
                     self.register_code = Some(code.clone());
                 }
             },
-            AuthAction::LogInTextFieldUpdate(field) => match field {
+            AuthMessage::LogInTextFieldUpdate(field) => match field {
                 LogInField::Email(email) => {
                     self.log_in_form.set_email(email.clone());
                 }
@@ -190,7 +180,7 @@ impl Scene for Auth {
                     self.log_in_form.set_password(password.clone());
                 }
             },
-            AuthAction::SendRegister(added_to_db) => {
+            AuthMessage::SendRegister(added_to_db) => {
                 self.register_form.set_error(None);
 
                 return if *added_to_db {
@@ -206,7 +196,7 @@ impl Scene for Auth {
                     );
 
                     if let Some(error) = error {
-                        return self.update(globals, Box::new(AuthAction::HandleError(error)));
+                        return self.update(globals, &AuthMessage::HandleError(error));
                     }
 
                     self.register_form.set_code(User::gen_register_code());
@@ -226,7 +216,7 @@ impl Scene for Auth {
                                 },
                                 move |res| {
                                     match res {
-                                        Ok(_) => Message::DoAction(Box::new(AuthAction::SendRegister(true))),
+                                        Ok(_) => AuthMessage::SendRegister(true).into(),
                                         Err(err) => Message::Error(err)
                                     }
 
@@ -236,7 +226,7 @@ impl Scene for Auth {
                     }
                 };
             }
-            AuthAction::ValidateEmail => {
+            AuthMessage::ValidateEmail => {
                 let register_code = self.register_code.clone();
                 let register_form = self.register_form.clone();
                 self.register_code = Some("".into());
@@ -253,14 +243,14 @@ impl Scene for Auth {
                         },
                         move |res| {
                             match res {
-                                Ok(_) => Message::DoAction(Box::new(AuthAction::DoneRegistration)),
+                                Ok(_) => AuthMessage::DoneRegistration.into(),
                                 Err(err) => Message::Error(err)
                             }
                         }
                     );
                 }
             }
-            AuthAction::ResetRegisterCode => {
+            AuthMessage::ResetRegisterCode => {
                 let db = globals.get_db().unwrap();
                 let email = self.register_form.get_email().clone();
                 let code = User::gen_register_code();
@@ -277,17 +267,17 @@ impl Scene for Auth {
                     },
                     |result| {
                         match result {
-                            Ok(()) => Message::DoAction(Box::new(AuthAction::SendRegister(true))),
+                            Ok(()) => AuthMessage::SendRegister(true).into(),
                             Err(err) => Message::Error(err)
                         }
                     }
                 );
             }
-            AuthAction::DoneRegistration => {
+            AuthMessage::DoneRegistration => {
                 self.register_code = None;
                 self.active_tab = AuthTabIds::LogIn;
             }
-            AuthAction::SendLogIn => {
+            AuthMessage::SendLogIn => {
                 self.log_in_form.set_error(None);
                 let log_in_form = self.log_in_form.clone();
 
@@ -298,20 +288,18 @@ impl Scene for Auth {
                         },
                         move |res| {
                             match res {
-                                Ok(user) => {
-                                    Message::DoAction(Box::new(AuthAction::LoggedIn(user)))
-                                }
+                                Ok(user) => AuthMessage::LoggedIn(user).into(),
                                 Err(err) => Message::Error(err)
                             }
                         }
                     );
                 }
             }
-            AuthAction::LoggedIn(user) => {
+            AuthMessage::LoggedIn(user) => {
                 if !user.test_password(self.log_in_form.get_password()) {
-                    return self.update(globals, Box::new(AuthAction::HandleError(Error::AuthError(
+                    return self.update(globals, &AuthMessage::HandleError(Error::AuthError(
                         AuthError::LogInUserDoesntExist,
-                    ))));
+                    )));
                 }
 
                 if !user.is_validated() {
@@ -322,11 +310,9 @@ impl Scene for Auth {
                     self.register_form.set_username(username);
                     self.register_code = Some("".into());
 
-                    let _ = self.update(globals, Box::new(AuthAction::TabSelection(
-                        AuthTabIds::Register
-                    )));
+                    let _ = self.update(globals, &AuthMessage::TabSelection(AuthTabIds::Register));
 
-                    return self.update(globals, Box::new(AuthAction::ResetRegisterCode));
+                    return self.update(globals, &AuthMessage::ResetRegisterCode);
                 }
 
                 globals.set_user(Some(user.clone()));
@@ -340,10 +326,10 @@ impl Scene for Auth {
                     |_| Message::ChangeScene(Scenes::Main(None))
                 );
             }
-            AuthAction::TabSelection(tab_id) => {
+            AuthMessage::TabSelection(tab_id) => {
                 self.active_tab = *tab_id;
             }
-            AuthAction::HandleError(error) => {
+            AuthMessage::HandleError(error) => {
                 if let Error::AuthError(error) = error {
                     match error {
                         AuthError::RegisterBadCode => {
@@ -400,18 +386,14 @@ impl Scene for Auth {
                                     Text::new("A code has been sent to your email address:").into(),
                                     code_error_text.into(),
                                     TextInput::new("Input register code...", code).on_input(|value| {
-                                        Message::DoAction(Box::new(
-                                            AuthAction::RegisterTextFieldUpdate(
-                                                RegisterField::Code(value),
-                                            ),
-                                        ))
+                                        AuthMessage::RegisterTextFieldUpdate(RegisterField::Code(value)).into()
                                     }).into(),
-                                    Button::new("Reset code").on_press(Message::DoAction(Box::new(
-                                        AuthAction::ResetRegisterCode
-                                    ))).into(),
-                                    Button::new("Validate").on_press(Message::DoAction(Box::new(
-                                        AuthAction::ValidateEmail
-                                    ))).into()
+                                    Button::new("Reset code").on_press(
+                                        AuthMessage::ResetRegisterCode.into()
+                                    ).into(),
+                                    Button::new("Validate").on_press(
+                                        AuthMessage::ValidateEmail.into()
+                                    ).into()
                                 ])
                                     .spacing(10.0)
                                     .into()
@@ -421,36 +403,30 @@ impl Scene for Auth {
                                     Text::new("Email:").into(),
                                     TextInput::new("Input email...", &*self.register_form.get_email())
                                         .on_input(|value| {
-                                            Message::DoAction(Box::new(
-                                                AuthAction::RegisterTextFieldUpdate(
-                                                    RegisterField::Email(value),
-                                                ),
-                                            ))
+                                            AuthMessage::RegisterTextFieldUpdate(
+                                                RegisterField::Email(value),
+                                            ).into()
                                         }).into(),
                                     Text::new("Username:").into(),
                                     TextInput::new("Input username...", &*self.register_form.get_username())
                                         .on_input(|value| {
-                                            Message::DoAction(Box::new(
-                                                AuthAction::RegisterTextFieldUpdate(
-                                                    RegisterField::Username(value),
-                                                ),
-                                            ))
+                                            AuthMessage::RegisterTextFieldUpdate(
+                                                RegisterField::Username(value),
+                                            ).into()
                                         }).into(),
                                     Text::new("Password:").into(),
                                     TextInput::new("Input password...", &*self.register_form.get_password())
                                         .on_input(|value| {
-                                            Message::DoAction(Box::new(
-                                                AuthAction::RegisterTextFieldUpdate(
-                                                    RegisterField::Password(value),
-                                                ),
-                                            ))
+                                            AuthMessage::RegisterTextFieldUpdate(
+                                                RegisterField::Password(value),
+                                            ).into()
                                         })
                                         .secure(true)
                                         .into(),
                                     if globals.get_db().is_some() {
-                                        Button::new("Register").on_press(Message::DoAction(Box::new(
-                                            AuthAction::SendRegister(false)
-                                        ))).into()
+                                        Button::new("Register").on_press(
+                                            AuthMessage::SendRegister(false).into()
+                                        ).into()
                                     } else {
                                         Button::new("Register").into()
                                     }
@@ -465,28 +441,19 @@ impl Scene for Auth {
                                 log_in_error_text.into(),
                                 Text::new("Email:").into(),
                                 TextInput::new("Input email...", &*self.log_in_form.get_email()).on_input(
-                                    |value| {
-                                        Message::DoAction(Box::new(
-                                            AuthAction::LogInTextFieldUpdate(LogInField::Email(
-                                                value,
-                                            )),
-                                        ))
-                                    }
+                                    |value|
+                                        AuthMessage::LogInTextFieldUpdate(LogInField::Email(value)).into()
                                 ).into(),
                                 Text::new("Password:").into(),
                                 TextInput::new("Input password...", &*self.log_in_form.get_password())
-                                    .on_input(|value| {
-                                        Message::DoAction(Box::new(
-                                            AuthAction::LogInTextFieldUpdate(LogInField::Password(
-                                                value,
-                                            )),
-                                        ))
-                                    })
+                                    .on_input(|value|
+                                        AuthMessage::LogInTextFieldUpdate(LogInField::Password(value)).into()
+                                    )
                                     .secure(true)
                                     .into(),
                                 if globals.get_db().is_some() {
                                     Button::new("Log In")
-                                        .on_press(Message::DoAction(Box::new(AuthAction::SendLogIn)))
+                                        .on_press(AuthMessage::SendLogIn.into())
                                         .into()
                                 } else {
                                     Button::new("Log In").into()
@@ -495,7 +462,7 @@ impl Scene for Auth {
                                 .into()
                         )
                     ],
-                    |tab_id| Message::DoAction(Box::new(AuthAction::TabSelection(tab_id)))
+                    |tab_id| AuthMessage::TabSelection(tab_id).into()
                 )
                     .width(Length::FillPortion(2))
                     .set_active_tab(&self.active_tab)
@@ -511,8 +478,8 @@ impl Scene for Auth {
             .into()
     }
 
-    fn get_error_handler(&self, error: Error) -> Box<dyn Action> {
-        Box::new(AuthAction::HandleError(error))
+    fn handle_error(&mut self, globals: &mut Globals, error: &Error) -> Command<Message> {
+        self.update(globals, &AuthMessage::HandleError(error.clone()))
     }
 
     fn clear(&self, _globals: &mut Globals) {}

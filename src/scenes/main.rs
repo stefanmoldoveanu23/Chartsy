@@ -9,11 +9,10 @@ use iced::{Alignment, Command, Element, Length, Renderer};
 use iced_aw::{Tabs, TabLabel};
 use mongodb::bson::{Bson, Uuid, UuidRepresentation, Document};
 use crate::database;
-use crate::errors::debug::{debug_message, DebugError};
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::card::Card;
 
-use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
+use crate::scene::{SceneMessage, Globals, Message, Scene};
 use crate::scenes::auth::AuthOptions;
 use crate::scenes::data::auth::AuthTabIds;
 use crate::scenes::scenes::Scenes;
@@ -25,9 +24,9 @@ use crate::widgets::closeable::Closeable;
 
 use crate::scenes::data::main::*;
 
-/// The [Messages](Action) of the main [Scene].
+/// The [Messages](SceneMessage) of the main [Scene].
 #[derive(Clone)]
-enum MainAction {
+pub enum MainMessage {
     /// Opens or closes the given modal.
     ToggleModal(ModalType),
 
@@ -44,28 +43,34 @@ enum MainAction {
     ErrorHandler(Error),
 }
 
-impl Action for MainAction {
+impl Into<Message> for MainMessage {
+    fn into(self) -> Message {
+        Message::DoAction(Box::new(self))
+    }
+}
+
+impl SceneMessage for MainMessage {
     fn as_any(&self) -> &dyn Any {
         self
     }
 
     fn get_name(&self) -> String {
         match self {
-            MainAction::ToggleModal {..} => String::from("Toggle modal"),
-            MainAction::LoadedDrawings(_, _) => String::from("Loaded drawings"),
-            MainAction::LogOut => String::from("Logged out"),
-            MainAction::SelectTab(_) => String::from("Select tab"),
-            MainAction::ErrorHandler(_) => String::from("Handle error"),
+            Self::ToggleModal {..} => String::from("Toggle modal"),
+            Self::LoadedDrawings(_, _) => String::from("Loaded drawings"),
+            Self::LogOut => String::from("Logged out"),
+            Self::SelectTab(_) => String::from("Select tab"),
+            Self::ErrorHandler(_) => String::from("Handle error"),
         }
     }
 
-    fn boxed_clone(&self) -> Box<dyn Action + 'static> {
+    fn boxed_clone(&self) -> Box<dyn SceneMessage + 'static> {
         Box::new((*self).clone())
     }
 }
 
-impl Into<Box<dyn Action + 'static>> for Box<MainAction> {
-    fn into(self) -> Box<dyn Action + 'static> {
+impl Into<Box<dyn SceneMessage + 'static>> for Box<MainMessage> {
+    fn into(self) -> Box<dyn SceneMessage + 'static> {
         Box::new(*self)
     }
 }
@@ -90,14 +95,6 @@ pub struct Main {
 #[derive(Debug, Clone, Copy)]
 pub struct MainOptions {}
 
-impl SceneOptions<Main> for MainOptions {
-    fn apply_options(&self, _scene: &mut Main) {}
-
-    fn boxed_clone(&self) -> Box<dyn SceneOptions<Main>> {
-        Box::new((*self).clone())
-    }
-}
-
 impl Main {
     /// Toggles a modal.
     fn toggle_modal(&mut self, modal: &ModalType, globals: &mut Globals) -> Command<Message>
@@ -105,7 +102,7 @@ impl Main {
         self.modals.toggle_modal(modal.clone());
 
         if modal.clone() == ModalType::ShowingDrawings {
-            self.update(globals, Box::new(MainAction::SelectTab(self.active_tab)))
+            self.update(globals, &MainMessage::SelectTab(self.active_tab))
         } else {
             Command::none()
         }
@@ -193,9 +190,7 @@ impl Main {
                 async {
                     Main::get_drawings_offline().await
                 },
-                |list| Message::DoAction(Box::new(
-                    MainAction::LoadedDrawings(list, MainTabIds::Offline)
-                ))
+                |list| MainMessage::LoadedDrawings(list, MainTabIds::Offline).into()
             )
         } else {
             Command::none()
@@ -215,12 +210,11 @@ impl Main {
                     },
                     |result| {
                         match result {
-                            Ok(ref documents) => {
-                                Message::DoAction(Box::new(MainAction::LoadedDrawings(
+                            Ok(ref documents) =>
+                                MainMessage::LoadedDrawings(
                                     Main::get_drawings_online(documents),
                                     MainTabIds::Online
-                                )))
-                            }
+                                ).into(),
                             Err(err) => Message::Error(err)
                         }
                     }
@@ -250,8 +244,11 @@ impl Main {
 }
 
 impl Scene for Main {
+    type Message = MainMessage;
+    type Options = MainOptions;
+
     fn new(
-        options: Option<Box<dyn SceneOptions<Main>>>,
+        options: Option<Self::Options>,
         _: &mut Globals,
     ) -> (Self, Command<Message>)
     where
@@ -264,7 +261,7 @@ impl Scene for Main {
             active_tab: MainTabIds::Offline,
         };
         if let Some(options) = options {
-            options.apply_options(&mut main);
+            main.apply_options(options);
         }
 
         (
@@ -277,34 +274,24 @@ impl Scene for Main {
         String::from("Main")
     }
 
-    fn update(&mut self, globals: &mut Globals, message: Box<dyn Action>) -> Command<Message> {
-        let as_option: Option<&MainAction> = message
-            .as_any()
-            .downcast_ref::<MainAction>();
-        let message = if let Some(message) = as_option {
-            message
-        } else {
-            return Command::perform(async {}, move |()| Message::Error(
-                Error::DebugError(DebugError::new(
-                    debug_message!(format!("Message doesn't belong to main scene: {}.", message.get_name()))
-                ))
-            ))
-        };
+    fn apply_options(&mut self, _options: Self::Options) { }
+
+    fn update(&mut self, globals: &mut Globals, message: &Self::Message) -> Command<Message> {
 
         match message {
-            MainAction::ToggleModal(modal) => {
-                self.toggle_modal(modal, globals)
+            MainMessage::ToggleModal(modal) => {
+                self.toggle_modal(&modal, globals)
             }
-            MainAction::LoadedDrawings(drawings, tab) => {
-                self.loaded_drawings(tab, drawings, globals)
+            MainMessage::LoadedDrawings(drawings, tab) => {
+                self.loaded_drawings(&tab, &drawings, globals)
             }
-            MainAction::LogOut => {
+            MainMessage::LogOut => {
                 self.log_out(globals)
             }
-            MainAction::SelectTab(tab_id) => {
-                self.select_tab(tab_id, globals)
+            MainMessage::SelectTab(tab_id) => {
+                self.select_tab(&tab_id, globals)
             }
-            MainAction::ErrorHandler(_) => Command::none(),
+            MainMessage::ErrorHandler(_) => Command::none(),
         }
     }
 
@@ -321,7 +308,7 @@ impl Scene for Main {
                 let logout_button =
                     Button::new("Log Out")
                         .padding(8)
-                        .on_press(Message::DoAction(Box::new(MainAction::LogOut)));
+                        .on_press(MainMessage::LogOut.into());
 
                 Row::with_children(vec![
                     Space::with_width(Length::Fill).into(),
@@ -339,15 +326,15 @@ impl Scene for Main {
                 let register_button =
                     Button::new("Register")
                         .padding(8)
-                        .on_press(Message::ChangeScene(Scenes::Auth(Some(Box::new(
+                        .on_press(Message::ChangeScene(Scenes::Auth(Some(
                             AuthOptions::new(AuthTabIds::Register)
-                        )))));
+                        ))));
                 let login_button =
                     Button::new("Log In")
                         .padding(8)
-                        .on_press(Message::ChangeScene(Scenes::Auth(Some(Box::new(
+                        .on_press(Message::ChangeScene(Scenes::Auth(Some(
                             AuthOptions::new(AuthTabIds::LogIn)
-                        )))));
+                        ))));
 
                 Row::with_children(vec![
                     Space::with_width(Length::Fill).into(),
@@ -375,15 +362,11 @@ impl Scene for Main {
         let start_drawing_button =
             Button::new("Start new Drawing")
                 .padding(8)
-                .on_press(Message::DoAction(Box::new(
-                    MainAction::ToggleModal(ModalType::SelectingSaveMode)
-                )));
+                .on_press(MainMessage::ToggleModal(ModalType::SelectingSaveMode).into());
         let continue_drawing_button =
             Button::new("Continue drawing")
                 .padding(8)
-                .on_press(Message::DoAction(Box::new(
-                    MainAction::ToggleModal(ModalType::ShowingDrawings)
-                )));
+                .on_press(MainMessage::ToggleModal(ModalType::ShowingDrawings).into());
         let browse_posts_button =
             Button::new("Browse posts")
                 .padding(8)
@@ -437,12 +420,14 @@ impl Scene for Main {
                                 .clone()
                                 .iter()
                                 .map(|uuid| {
-                                    Element::from(Button::new(Text::new(uuid.to_string())).on_press(Message::ChangeScene(
-                                        Scenes::Drawing(Some(Box::new(DrawingOptions::new(
-                                            Some(uuid.clone()),
-                                            Some(SaveMode::Online),
-                                        )))),
-                                    )))
+                                    Element::from(Button::new(Text::new(uuid.to_string())).on_press(
+                                        Message::ChangeScene(
+                                            Scenes::Drawing(Some(DrawingOptions::new(
+                                                Some(uuid.clone()),
+                                                Some(SaveMode::Online),
+                                            )))
+                                        )
+                                    ))
                                 })
                                 .collect()
                         } else {
@@ -460,12 +445,14 @@ impl Scene for Main {
                                 .clone()
                                 .iter()
                                 .map(|uuid| {
-                                    Element::from(Button::new(Text::new(uuid.to_string())).on_press(Message::ChangeScene(
-                                        Scenes::Drawing(Some(Box::new(DrawingOptions::new(
-                                            Some(uuid.clone()),
-                                            Some(SaveMode::Offline),
-                                        )))),
-                                    )))
+                                    Element::from(Button::new(Text::new(uuid.to_string())).on_press(
+                                        Message::ChangeScene(
+                                            Scenes::Drawing(Some(DrawingOptions::new(
+                                                Some(uuid.clone()),
+                                                Some(SaveMode::Offline),
+                                            )))
+                                        )
+                                    ))
                                 })
                                 .collect()
                         } else {
@@ -495,7 +482,7 @@ impl Scene for Main {
                                     online_tab.into()
                                 )
                             ],
-                            |tab| Message::DoAction(Box::new(MainAction::SelectTab(tab)))
+                            |tab| MainMessage::SelectTab(tab).into()
                         )
                             .set_active_tab(&self.active_tab)
                             .width(Length::Fill)
@@ -508,7 +495,7 @@ impl Scene for Main {
                     )
                         .style(crate::theme::closeable::Closeable::Transparent)
                         .on_close(
-                            Message::DoAction(Box::new(MainAction::ToggleModal(ModalType::ShowingDrawings))),
+                            Into::<Message>::into(MainMessage::ToggleModal(ModalType::ShowingDrawings)),
                             32.0
                         )
                         .into()
@@ -519,13 +506,13 @@ impl Scene for Main {
                             .padding(8)
                             .width(Length::FillPortion(1))
                             .on_press(Message::ChangeScene(Scenes::Drawing(Some(
-                                Box::new(DrawingOptions::new(None, Some(SaveMode::Offline)))
+                                DrawingOptions::new(None, Some(SaveMode::Offline))
                             ))));
                     let online_button =
                         if globals.get_db().is_some() && globals.get_user().is_some() {
                             Button::new("Online")
                                 .on_press(Message::ChangeScene(Scenes::Drawing(Some(
-                                    Box::new(DrawingOptions::new(None, Some(SaveMode::Online)))
+                                    DrawingOptions::new(None, Some(SaveMode::Online))
                                 ))))
                         } else {
                             Button::new("Online")
@@ -550,9 +537,7 @@ impl Scene for Main {
                             .width(Length::Fixed(300.0))
                     )
                         .on_close(
-                            Message::DoAction(Box::new(
-                                MainAction::ToggleModal(ModalType::SelectingSaveMode)
-                            )),
+                            Into::<Message>::into(MainMessage::ToggleModal(ModalType::SelectingSaveMode)),
                             25.0
                         )
                         .into()
@@ -563,8 +548,8 @@ impl Scene for Main {
         self.modals.get_modal(container_entrance, modal_generator)
     }
 
-    fn get_error_handler(&self, error: Error) -> Box<dyn Action> {
-        Box::new(MainAction::ErrorHandler(error))
+    fn handle_error(&mut self, globals: &mut Globals, error: &Error) -> Command<Message> {
+        self.update(globals, &MainMessage::ErrorHandler(error.clone()))
     }
 
     fn clear(&self, _globals: &mut Globals) {}

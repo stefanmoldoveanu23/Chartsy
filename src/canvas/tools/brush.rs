@@ -1,4 +1,4 @@
-use crate::canvas::layer::CanvasAction;
+use crate::canvas::layer::CanvasMessage;
 use crate::canvas::style::Style;
 use crate::serde::{Deserialize, Serialize};
 use iced::event::Status;
@@ -36,7 +36,7 @@ where
         event: Event,
         cursor: Point,
         style: Style,
-    ) -> (Status, Option<CanvasAction>) {
+    ) -> (Status, Option<CanvasMessage>) {
         match event {
             Event::Mouse(mouse_event) => {
                 let message = match mouse_event {
@@ -68,7 +68,7 @@ where
                             *self = BrushPending::None;
 
                             Some(
-                                CanvasAction::UseTool(Arc::new(BrushType::new(
+                                CanvasMessage::UseTool(Arc::new(BrushType::new(
                                     start_clone,
                                     offsets_clone,
                                     style,

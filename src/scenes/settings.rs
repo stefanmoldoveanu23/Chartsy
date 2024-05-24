@@ -12,7 +12,7 @@ use crate::errors::debug::{debug_message, DebugError};
 use crate::errors::error::Error;
 use crate::icons::{Icon, ICON};
 use crate::database;
-use crate::scene::{Action, Globals, Message, Scene, SceneOptions};
+use crate::scene::{SceneMessage, Globals, Message, Scene};
 use crate::scenes::data::auth::User;
 use crate::scenes::scenes::Scenes;
 use crate::theme::Theme;
@@ -50,18 +50,10 @@ pub struct Settings {
 #[derive(Debug, Clone)]
 pub struct SettingsOptions { }
 
-impl SceneOptions<Settings> for SettingsOptions {
-    fn apply_options(&self, _scene: &mut Settings) { }
-
-    fn boxed_clone(&self) -> Box<dyn SceneOptions<Settings>> {
-        Box::new((*self).clone())
-    }
-}
-
-/// The possible [actions](Action) this [Scene] can trigger.
+/// The possible [messages](SceneMessage) this [Scene] can trigger.
 #[derive(Clone)]
-pub enum SettingsAction {
-    /// Default [Action].
+pub enum SettingsMessage {
+    /// Default [Message].
     None,
 
     /// When the username TextInput field is modified.
@@ -104,37 +96,46 @@ pub enum SettingsAction {
     Error(Error)
 }
 
-impl Action for SettingsAction {
+impl SceneMessage for SettingsMessage {
     fn as_any(&self) -> &dyn Any {
         self
     }
 
     fn get_name(&self) -> String {
         match self {
-            SettingsAction::None => String::from("None"),
-            SettingsAction::UpdateUsernameField(_) => String::from("Update username field"),
-            SettingsAction::UpdateUsername => String::from("Update username"),
-            SettingsAction::UpdateUserTagField(_) => String::from("Update user tag field"),
-            SettingsAction::UpdateUserTag => String::from("Update user tag"),
-            SettingsAction::UpdatePasswordField(_) => String::from("Update password field"),
-            SettingsAction::UpdatePasswordRepeatField(_) => String::from("Update password repeat field"),
-            SettingsAction::UpdatePassword => String::from("Update password"),
-            SettingsAction::LoadedProfilePicture(_) => String::from("Loaded profile picture"),
-            SettingsAction::SelectImage => String::from("Select image"),
-            SettingsAction::SetImage(_) => String::from("Set image"),
-            SettingsAction::SavedProfilePicture => String::from("Saved profile picture"),
-            SettingsAction::DeleteAccount => String::from("Delete account"),
-            SettingsAction::Error(_) => String::from("Error")
+            Self::None => String::from("None"),
+            Self::UpdateUsernameField(_) => String::from("Update username field"),
+            Self::UpdateUsername => String::from("Update username"),
+            Self::UpdateUserTagField(_) => String::from("Update user tag field"),
+            Self::UpdateUserTag => String::from("Update user tag"),
+            Self::UpdatePasswordField(_) => String::from("Update password field"),
+            Self::UpdatePasswordRepeatField(_) => String::from("Update password repeat field"),
+            Self::UpdatePassword => String::from("Update password"),
+            Self::LoadedProfilePicture(_) => String::from("Loaded profile picture"),
+            Self::SelectImage => String::from("Select image"),
+            Self::SetImage(_) => String::from("Set image"),
+            Self::SavedProfilePicture => String::from("Saved profile picture"),
+            Self::DeleteAccount => String::from("Delete account"),
+            Self::Error(_) => String::from("Error")
         }
     }
 
-    fn boxed_clone(&self) -> Box<dyn Action + 'static> {
+    fn boxed_clone(&self) -> Box<dyn SceneMessage + 'static> {
         Box::new((*self).clone())
     }
 }
 
+impl Into<Message> for SettingsMessage {
+    fn into(self) -> Message {
+        Message::DoAction(Box::new(self))
+    }
+}
+
 impl Scene for Settings {
-    fn new(options: Option<Box<dyn SceneOptions<Self>>>, globals: &mut Globals)
+    type Message = SettingsMessage;
+    type Options = SettingsOptions;
+
+    fn new(options: Option<Self::Options>, globals: &mut Globals)
         -> (Self, Command<Message>) where Self: Sized {
 
         let user = globals.get_user().unwrap().clone();
@@ -151,7 +152,7 @@ impl Scene for Settings {
         };
 
         if let Some(options) = options {
-            options.apply_options(&mut settings);
+            settings.apply_options(options);
         }
 
         (
@@ -168,9 +169,9 @@ impl Scene for Settings {
                 },
                 |result| {
                     match result {
-                        Ok(data) => Message::DoAction(Box::new(
-                            SettingsAction::LoadedProfilePicture(data)
-                        )),
+                        Ok(data) => Into::<Message>::into(
+                            SettingsMessage::LoadedProfilePicture(data)
+                        ),
                         Err(err) => Message::Error(err)
                     }
                 }
@@ -182,26 +183,16 @@ impl Scene for Settings {
         "Settings".into()
     }
 
-    fn update(&mut self, globals: &mut Globals, message: Box<dyn Action>) -> Command<Message> {
-        let as_option: Option<&SettingsAction> = message
-            .as_any()
-            .downcast_ref::<SettingsAction>();
-        let message = if let Some(message) = as_option {
-            message
-        } else {
-            return Command::perform(async {}, move |()| Message::Error(
-                Error::DebugError(DebugError::new(
-                    debug_message!(format!("Message doesn't belong to settings scene: {}.", message.get_name()))
-                ))
-            ))
-        };
+    fn apply_options(&mut self, _options: Self::Options) { }
+
+    fn update(&mut self, globals: &mut Globals, message: &Self::Message) -> Command<Message> {
 
         match message {
-            SettingsAction::UpdateUsernameField(username) => {
+            SettingsMessage::UpdateUsernameField(username) => {
                 self.username_input = username.clone();
                 Command::none()
             }
-            SettingsAction::UpdateUsername => {
+            SettingsMessage::UpdateUsername => {
                 if !User::check_username(&self.username_input) {
                     self.input_error = Some(Error::AuthError(AuthError::RegisterBadCredentials {
                         email: false,
@@ -236,12 +227,12 @@ impl Scene for Settings {
                     }
                 )
             }
-            SettingsAction::UpdateUserTagField(user_tag) => {
+            SettingsMessage::UpdateUserTagField(user_tag) => {
                 self.user_tag_input = user_tag.clone();
 
                 Command::none()
             }
-            SettingsAction::UpdateUserTag => {
+            SettingsMessage::UpdateUserTag => {
                 if !User::check_user_tag(&self.user_tag_input) {
                     self.input_error = Some(Error::AuthError(AuthError::BadUserTag));
 
@@ -264,17 +255,17 @@ impl Scene for Settings {
                     )
                 }
             }
-            SettingsAction::UpdatePasswordField(password) => {
+            SettingsMessage::UpdatePasswordField(password) => {
                 self.password_input = password.clone();
 
                 Command::none()
             }
-            SettingsAction::UpdatePasswordRepeatField(password) => {
+            SettingsMessage::UpdatePasswordRepeatField(password) => {
                 self.password_repeat = password.clone();
 
                 Command::none()
             }
-            SettingsAction::UpdatePassword => {
+            SettingsMessage::UpdatePassword => {
                 if !User::check_password(&self.password_input) {
                     self.input_error = Some(Error::AuthError(AuthError::RegisterBadCredentials {
                         email: false,
@@ -310,12 +301,12 @@ impl Scene for Settings {
                     }
                 )
             }
-            SettingsAction::LoadedProfilePicture(data) => {
+            SettingsMessage::LoadedProfilePicture(data) => {
                 self.profile_picture_input = Handle::from_memory(data.clone());
 
                 Command::none()
             }
-            SettingsAction::SelectImage => {
+            SettingsMessage::SelectImage => {
                 Command::perform(
                     async {
                         let file = AsyncFileDialog::new()
@@ -339,13 +330,13 @@ impl Scene for Settings {
                     },
                     |result| {
                         match result {
-                            Ok(data) => Message::DoAction(Box::new(SettingsAction::SetImage(data))),
+                            Ok(data) => SettingsMessage::SetImage(data).into(),
                             Err(err) => Message::Error(err)
                         }
                     }
                 )
             },
-            SettingsAction::SetImage(data) => {
+            SettingsMessage::SetImage(data) => {
                 self.profile_picture_input = Handle::from_memory(data.clone());
                 self.modal_stack.toggle_modal(());
 
@@ -414,18 +405,18 @@ impl Scene for Settings {
                     },
                     |result| {
                         match result {
-                            Ok(_) => Message::DoAction(Box::new(SettingsAction::SavedProfilePicture)),
+                            Ok(_) => SettingsMessage::SavedProfilePicture.into(),
                             Err(err) => Message::Error(err)
                         }
                     }
                 )
             }
-            SettingsAction::SavedProfilePicture => {
+            SettingsMessage::SavedProfilePicture => {
                 self.modal_stack.toggle_modal(());
 
                 Command::none()
             }
-            SettingsAction::DeleteAccount => {
+            SettingsMessage::DeleteAccount => {
                 let user_id = globals.get_user().unwrap().get_id();
                 let db = globals.get_db().unwrap();
                 self.deleted_account = true;
@@ -442,8 +433,8 @@ impl Scene for Settings {
                     }
                 )
             }
-            SettingsAction::None => Command::none(),
-            SettingsAction::Error(err) => {
+            SettingsMessage::None => Command::none(),
+            SettingsMessage::Error(err) => {
                 self.input_error = Some(err.clone());
 
                 Command::none()
@@ -483,9 +474,7 @@ impl Scene for Settings {
                     "Input username...",
                     &*self.username_input.clone()
                 )
-                    .on_input(|value| Message::DoAction(Box::new(
-                        SettingsAction::UpdateUsernameField(value.clone())
-                    )))
+                    .on_input(|value| SettingsMessage::UpdateUsernameField(value.clone()).into())
                     .size(15.0)
                     .into(),
                 Space::with_width(Length::Fill)
@@ -494,7 +483,7 @@ impl Scene for Settings {
                     Button::new(Text::new("Update").size(15.0))
                 } else {
                     Button::new(Text::new("Update").size(15.0))
-                        .on_press(Message::DoAction(Box::new(SettingsAction::UpdateUsername)))
+                        .on_press(SettingsMessage::UpdateUsername.into())
                 }
                     .into()
             ])
@@ -528,9 +517,7 @@ impl Scene for Settings {
                     "Input user tag...",
                     &*self.user_tag_input.clone()
                 )
-                    .on_input(|value| Message::DoAction(Box::new(
-                        SettingsAction::UpdateUserTagField(value.clone())
-                    )))
+                    .on_input(|value| SettingsMessage::UpdateUserTagField(value.clone()).into())
                     .size(15.0)
                     .into(),
                 Space::with_width(Length::Fill)
@@ -539,7 +526,7 @@ impl Scene for Settings {
                     Button::new(Text::new("Update").size(15.0))
                 } else {
                     Button::new(Text::new("Update").size(15.0))
-                        .on_press(Message::DoAction(Box::new(SettingsAction::UpdateUserTag)))
+                        .on_press(SettingsMessage::UpdateUserTag.into())
                 }
                     .into()
             ])
@@ -570,9 +557,7 @@ impl Scene for Settings {
                     &*self.password_input.clone()
                 )
                     .size(15.0)
-                    .on_input(|value| Message::DoAction(Box::new(
-                        SettingsAction::UpdatePasswordField(value.clone())
-                    )))
+                    .on_input(|value| SettingsMessage::UpdatePasswordField(value.clone()).into())
                     .secure(true)
                     .into(),
                 TextInput::new(
@@ -580,9 +565,7 @@ impl Scene for Settings {
                     &*self.password_repeat.clone()
                 )
                     .size(15.0)
-                    .on_input(|value| Message::DoAction(Box::new(
-                        SettingsAction::UpdatePasswordRepeatField(value.clone())
-                    )))
+                    .on_input(|value| SettingsMessage::UpdatePasswordRepeatField(value.clone()).into())
                     .secure(true)
                     .into()
             ])
@@ -592,7 +575,7 @@ impl Scene for Settings {
                 .into(),
             if self.password_input == self.password_repeat {
                 Button::new(Text::new("Update").size(15.0))
-                    .on_press(Message::DoAction(Box::new(SettingsAction::UpdatePassword)))
+                    .on_press(SettingsMessage::UpdatePassword.into())
             } else {
                 Button::new(Text::new("Update").size(15.0))
             }
@@ -630,7 +613,7 @@ impl Scene for Settings {
                     .width(200.0)
                     .into(),
                 Button::new("Select image")
-                    .on_press(Message::DoAction(Box::new(SettingsAction::SelectImage)))
+                    .on_press(SettingsMessage::SelectImage.into())
                     .into()
             ])
                 .align_items(Alignment::Center)
@@ -652,7 +635,7 @@ impl Scene for Settings {
         let delete_account =
             Button::new("Delete account")
                 .style(crate::theme::button::Button::Danger)
-                .on_press(Message::DoAction(Box::new(SettingsAction::DeleteAccount)))
+                .on_press(SettingsMessage::DeleteAccount.into())
                 .into();
 
         let underlay = Column::from_vec(vec![
@@ -704,7 +687,9 @@ impl Scene for Settings {
         self.modal_stack.get_modal(underlay, generate_modal)
     }
 
-    fn get_error_handler(&self, error: Error) -> Box<dyn Action> { Box::new(SettingsAction::Error(error)) }
+    fn handle_error(&mut self, globals: &mut Globals, error: &Error) -> Command<Message> {
+        self.update(globals, &SettingsMessage::Error(error.clone()))
+    }
 
     fn clear(&self, globals: &mut Globals) {
         if self.deleted_account {

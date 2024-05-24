@@ -23,12 +23,13 @@ mod widgets;
 mod icons;
 
 use scene::{Globals, Message};
-use scenes::scenes::SceneLoader;
+use scenes::scenes::SceneManager;
 use theme::Theme;
 
 use iced::{executor, window, Application, Command, Element, Renderer, Settings, Subscription, Font};
 use iced::font::{Family, Stretch, Style, Weight};
 use lettre::{AsyncSmtpTransport, Tokio1Executor, AsyncTransport};
+use crate::widgets::wait_panel::WaitPanel;
 
 pub const LOADING_IMAGE :&[u8]= include_bytes!("images/loading.png");
 
@@ -51,7 +52,7 @@ pub fn main() -> iced::Result {
 /// The model for the [Application].
 struct Chartsy {
     /// Handles transitions between scenes.
-    scene_loader: SceneLoader,
+    scene_loader: SceneManager,
 
     /// Holds the global data.
     globals: Globals,
@@ -65,7 +66,7 @@ impl Application for Chartsy {
 
     fn new(_flags: Self::Flags) -> (Chartsy, Command<Self::Message>) {
         let mut globals = Globals::default();
-        let scene_loader = SceneLoader::new(&mut globals);
+        let scene_loader = SceneManager::new(&mut globals);
 
         (
             Chartsy {
@@ -90,8 +91,10 @@ impl Application for Chartsy {
             Message::None => Command::none(),
             Message::ChangeScene(scene) => self.scene_loader.load(scene, &mut self.globals),
             Message::DoAction(action) => {
-                let scene = self.scene_loader.get_mut().expect("Error getting scene.");
-                scene.update(&mut self.globals, action)
+                match self.scene_loader.update(&mut self.globals, action) {
+                    Ok(command) => command,
+                    Err(err) => self.update(Message::Error(err))
+                }
             }
             Message::DoneDatabaseInit(result) => {
                 match result {
@@ -156,8 +159,10 @@ impl Application for Chartsy {
                     eprintln!("{}", error);
                     Command::none()
                 } else {
-                    let scene = self.scene_loader.get_mut().expect("Error getting scene.");
-                    scene.update(&mut self.globals, scene.get_error_handler(error))
+                    match self.scene_loader.handle_error(&mut self.globals, &error) {
+                        Ok(command) => command,
+                        Err(err) => self.update(Message::Error(err))
+                    }
                 }
             }
             Message::Quit => window::close(window::Id::MAIN)
@@ -165,8 +170,16 @@ impl Application for Chartsy {
     }
 
     fn view(&self) -> Element<'_, Self::Message, Self::Theme, Renderer> {
-        let scene = self.scene_loader.get().expect("Error getting scene.");
-        scene.view(&self.globals)
+        match self.scene_loader.view(&self.globals) {
+            Ok(element) => element,
+            Err(err) => {
+                if err.is_debug() {
+                    eprintln!("{}", err);
+                }
+
+                WaitPanel::new("Trouble loading scene...").into()
+            }
+        }
     }
 
     fn subscription(&self) -> Subscription<Self::Message> { Subscription::none() }

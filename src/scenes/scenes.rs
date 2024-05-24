@@ -1,43 +1,41 @@
-use crate::scene::{Globals, Message, Scene, SceneOptions};
-use crate::scenes::auth::Auth;
-use crate::scenes::drawing::Drawing;
-use crate::scenes::main::Main;
-use iced::Command;
-use crate::scenes::posts::Posts;
-use crate::scenes::settings::Settings;
+use std::ops::Deref;
+use crate::scene::{SceneMessage, Globals, Message, Scene};
+use crate::scenes::auth::{Auth, AuthOptions};
+use crate::scenes::drawing::{Drawing, DrawingOptions};
+use crate::scenes::main::{Main, MainOptions};
+use iced::{Command, Element, Renderer};
+use crate::debug_message;
+use crate::errors::error::Error;
+use crate::scenes::posts::{Posts, PostsOptions};
+use crate::scenes::settings::{Settings, SettingsOptions};
+use crate::theme::Theme;
 
 /// The list of [Scenes](Scene) in the [Application](crate::Chartsy).
 #[derive(Debug, Clone)]
 pub enum Scenes {
-    Main(Option<Box<dyn SceneOptions<Main>>>),
-    Drawing(Option<Box<dyn SceneOptions<Box<Drawing>>>>),
-    Auth(Option<Box<dyn SceneOptions<Auth>>>),
-    Posts(Option<Box<dyn SceneOptions<Posts>>>),
-    Settings(Option<Box<dyn SceneOptions<Settings>>>)
-}
-
-/// An enum that is returned when an unusual behaviour occurs during the handling of [Scenes](Scene).
-#[derive(Debug)]
-pub enum SceneErr {
-    Error,
+    Main(Option<MainOptions>),
+    Drawing(Option<DrawingOptions>),
+    Auth(Option<AuthOptions>),
+    Posts(Option<PostsOptions>),
+    Settings(Option<SettingsOptions>)
 }
 
 /// The [Scene] transition manager.
 ///
 /// Holds the current [Scene](Scenes) and an instance of each [Scene].
-pub struct SceneLoader {
+pub struct SceneManager {
     current_scene: Scenes,
     main: Option<Main>,
-    drawing: Option<Box<Drawing>>,
+    drawing: Option<Drawing>,
     auth: Option<Auth>,
     posts: Option<Posts>,
     settings: Option<Settings>,
 }
 
-impl SceneLoader {
+impl SceneManager {
     pub fn new(globals: &mut Globals) -> Self
     {
-        SceneLoader {
+        SceneManager {
             current_scene: Scenes::Main(None),
             main: Some(Main::new(None, globals).0),
             drawing: None,
@@ -114,53 +112,91 @@ impl SceneLoader {
     }
 
     /// Returns the current [Scene] as a mutable variable.
-    pub fn get_mut(&mut self) -> Result<&mut dyn Scene, SceneErr> {
+    pub fn update(&mut self, globals: &mut Globals, message: Box<dyn SceneMessage>)
+        -> Result<Command<Message>, Error> {
         match self.current_scene {
             Scenes::Main(_) => match self.main {
-                None => Err(SceneErr::Error),
-                Some(ref mut scene) => Ok(scene),
-            },
+                None => Err(debug_message!("Main scene missing.").into()),
+                Some(ref mut main) => main.unwrap_message(message.deref()).map(
+                    |message| main.update(globals, message)
+                )
+            }
             Scenes::Drawing(_) => match self.drawing {
-                None => Err(SceneErr::Error),
-                Some(ref mut scene) => Ok(scene),
+                None => Err(debug_message!("Drawing scene missing.").into()),
+                Some(ref mut drawing) => drawing.unwrap_message(message.deref()).map(
+                    |message| drawing.update(globals, message)
+                )
             },
             Scenes::Auth(_) => match self.auth {
-                None => Err(SceneErr::Error),
-                Some(ref mut scene) => Ok(scene),
+                None => Err(debug_message!("Auth scene missing.").into()),
+                Some(ref mut auth) => auth.unwrap_message(message.deref()).map(
+                    |message| auth.update(globals, message)
+                )
             },
             Scenes::Posts(_) => match self.posts {
-                None => Err(SceneErr::Error),
-                Some(ref mut scene) => Ok(scene),
+                None => Err(debug_message!("Posts scene missing.").into()),
+                Some(ref mut posts) => posts.unwrap_message(message.deref()).map(
+                    |message| posts.update(globals, message)
+                )
             },
             Scenes::Settings(_) => match self.settings {
-                None => Err(SceneErr::Error),
-                Some(ref mut scene) => Ok(scene)
+                None => Err(debug_message!("Settings scene missing.").into()),
+                Some(ref mut settings) => settings.unwrap_message(message.deref()).map(
+                    |message| settings.update(globals, message)
+                )
             }
         }
     }
 
     /// Returns the current [Scene].
-    pub fn get(&self) -> Result<&dyn Scene, SceneErr> {
+    pub fn view(&self, globals: &Globals) -> Result<Element<Message, Theme, Renderer>, Error> {
         match self.current_scene {
             Scenes::Main(_) => match self.main {
-                None => Err(SceneErr::Error),
-                Some(ref scene) => Ok(scene),
-            },
+                None => Err(debug_message!("Main scene missing.").into()),
+                Some(ref main) => Ok(main.view(globals))
+            }
             Scenes::Drawing(_) => match self.drawing {
-                None => Err(SceneErr::Error),
-                Some(ref scene) => Ok(scene),
+                None => Err(debug_message!("Drawing scene missing.").into()),
+                Some(ref drawing) => Ok(drawing.view(globals))
             },
             Scenes::Auth(_) => match self.auth {
-                None => Err(SceneErr::Error),
-                Some(ref scene) => Ok(scene),
+                None => Err(debug_message!("Auth scene missing.").into()),
+                Some(ref auth) => Ok(auth.view(globals)),
             },
             Scenes::Posts(_) => match self.posts {
-                None => Err(SceneErr::Error),
-                Some(ref scene) => Ok(scene),
+                None => Err(debug_message!("Posts scene missing.").into()),
+                Some(ref posts) => Ok(posts.view(globals)),
             },
             Scenes::Settings(_) => match self.settings {
-                None => Err(SceneErr::Error),
-                Some(ref scene) => Ok(scene)
+                None => Err(debug_message!("Settings scene missing.").into()),
+                Some(ref settings) => Ok(settings.view(globals))
+            }
+        }
+    }
+
+    /// Handles an error.
+    pub fn handle_error(&mut self, globals: &mut Globals, error: &Error) -> Result<Command<Message>, Error>
+    {
+        match self.current_scene {
+            Scenes::Main(_) => match self.main {
+                None => Err(debug_message!("Main scene missing.").into()),
+                Some(ref mut main) => Ok(main.handle_error(globals, error))
+            },
+            Scenes::Drawing(_) => match self.drawing {
+                None => Err(debug_message!("Drawing scene missing.").into()),
+                Some(ref mut drawing) => Ok(drawing.handle_error(globals, error))
+            },
+            Scenes::Auth(_) => match self.auth {
+                None => Err(debug_message!("Auth scene missing.").into()),
+                Some(ref mut auth) => Ok(auth.handle_error(globals, error))
+            },
+            Scenes::Posts(_) => match self.posts {
+                None => Err(debug_message!("Posts scene missing.").into()),
+                Some(ref mut posts) => Ok(posts.handle_error(globals, error))
+            },
+            Scenes::Settings(_) => match self.settings {
+                None => Err(debug_message!("Settings scene missing.").into()),
+                Some(ref mut settings) => Ok(settings.handle_error(globals, error))
             }
         }
     }

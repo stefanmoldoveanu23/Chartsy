@@ -1,4 +1,5 @@
 use std::fmt::{Debug, Display, Formatter};
+use crate::errors::error::Error;
 
 /// Errors for the authentication page.
 #[derive(Clone, Eq, PartialEq)]
@@ -69,5 +70,11 @@ impl Display for AuthError {
 impl Debug for AuthError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         Display::fmt(self, f)
+    }
+}
+
+impl Into<Error> for AuthError {
+    fn into(self) -> Error {
+        Error::AuthError(self)
     }
 }
