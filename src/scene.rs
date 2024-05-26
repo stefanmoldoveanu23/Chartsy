@@ -1,7 +1,7 @@
 use crate::errors::error::Error;
 use crate::scenes::data::auth::User;
 use crate::scenes::scenes::Scenes;
-use crate::theme::Theme;
+use crate::utils::theme::Theme;
 use iced::{Command, Element, Renderer};
 use mongodb::{Client, ClientSession, Database};
 use std::any::Any;
@@ -11,7 +11,6 @@ use std::time::Duration;
 use moka::future::Cache;
 use mongodb::bson::Uuid;
 use crate::debug_message;
-use crate::errors::debug::DebugError;
 use crate::scenes::data::posts::PixelImage;
 
 /// An individual scene that handles its actions internally.
@@ -40,11 +39,11 @@ pub trait Scene: Send + Sync
     where Self::Message: 'static
     {
         message.as_any().downcast_ref().ok_or(
-            debug_message!(format!(
+            debug_message!(
                 "Failed to downcast message \"{}\" to scene \"{}\".",
                 message.get_name(),
                 self.get_title()
-            )).into()
+            ).into()
         )
     }
 
@@ -157,7 +156,7 @@ impl Globals {
     pub async fn start_session(&self) -> Option<Result<ClientSession, Error>> {
         match &self.mongo_client {
             Some(client) => Some(client.start_session(None).await.map_err(
-                |err| Error::DebugError(DebugError::new(debug_message!(err.to_string())))
+                |err| debug_message!("{}", err).into()
             )),
             None => None
         }

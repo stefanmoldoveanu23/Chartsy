@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter, Write};
 use iced::Font;
 use iced::font::{Family, Weight, Stretch, Style};
 
-pub const ICON_BYTES :&[u8]= include_bytes!("images/SymbolsNerdFontMono-Regular.ttf");
+pub const ICON_BYTES :&[u8]= include_bytes!("../images/SymbolsNerdFontMono-Regular.ttf");
 pub const ICON :Font= Font {
     family: Family::Name("Symbols Nerd Font Mono"),
     weight: Weight::Normal,

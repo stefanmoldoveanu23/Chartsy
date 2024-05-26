@@ -8,7 +8,7 @@ use crate::debug_message;
 use crate::errors::error::Error;
 use crate::scenes::posts::{Posts, PostsOptions};
 use crate::scenes::settings::{Settings, SettingsOptions};
-use crate::theme::Theme;
+use crate::utils::theme::Theme;
 
 /// The list of [Scenes](Scene) in the [Application](crate::Chartsy).
 #[derive(Debug, Clone)]

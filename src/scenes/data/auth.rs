@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use crate::config;
 use crate::errors::auth::AuthError;
 use crate::errors::error::Error;
-use crate::serde::{Deserialize, Serialize};
+use crate::utils::serde::{Deserialize, Serialize};
 
 /// User account registration fields.
 #[derive(Clone)]

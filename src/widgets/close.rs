@@ -6,7 +6,8 @@ use iced::{Element, Event, Length, mouse, Point, Rectangle, Size};
 use iced::alignment::{Horizontal, Vertical};
 use iced::event::Status;
 use iced::mouse::{Cursor, Interaction};
-use crate::icons::{Icon, ICON};
+use crate::utils::theme;
+use crate::utils::icons::{Icon, ICON};
 
 /// The default size of a close button.
 const DEFAULT_SIZE :f32= 40.0;
@@ -82,7 +83,7 @@ where
                 shaping: Default::default(),
             },
             Point::new(layout.bounds().x, layout.bounds().y - 1.0),
-            crate::theme::pallete::DANGER,
+            theme::pallete::DANGER,
             *viewport
         );
     }

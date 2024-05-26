@@ -6,7 +6,7 @@ use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
 use crate::scene::Message;
 use crate::scenes::data::auth::User;
 use crate::scenes::posts::PostsMessage;
-use crate::serde::{Deserialize, Serialize};
+use crate::utils::serde::{Deserialize, Serialize};
 
 /// An image represented by pixel data.
 #[derive(Debug, Clone)]
@@ -554,7 +554,7 @@ impl PostList {
             |val| (val.1, val.0)
         )
     }
-    
+
     /// Tells whether the images have all been loaded.
     pub fn done_loading(&self) -> bool {
         self.loaded == self.posts.len()

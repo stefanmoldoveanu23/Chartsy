@@ -1,6 +1,6 @@
 use crate::canvas::style::{Style, StyleUpdate};
 use crate::canvas::tool::{Pending, Tool};
-use crate::theme::Theme;
+use crate::utils::theme::Theme;
 use iced::advanced::mouse;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{self};

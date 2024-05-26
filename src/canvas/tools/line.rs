@@ -1,6 +1,6 @@
 use crate::canvas::layer::CanvasMessage;
 use crate::canvas::style::Style;
-use crate::serde::{Deserialize, Serialize};
+use crate::utils::serde::{Deserialize, Serialize};
 use iced::event::Status;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{Event, Frame, Geometry, Path, Stroke};

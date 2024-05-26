@@ -1,7 +1,7 @@
 use crate::widgets::color_picker::ColorPicker;
 use crate::scene::Message;
-use crate::serde::{Deserialize, Serialize};
-use crate::theme::Theme;
+use crate::utils::serde::{Deserialize, Serialize};
+use crate::utils::theme::{self, Theme};
 use iced::widget::{Button, Column, Slider, Text};
 use iced::{Color, Command, Element, Length, Renderer};
 use iced::alignment::Horizontal;
@@ -139,19 +139,19 @@ impl Style {
     pub(crate) fn view<'a>(&self) -> Element<'a, StyleUpdate, Theme, Renderer> {
         let mut column: Vec<Element<'a, StyleUpdate, Theme, Renderer>> = vec![];
 
-        let get_button_style = |condition: bool| -> crate::theme::button::Button {
+        let get_button_style = |condition: bool| -> theme::button::Button {
             if condition {
-                crate::theme::button::Button::SelectedLayer
+                theme::button::Button::SelectedLayer
             } else {
-                crate::theme::button::Button::UnselectedLayer
+                theme::button::Button::UnselectedLayer
             }
         };
 
-        let get_text_style = |condition: bool| -> crate::theme::text::Text {
+        let get_text_style = |condition: bool| -> theme::text::Text {
             if condition {
-                crate::theme::text::Text::Dark
+                theme::text::Text::Dark
             } else {
-                crate::theme::text::Text::Light
+                theme::text::Text::Light
             }
         };
 

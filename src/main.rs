@@ -1,8 +1,5 @@
 #![cfg_attr(
-    all(
-        target_os = "windows",
-        not(debug_assertions),
-    ),
+    all(target_os = "windows", not(debug_assertions),),
     windows_subsystem = "windows"
 )]
 
@@ -13,28 +10,28 @@ use_litcrypt!();
 
 mod canvas;
 mod config;
-mod errors;
 mod database;
+mod errors;
 mod scene;
 mod scenes;
-mod serde;
-mod theme;
+mod utils;
 mod widgets;
-mod icons;
 
 use scene::{Globals, Message};
 use scenes::scenes::SceneManager;
-use theme::Theme;
+use utils::theme::Theme;
 
-use iced::{executor, window, Application, Command, Element, Renderer, Settings, Subscription, Font};
-use iced::font::{Family, Stretch, Style, Weight};
-use lettre::{AsyncSmtpTransport, Tokio1Executor, AsyncTransport};
 use crate::widgets::wait_panel::WaitPanel;
+use iced::font::{Family, Stretch, Style, Weight};
+use iced::{
+    executor, window, Application, Command, Element, Font, Renderer, Settings, Subscription,
+};
+use lettre::{AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
 
-pub const LOADING_IMAGE :&[u8]= include_bytes!("images/loading.png");
+pub const LOADING_IMAGE: &[u8] = include_bytes!("images/loading.png");
 
-pub const INCONSOLATA_BYTES :&[u8]= include_bytes!("images/Inconsolata-SemiBold.ttf");
-pub const INCONSOLATA :Font= Font {
+pub const INCONSOLATA_BYTES: &[u8] = include_bytes!("images/Inconsolata-SemiBold.ttf");
+pub const INCONSOLATA: Font = Font {
     family: Family::Name("Inconsolata"),
     weight: Weight::Semibold,
     stretch: Stretch::Normal,
@@ -75,9 +72,12 @@ impl Application for Chartsy {
             },
             Command::batch(vec![
                 window::maximize(window::Id::MAIN, true),
-                iced::font::load(icons::ICON_BYTES).map(|_| Message::None),
+                iced::font::load(utils::icons::ICON_BYTES).map(|_| Message::None),
                 iced::font::load(INCONSOLATA_BYTES).map(|_| Message::None),
-                Command::perform(database::base::connect_to_mongodb(), Message::DoneDatabaseInit),
+                Command::perform(
+                    database::base::connect_to_mongodb(),
+                    Message::DoneDatabaseInit,
+                ),
             ]),
         )
     }
@@ -93,43 +93,41 @@ impl Application for Chartsy {
             Message::DoAction(action) => {
                 match self.scene_loader.update(&mut self.globals, action) {
                     Ok(command) => command,
-                    Err(err) => self.update(Message::Error(err))
+                    Err(err) => self.update(Message::Error(err)),
                 }
             }
-            Message::DoneDatabaseInit(result) => {
-                match result {
-                    Ok(client) => {
-                        self.globals.set_client(client);
-                        let db = self.globals.get_db().unwrap();
+            Message::DoneDatabaseInit(result) => match result {
+                Ok(client) => {
+                    self.globals.set_client(client);
+                    let db = self.globals.get_db().unwrap();
 
-                        println!("Successfully connected to database.");
-                        Command::perform(
-                            async move {
-                                let result = database::auth::get_user_from_token(&db).await;
+                    println!("Successfully connected to database.");
+                    Command::perform(
+                        async move {
+                            let result = database::auth::get_user_from_token(&db).await;
 
-                                if let Ok(user) = &result {
-                                    let user_id = user.get_id();
+                            if let Ok(user) = &result {
+                                let user_id = user.get_id();
 
-                                    database::auth::update_user_token(&db, user_id).await;
-                                }
-
-                                result
-                            },
-                            |result| {
-                                match result {
-                                    Ok(user) => Message::AutoLoggedIn(user),
-                                    Err(err) => Message::Error(err)
-                                }
+                                database::auth::update_user_token(&db, user_id).await;
                             }
-                        )
-                    }
-                    Err(err) => {
-                        println!("Error connecting to database: {}", err);
-                        Command::perform(database::base::connect_to_mongodb(), Message::DoneDatabaseInit)
-                    }
-                }
 
-            }
+                            result
+                        },
+                        |result| match result {
+                            Ok(user) => Message::AutoLoggedIn(user),
+                            Err(err) => Message::Error(err),
+                        },
+                    )
+                }
+                Err(err) => {
+                    println!("Error connecting to database: {}", err);
+                    Command::perform(
+                        database::base::connect_to_mongodb(),
+                        Message::DoneDatabaseInit,
+                    )
+                }
+            },
             Message::AutoLoggedIn(user) => {
                 self.globals.set_user(Some(user));
                 Command::none()
@@ -138,7 +136,8 @@ impl Application for Chartsy {
                 async {
                     let connection = AsyncSmtpTransport::<Tokio1Executor>::from_url(&*format!(
                         "smtps://{}:{}@smtp.gmail.com:465/",
-                        config::email_username(), config::email_pass()
+                        config::email_username(),
+                        config::email_pass()
                     ))
                     .unwrap()
                     .build();
@@ -161,11 +160,11 @@ impl Application for Chartsy {
                 } else {
                     match self.scene_loader.handle_error(&mut self.globals, &error) {
                         Ok(command) => command,
-                        Err(err) => self.update(Message::Error(err))
+                        Err(err) => self.update(Message::Error(err)),
                     }
                 }
             }
-            Message::Quit => window::close(window::Id::MAIN)
+            Message::Quit => window::close(window::Id::MAIN),
         }
     }
 
@@ -182,5 +181,7 @@ impl Application for Chartsy {
         }
     }
 
-    fn subscription(&self) -> Subscription<Self::Message> { Subscription::none() }
+    fn subscription(&self) -> Subscription<Self::Message> {
+        Subscription::none()
+    }
 }

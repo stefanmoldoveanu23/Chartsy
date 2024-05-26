@@ -4,7 +4,7 @@ use crate::canvas::tools::brushes::{airbrush::Airbrush, eraser::Eraser, pen::Pen
 use crate::canvas::tools::{
     circle::Circle, ellipse::Ellipse, line::Line, polygon::Polygon, rect::Rect, triangle::Triangle,
 };
-use crate::serde::{Deserialize, Serialize};
+use crate::utils::serde::{Deserialize, Serialize};
 use iced::widget::canvas::{event, Event, Frame, Geometry};
 use iced::{mouse, Point, Rectangle, Renderer};
 use json::object::Object;

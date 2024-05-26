@@ -19,7 +19,7 @@ use crate::scenes::scenes::Scenes;
 
 use crate::scenes::drawing::DrawingOptions;
 use crate::scenes::data::drawing::SaveMode;
-use crate::theme::Theme;
+use crate::utils::theme::{self, Theme};
 use crate::widgets::closeable::Closeable;
 
 use crate::scenes::data::main::*;
@@ -493,7 +493,7 @@ impl Scene for Main {
                             .width(Length::Fixed(500.0))
                             .height(Length::Fixed(300.0))
                     )
-                        .style(crate::theme::closeable::Closeable::Transparent)
+                        .style(theme::closeable::Closeable::Transparent)
                         .on_close(
                             Into::<Message>::into(MainMessage::ToggleModal(ModalType::ShowingDrawings)),
                             32.0

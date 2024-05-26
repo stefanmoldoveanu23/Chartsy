@@ -13,7 +13,7 @@ use iced::widget::scrollable::{Direction, Properties};
 use json::object::Object;
 use json::JsonValue;
 use mongodb::bson::Uuid;
-use svg2webp::svg2webp;
+use rfd::AsyncFileDialog;
 
 use crate::canvas::layer::CanvasMessage;
 use crate::canvas::tool;
@@ -26,12 +26,11 @@ use crate::canvas::tools::{
     circle::CirclePending, ellipse::EllipsePending, line::LinePending, polygon::PolygonPending,
     rect::RectPending, triangle::TrianglePending,
 };
-use crate::database;
+use crate::{database, debug_message};
 use crate::errors::error::Error;
 use crate::scene::{Globals, Message, Scene, SceneMessage};
-use crate::scenes::scenes::Scenes;
 
-use crate::theme::Theme;
+use crate::utils::theme::{self, Theme};
 
 use crate::widgets::combo_box::ComboBox;
 use crate::widgets::modal_stack::ModalStack;
@@ -40,8 +39,9 @@ use crate::widgets::closeable::Closeable;
 use crate::widgets::grid::Grid;
 
 use crate::scenes::data::drawing::*;
+use crate::utils::encoder::encode_svg;
 
-use crate::icons::{Icon, ICON, ToolIcon};
+use crate::utils::icons::{Icon, ICON, ToolIcon};
 use crate::widgets::close::Close;
 
 /// The [Messages](SceneMessage) for the [Drawing] scene.
@@ -52,6 +52,9 @@ pub enum DrawingMessage {
 
     /// Creates a new post given the canvas and the [PostData].
     PostDrawing,
+
+    /// Saves the file with the format and location that the user provides.
+    SaveAs,
 
     /// Updates the [PostData] given the modified field.
     UpdatePostData(UpdatePostData),
@@ -78,6 +81,7 @@ impl SceneMessage for DrawingMessage {
         match self {
             Self::CanvasMessage(_) => String::from("Canvas action"),
             Self::PostDrawing => String::from("Post drawing"),
+            Self::SaveAs => String::from("Save as..."),
             Self::UpdatePostData(_) => String::from("Update post data"),
             Self::ToggleModal(_) => String::from("Toggle modal"),
             Self::ErrorHandler(_) => String::from("Handle error"),
@@ -361,13 +365,12 @@ impl Scene for Drawing {
 
                 Command::perform(
                     async move {
-                        let buffer = document.to_string();
-                        let img = svg2webp(&*buffer, 80.0).unwrap();
+                        let img = encode_svg(document, "webp").await?;
                         let post_id = Uuid::new();
 
                         match database::base::upload_file(
                             format!("/{}/{}.webp", user_id, post_id),
-                            img.to_vec()
+                            img
                         ).await {
                             Ok(()) => { }
                             Err(err) => {
@@ -390,6 +393,42 @@ impl Scene for Drawing {
                         }
                     },
                 )
+            }
+            DrawingMessage::SaveAs => {
+                let document = self.canvas.get_svg().as_document();
+
+                let download = Command::perform(
+                    async move {
+                        let file = AsyncFileDialog::new()
+                            .set_title("Save As...")
+                            .set_directory("~")
+                            .add_filter("image", &["png", "jpg", "jpeg", "webp", "svg", "tiff", "bmp"])
+                            .save_file()
+                            .await;
+
+                        match file {
+                            Some(handle) => {
+                                let name = handle.file_name().to_string();
+                                let format = name.split(".").last().unwrap();
+                                let img = encode_svg(document, &*format).await?;
+
+                                handle.write(img.as_slice()).await.map_err(|err| err.to_string().into())
+                            }
+                            None => Err(debug_message!("Error getting file.").into())
+                        }
+                    },
+                    |result| {
+                        match result {
+                            Ok(_) => Message::None,
+                            Err(err) => Message::Error(err)
+                        }
+                    }
+                );
+
+                Command::batch(vec![
+                    self.update(globals, &CanvasMessage::Save.into()),
+                    download
+                ])
             }
             DrawingMessage::ToggleModal(modal) => {
                 self.modal_stack.toggle_modal(modal.clone());
@@ -431,14 +470,14 @@ impl Scene for Drawing {
         let tool_button =
             |name, pending: Box<dyn Pending>| -> Element<'a, Message, Theme, Renderer> {
                 let style = if current_tool == pending.id() {
-                    crate::theme::button::Button::SelectedLayer
+                    theme::button::Button::SelectedLayer
                 } else {
-                    crate::theme::button::Button::UnselectedLayer
+                    theme::button::Button::UnselectedLayer
                 };
                 let text_style = if current_tool == pending.id() {
-                    crate::theme::text::Text::Dark
+                    theme::text::Text::Dark
                 } else {
-                    crate::theme::text::Text::Light
+                    theme::text::Text::Light
                 };
 
                 Button::<Message, Theme, Renderer>::new(
@@ -508,7 +547,7 @@ impl Scene for Drawing {
         ))
             .padding(2.0)
             .width(Length::Fill)
-            .style(crate::theme::container::Container::Bordered)
+            .style(theme::container::Container::Bordered)
             .height(Length::FillPortion(1));
 
         let style_section = Container::new(Scrollable::new(
@@ -519,7 +558,7 @@ impl Scene for Drawing {
         ))
             .padding(2.0)
             .width(Length::Fill)
-            .style(crate::theme::container::Container::Bordered)
+            .style(theme::container::Container::Bordered)
             .height(Length::FillPortion(1));
 
         let layers_section = Container::new(Scrollable::new(
@@ -535,7 +574,7 @@ impl Scene for Drawing {
                             .font(ICON)
                     )
                         .padding(0.0)
-                        .style(crate::theme::button::Button::Transparent)
+                        .style(theme::button::Button::Transparent)
                         .on_press(CanvasMessage::AddLayer.into())
                         .into()
                 ])
@@ -546,14 +585,14 @@ impl Scene for Drawing {
                     self.canvas.get_layer_order().iter().map(
                         |id| {
                             let style = if *id == *self.canvas.get_current_layer() {
-                                crate::theme::button::Button::SelectedLayer
+                                theme::button::Button::SelectedLayer
                             } else {
-                                crate::theme::button::Button::UnselectedLayer
+                                theme::button::Button::UnselectedLayer
                             };
                             let text_style = || if *id == *self.canvas.get_current_layer() {
-                                crate::theme::text::Text::Dark
+                                theme::text::Text::Dark
                             } else {
-                                crate::theme::text::Text::Light
+                                theme::text::Text::Light
                             };
 
                             let layer = &self.canvas.get_layers().get(id).unwrap();
@@ -580,7 +619,7 @@ impl Scene for Drawing {
                                                 Text::new(Icon::Edit.to_string()).font(ICON)
                                                     .style(text_style())
                                             )
-                                                .style(crate::theme::button::Button::Transparent)
+                                                .style(theme::button::Button::Transparent)
                                                 .on_press(CanvasMessage::ToggleEditLayerName(*id).into())
                                                 .into()
                                         ])
@@ -595,7 +634,7 @@ impl Scene for Drawing {
                                             .style(text_style())
                                             .font(ICON)
                                     )
-                                        .style(crate::theme::button::Button::Transparent)
+                                        .style(theme::button::Button::Transparent)
                                         .on_press(CanvasMessage::ToggleLayer(*id).into())
                                         .into(),
                                     if layer_count > 1 {
@@ -603,7 +642,7 @@ impl Scene for Drawing {
                                             Text::new(Icon::X.to_string()).font(ICON)
                                                 .style(text_style())
                                         )
-                                            .style(crate::theme::button::Button::Transparent)
+                                            .style(theme::button::Button::Transparent)
                                             .on_press(CanvasMessage::RemoveLayer(*id).into())
                                             .into()
                                     } else {
@@ -627,7 +666,7 @@ impl Scene for Drawing {
         ))
             .padding(2.0)
             .width(Length::Fill)
-            .style(crate::theme::container::Container::Bordered)
+            .style(theme::container::Container::Bordered)
             .height(Length::FillPortion(1));
 
         let menu_section = Container::new(
@@ -665,12 +704,12 @@ impl Scene for Drawing {
                     .into(),
                 Space::with_height(Length::Fill).into(),
                 Button::new(
-                    Text::new("Back")
+                    Text::new("Save as...")
                         .horizontal_alignment(Horizontal::Center)
                         .width(Length::Fill)
                         .size(20.0)
                 )
-                    .on_press(Message::ChangeScene(Scenes::Main(None)))
+                    .on_press(DrawingMessage::SaveAs.into())
                     .padding(5.0)
                     .width(Length::Fill)
                     .into(),
@@ -680,7 +719,7 @@ impl Scene for Drawing {
                 .align_items(Alignment::Center)
         )
             .padding(10.0)
-            .style(crate::theme::container::Container::Bordered)
+            .style(theme::container::Container::Bordered)
             .align_x(Horizontal::Center)
             .align_y(Vertical::Center)
             .width(Length::Fill)
@@ -766,8 +805,8 @@ impl Scene for Drawing {
                                                 .spacing(5.0)
                                                 .align_items(Alignment::Center)
                                         )
-                                            .style(crate::theme::container::Container::Badge(
-                                                crate::theme::pallete::TEXT
+                                            .style(theme::container::Container::Badge(
+                                                theme::pallete::TEXT
                                             ))
                                             .padding(10.0)
                                     ))
@@ -818,7 +857,7 @@ impl Scene for Drawing {
                             )
                             .width(Length::Fixed(300.0))
                     )
-                        .style(crate::theme::closeable::Closeable::Transparent)
+                        .style(theme::closeable::Closeable::Transparent)
                         .on_close(
                             Into::<Message>::into(DrawingMessage::ToggleModal(ModalTypes::PostPrompt)),
                             32.0

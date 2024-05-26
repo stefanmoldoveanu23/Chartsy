@@ -11,7 +11,7 @@ use crate::errors::auth::AuthError;
 use crate::errors::debug::{debug_message, DebugError};
 use crate::errors::error::Error;
 use crate::scenes::data::auth::User;
-use crate::serde::Deserialize;
+use crate::utils::serde::Deserialize;
 
 /// Checks if an authentication token is saved on the user's computer.
 ///
@@ -51,10 +51,10 @@ pub async fn get_user_from_token(database: &Database) -> Result<User, Error>
             Ok(None) => Err(Error::DebugError(DebugError::new(
                 debug_message!("No user previously logged in!")
             ))),
-            Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+            Err(err) => Err(debug_message!("{}", err).into())
         }
     } else {
-        Err(Error::DebugError(DebugError::new(debug_message!("No user previously logged in!"))))
+        Err(debug_message!("No user previously logged in!").into())
     }
 }
 
@@ -112,7 +112,7 @@ pub async fn create_user(db: &Database, user_email: String, user_data: Document)
                 Ok(())
             }
         }
-        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+        Err(err) => Err(debug_message!("{}", err).into())
     }
 }
 
@@ -144,7 +144,7 @@ pub async fn validate_email(db: &Database, email: String, code: String)
             }
         }
         Err(err) => {
-            Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+            Err(debug_message!("{}", err).into())
         }
     }
 }
@@ -171,12 +171,10 @@ pub async fn reset_register_code(db: &Database, email: String, code: String) -> 
             if result.modified_count > 0 {
                 Ok(())
             } else {
-                Err(Error::DebugError(DebugError::new(
-                    debug_message!(format!("Database could not find user with email {}!", email))
-                )))
+                Err(debug_message!("Database could not find user with email {}!", email).into())
             }
         }
-        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+        Err(err) => Err(debug_message!("{}", err).into())
     }
 }
 
@@ -194,7 +192,7 @@ pub async fn login(db: &Database, user_data: Document) -> Result<User, Error>
             Err(Error::AuthError(AuthError::LogInUserDoesntExist))
         }
         Err(err) => {
-            Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+            Err(debug_message!("{}", err).into())
         }
     }
 }

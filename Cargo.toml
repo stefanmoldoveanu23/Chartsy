@@ -12,18 +12,17 @@ rand = "0.8.5"
 mongodb = "2.8.2"
 dropbox-sdk = { version="0.18.0", features=["dbx_files", "dbx_users", "default_client"] }
 svg = "0.16.0"
-image = "0.25.1"
+image = {  version="0.25.1", features = ["webp"] }
 iced_aw = { version= "0.8.0", features=["modal", "card", "tabs", "tab_bar", "badge", "drop_down"] }
 pwhash = "1.0.0"
 directories = "5.0.1"
-async-recursion = "1.0.5"
 lettre = { version="0.11.4", default-features=false, features = ["smtp-transport", "hostname", "builder", "tokio1-rustls-tls"] }
 regex = "1.10.3"
 json = "0.12.4"
 sha2 = "0.11.0-pre.3"
 difflib = "0.4.0"
 litcrypt2 = "0.1.2"
-svg2webp = "0.1.6"
+resvg = "0.41.0"
 rfd = { version = "0.14.1", features = ["tokio"] }
 moka = { version = "0.12.7", features = ["future"] }
 chrono = "0.4.38"

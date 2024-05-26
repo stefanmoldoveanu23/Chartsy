@@ -7,6 +7,7 @@ use crate::database::base::resolve_cursor;
 use crate::errors::auth::AuthError;
 use crate::scenes::data::auth::User;
 use crate::scenes::data::posts::{Comment, Post};
+use crate::utils::serde::Deserialize;
 
 /// Gets a list of comments with the given filter, which will decide the parent of the comments.
 pub async fn get_comments(db: &Database, filter: Document) -> Result<Vec<Comment>, Error>
@@ -41,7 +42,7 @@ pub async fn create_comment(db: &Database, comment: &Document) -> Result<(), Err
     db.collection::<Document>("comments").insert_one(
         comment,
         None
-    ).await.map(|_| ()).map_err(|err| Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+    ).await.map(|_| ()).map_err(|err| debug_message!("{}", err).into())
 }
 
 /// Generates recommendations for the user with the given id.
@@ -156,7 +157,7 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
             Ok(resolve_cursor::<Post>(cursor).await)
         },
         Err(err) => {
-            Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+            Err(debug_message!("{}", err).into())
         }
     }
 }
@@ -217,7 +218,7 @@ pub async fn get_filtered(db: &Database, user_id: Uuid, tags: Vec<String>) -> Re
         AggregateOptions::builder().allow_disk_use(true).build()
     ).await {
         Ok(ref mut cursor) => Ok(resolve_cursor::<Post>(cursor).await),
-        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+        Err(err) => Err(debug_message!("{}", err).into())
     }
 }
 
@@ -274,7 +275,7 @@ pub async fn get_user_posts(db: &Database, user_id: Uuid) -> Result<Vec<Post>, E
         AggregateOptions::builder().allow_disk_use(true).build()
     ).await {
         Ok(ref mut cursor) => Ok(resolve_cursor::<Post>(cursor).await),
-        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+        Err(err) => Err(debug_message!("{}", err).into())
     }
 }
 
@@ -345,7 +346,7 @@ pub async fn get_random_posts(db: &Database, count: usize, user_id: Uuid, denied
         AggregateOptions::builder().allow_disk_use(true).build()
     ).await {
         Ok(ref mut cursor) => Ok(resolve_cursor::<Post>(cursor).await),
-        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+        Err(err) => Err(debug_message!("{}", err).into())
     }
 }
 
@@ -365,7 +366,7 @@ pub async fn update_rating(db: &Database, post_id: Uuid, user_id: Uuid, rating: 
             }
         },
         UpdateOptions::builder().upsert(true).build()
-    ).await.map(|_| ()).map_err(|err| Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+    ).await.map(|_| ()).map_err(|err| debug_message!("{}", err).into())
 }
 
 /// Deletes the rating that the user has given the post.
@@ -377,7 +378,7 @@ pub async fn delete_rating(db: &Database, post_id: Uuid, user_id: Uuid) -> Resul
                 "user_id": user_id
             },
         None
-    ).await.map(|_| ()).map_err(|err| Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+    ).await.map(|_| ()).map_err(|err| debug_message!("{}", err).into())
 }
 
 /// Returns the user that has the given tag.
@@ -389,8 +390,8 @@ pub async fn get_user_by_tag(db: &Database, user_tag: String) -> Result<User, Er
         },
         None
     ).await {
-        Ok(Some(ref user)) => Ok(crate::serde::Deserialize::deserialize(user)),
+        Ok(Some(ref user)) => Ok(Deserialize::deserialize(user)),
         Ok(None) => Err(Error::AuthError(AuthError::UserTagDoesNotExist(user_tag))),
-        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+        Err(err) => Err(debug_message!("{}", err).into())
     }
 }

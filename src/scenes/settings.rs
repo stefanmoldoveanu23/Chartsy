@@ -10,12 +10,12 @@ use rfd::AsyncFileDialog;
 use crate::errors::auth::AuthError;
 use crate::errors::debug::{debug_message, DebugError};
 use crate::errors::error::Error;
-use crate::icons::{Icon, ICON};
+use crate::utils::icons::{Icon, ICON};
 use crate::database;
 use crate::scene::{SceneMessage, Globals, Message, Scene};
 use crate::scenes::data::auth::User;
 use crate::scenes::scenes::Scenes;
-use crate::theme::Theme;
+use crate::utils::theme::{self, Theme};
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::wait_panel::WaitPanel;
 
@@ -354,9 +354,7 @@ impl Scene for Settings {
                                 let dyn_image = match load_from_memory(data.as_slice()) {
                                     Ok(image) => image,
                                     Err(err) => {
-                                        return Err(Error::DebugError(DebugError::new(
-                                            debug_message!(err.to_string())
-                                        )));
+                                        return Err(debug_message!("{}", err).into());
                                     }
                                 };
 
@@ -364,9 +362,7 @@ impl Scene for Settings {
                                     Ok(encoder) => {
                                         Ok(encoder.encode(20.0).deref().to_vec())
                                     },
-                                    Err(err) => {
-                                        Err(Error::DebugError(DebugError::new(debug_message!(err))))
-                                    }
+                                    Err(err) => Err(debug_message!("{}", err).into())
                                 }
                             }
                         ).await {
@@ -375,9 +371,7 @@ impl Scene for Settings {
                                 return Err(err);
                             }
                             Err(err) => {
-                                return Err(Error::DebugError(DebugError::new(
-                                    debug_message!(err.to_string())
-                                )))
+                                return Err(debug_message!("{}", err).into())
                             }
                         };
 
@@ -456,7 +450,7 @@ impl Scene for Settings {
                 Text::new(Icon::Leave.to_string()).font(ICON).size(30.0)
             )
                 .padding(0.0)
-                .style(crate::theme::button::Button::Transparent)
+                .style(theme::button::Button::Transparent)
                 .on_press(Message::ChangeScene(Scenes::Main(None)))
                 .into(),
             Text::new(self.get_title()).size(30.0).into()
@@ -503,7 +497,7 @@ impl Scene for Settings {
                 })
                     .to_string()
             )
-                .style(crate::theme::text::Text::Error)
+                .style(theme::text::Text::Error)
                 .size(15.0)
                 .into()
         } else {
@@ -542,7 +536,7 @@ impl Scene for Settings {
                 Some(Error::AuthError(AuthError::BadUserTag)) == self.input_error {
                 let error = self.input_error.clone();
                 Text::new(error.unwrap().to_string())
-                    .style(crate::theme::text::Text::Error)
+                    .style(theme::text::Text::Error)
                     .size(15.0)
                     .into()
             } else {
@@ -595,7 +589,7 @@ impl Scene for Settings {
                 })
                     .to_string()
             )
-                .style(crate::theme::text::Text::Error)
+                .style(theme::text::Text::Error)
                 .size(15.0)
                 .into()
         } else {
@@ -634,7 +628,7 @@ impl Scene for Settings {
 
         let delete_account =
             Button::new("Delete account")
-                .style(crate::theme::button::Button::Danger)
+                .style(theme::button::Button::Danger)
                 .on_press(SettingsMessage::DeleteAccount.into())
                 .into();
 

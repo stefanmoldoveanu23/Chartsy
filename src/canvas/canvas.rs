@@ -5,8 +5,8 @@ use crate::canvas::layer::{CanvasMessage, Layer, LayerVessel};
 use crate::canvas::style::Style;
 use crate::canvas::svg::SVG;
 use crate::scene::{Globals, Message};
-use crate::serde::Serialize;
-use crate::theme::Theme;
+use crate::utils::serde::Serialize;
+use crate::utils::theme::Theme;
 use directories::ProjectDirs;
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::widget::{tree, Tree};
@@ -129,7 +129,7 @@ impl Canvas {
     {
         &self.layers
     }
-    
+
     pub fn get_current_tool(&self) -> &Box<dyn Pending>
     {
         &self.current_tool

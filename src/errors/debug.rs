@@ -32,8 +32,8 @@ impl Into<Error> for String {
 
 #[macro_export]
 macro_rules! debug_message {
-    ($message: expr) => {
-        format!("{}:{} {} [ERROR] - {}", file!(), line!(), chrono::Local::now().format("%Y-%m-%dT%H:%M:%S"), $message)
+    ($($arg:tt)*) => {
+        format!("{}:{} {} [ERROR] - {}", file!(), line!(), chrono::Local::now().format("%Y-%m-%dT%H:%M:%S"), format!($($arg)*))
     };
 }
 

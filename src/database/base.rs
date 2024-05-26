@@ -6,9 +6,9 @@ use mongodb::{Client, Cursor};
 use mongodb::bson::Document;
 use mongodb::options::ClientOptions;
 use crate::config;
-use crate::errors::debug::{debug_message, DebugError};
+use crate::errors::debug::debug_message;
 use crate::errors::error::Error;
-use crate::serde::Deserialize;
+use crate::utils::serde::Deserialize;
 
 /// Attempts to connect to the database [Database].
 ///
@@ -26,12 +26,12 @@ pub async fn connect_to_mongodb() -> Result<Client, Error>
     ).await {
         Ok(options) => options,
         Err(err) => {
-            return Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+            return Err(debug_message!("{}", err).into())
         }
     };
 
     Client::with_options(client_options).map_err(
-        |err| Error::DebugError(DebugError::new(debug_message!(err.to_string())))
+        |err| debug_message!("{}", err).into()
     )
 }
 
@@ -76,7 +76,7 @@ pub async fn connect_to_dropbox() -> Result<UserAuthDefaultClient, Error>
                 .unwrap();
             UserAuthDefaultClient::new(auth)
         }
-    ).await.map_err(|err| Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+    ).await.map_err(|err| debug_message!("{}", err).into())
 }
 
 /// Uploads a file to dropbox.
@@ -100,14 +100,14 @@ pub async fn upload_file(path: String, data: Vec<u8>) -> Result<(), Error>
                 data.as_slice()
             ) {
                 Ok(Ok(_)) => Ok(()),
-                Ok(Err(err)) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string())))),
-                Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+                Ok(Err(err)) => Err(debug_message!("{}", err).into()),
+                Err(err) => Err(debug_message!("{}", err).into())
             }
         }
     ).await {
         Ok(Ok(_)) => Ok(()),
         Ok(Err(err)) => Err(err),
-        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+        Err(err) => Err(debug_message!("{}", err).into())
     }
 }
 
@@ -136,25 +136,19 @@ pub async fn download_file(path: String) -> Result<Vec<u8>, Error>
                         Some(ref mut reader) => {
                             match io::copy(reader, &mut data) {
                                 Ok(_) => Ok(data),
-                                Err(err) => Err(Error::DebugError(
-                                    DebugError::new(debug_message!(err.to_string()))
-                                ))
+                                Err(err) => Err(debug_message!("{}", err).into())
                             }
                         }
-                        None => Err(Error::DebugError(DebugError::new(
-                            debug_message!(format!("Could not find reader for the file {}.", path))
-                        )))
+                        None => Err(debug_message!("Could not find reader for the file {}.", path).into())
                     }
                 }
-                Ok(Err(err)) => Err(Error::DebugError(
-                    DebugError::new(err.to_string())
-                )),
-                Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+                Ok(Err(err)) => Err(err.to_string().into()),
+                Err(err) => Err(debug_message!("{}", err).into())
             }
         }
     ).await {
         Ok(Ok(data)) => Ok(data),
         Ok(Err(err)) => Err(err),
-        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+        Err(err) => Err(debug_message!("{}", err).into())
     }
 }

@@ -2,14 +2,14 @@ use crate::errors::auth::AuthError;
 use crate::errors::error::Error;
 use crate::scene::{SceneMessage, Globals, Message, Scene};
 use crate::scenes::scenes::Scenes;
-use crate::theme::Theme;
+use crate::utils::theme::Theme;
 use iced::widget::{Button, Column, Container, Row, Space, Text, TextInput};
 use iced::{Element, Length, Renderer, Command};
 use iced_aw::{TabLabel, Tabs};
 use std::any::Any;
 use crate::database;
 use crate::scenes::data::auth::*;
-use crate::serde::Serialize;
+use crate::utils::serde::Serialize;
 
 /// Possible messages for the authentication page.
 #[derive(Clone)]

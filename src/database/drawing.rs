@@ -43,12 +43,10 @@ pub async fn get_drawing(db: &Database, id: Uuid)
             }
         }
         Ok(None) => {
-            return Err(Error::DebugError(DebugError::new(
-                debug_message!(format!("The canvas with id {} could not be found in the database!", id))
-            )));
+            return Err(debug_message!("The canvas with id {} could not be found in the database!", id).into());
         }
         Err(err) => {
-            return Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))));
+            return Err(debug_message!("{}", err).into());
         }
     };
 
@@ -64,7 +62,7 @@ pub async fn get_drawing(db: &Database, id: Uuid)
             ).collect()
         }
         Err(err) => {
-            return Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))));
+            return Err(debug_message!("{}", err).into());
         }
     };
 
@@ -89,7 +87,7 @@ pub async fn create_drawing(db: &Database, id: Uuid, user_id: Uuid)
         None
     ).await {
         Ok(_) => Ok((layer_id, "New layer".into())),
-        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+        Err(err) => Err(debug_message!("{}", err).into())
     }
 }
 
@@ -108,7 +106,7 @@ pub async fn create_post(db: &Database, id: Uuid, user_id: Uuid, description: St
         None
     ).await {
         Ok(_) => Ok(()),
-        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+        Err(err) => Err(debug_message!("{}", err).into())
     }
 }
 
@@ -122,7 +120,7 @@ pub async fn get_tags(db: &Database) -> Result<Vec<Tag>, Error>
         Ok(ref mut cursor) => {
             Ok(database::base::resolve_cursor::<Tag>(cursor).await)
         }
-        Err(err) => Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+        Err(err) => Err(debug_message!("{}", err).into())
     }
 }
 
@@ -158,7 +156,7 @@ pub async fn update_drawing(
     ).await {
         Ok(_) => { },
         Err(err) => {
-            return Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))));
+            return Err(debug_message!("{}", err).into());
         }
     }
 
@@ -169,7 +167,7 @@ pub async fn update_drawing(
         ).await {
             Ok(_) => { },
             Err(err) => {
-                return Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))));
+                return Err(debug_message!("{}", err).into());
             }
         }
     }
@@ -194,13 +192,11 @@ pub async fn update_drawing(
             if result.modified_count > 0 {
                 Ok(())
             } else {
-                Err(Error::DebugError(DebugError::new(
-                    debug_message!(format!("Drawing with id {} not found!", canvas_id))
-                )))
+                Err(debug_message!("Drawing with id {} not found!", canvas_id).into())
             }
         }
         Err(err) => {
-            Err(Error::DebugError(DebugError::new(debug_message!(err.to_string()))))
+            Err(debug_message!("{}", err).into())
         }
     }
 }

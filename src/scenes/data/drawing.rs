@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 use mongodb::bson::{doc, Document};
-use crate::serde::{Deserialize, Serialize};
+use crate::utils::serde::{Deserialize, Serialize};
 
 /// The types of the modals that can be opened.
 #[derive(Clone, Eq, PartialEq)]

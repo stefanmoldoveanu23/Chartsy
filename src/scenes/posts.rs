@@ -17,13 +17,13 @@ use crate::widgets::closeable::Closeable;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::post_summary::PostSummary;
 use crate::{config, database, LOADING_IMAGE};
-use crate::errors::debug::{debug_message, DebugError};
+use crate::errors::debug::debug_message;
 use crate::errors::error::Error;
-use crate::icons::{ICON, Icon};
+use crate::utils::icons::{ICON, Icon};
 use crate::scene::{SceneMessage, Globals, Message, Scene};
 use crate::scenes::data::auth::User;
 use crate::scenes::data::drawing::Tag;
-use crate::theme::Theme;
+use crate::utils::theme::{self, Theme};
 use crate::widgets::rating::Rating;
 
 use crate::scenes::data::posts::*;
@@ -218,16 +218,12 @@ impl Posts {
                                 ) {
                                     Ok(data) => Ok(Arc::new(data.into())),
                                     Err(err) => {
-                                        return Err(Error::DebugError(
-                                            DebugError::new(debug_message!(err.to_string()))
-                                        ));
+                                        return Err(debug_message!("{}", err).into());
                                     }
                                 }
                             }
                             Err(err) => {
-                                return Err(Error::DebugError(
-                                    DebugError::new(debug_message!(err.to_string()))
-                                ));
+                                return Err(debug_message!("{}", err)).into();
                             }
                         }
                     }
@@ -236,7 +232,7 @@ impl Posts {
             move |result| {
                 match result {
                     Ok(data) => PostsMessage::LoadedImage { image: data, id: image_id}.into(),
-                    Err(err) => Message::Error(err.as_ref().clone())
+                    Err(err) => Message::Error(err.as_ref().clone().into())
                 }
             }
         )
@@ -433,7 +429,7 @@ impl Posts {
                                             .on_press(
                                                 PostsMessage::OpenProfile(post.get_user().clone()).into()
                                             )
-                                            .style(crate::theme::button::Button::Transparent),
+                                            .style(theme::button::Button::Transparent),
                                         Text::new(format!("{}'s profile", post.get_user().get_user_tag())),
                                         Position::FollowCursor
                                     )
@@ -443,9 +439,9 @@ impl Posts {
                                             Button::new(
                                                 Text::new(format!("@{}", post.get_user().get_user_tag()))
                                                     .size(15.0)
-                                                    .style(crate::theme::text::Text::Gray)
+                                                    .style(theme::text::Text::Gray)
                                             )
-                                                .style(crate::theme::button::Button::Transparent)
+                                                .style(theme::button::Button::Transparent)
                                                 .on_press(
                                                     PostsMessage::OpenProfile(post.get_user().clone()).into()
                                                 ),
@@ -462,14 +458,14 @@ impl Posts {
                                         Tooltip::new(
                                             Button::new(Text::new(
                                                 Icon::Report.to_string()
-                                            ).font(ICON).style(crate::theme::text::Text::Error).size(30.0))
+                                            ).font(ICON).style(theme::text::Text::Error).size(30.0))
                                                 .on_press(
                                                     PostsMessage::ToggleModal(
                                                         ModalType::ShowingReport(index)
                                                     ).into()
                                                 )
                                                 .padding(0.0)
-                                                .style(crate::theme::button::Button::Transparent),
+                                                .style(theme::button::Button::Transparent),
                                             Text::new("Report post"),
                                             Position::FollowCursor
                                         )
@@ -521,7 +517,7 @@ impl Posts {
                 Into::<Message>::into(PostsMessage::ToggleModal(ModalType::ShowingImage(image))),
                 40.0
             )
-            .style(crate::theme::closeable::Closeable::SpotLight)
+            .style(theme::closeable::Closeable::SpotLight)
             .into()
     }
 
@@ -625,7 +621,7 @@ impl Posts {
                                         Text::new(comment.get_content().clone())
                                             .into()
                                     ]))
-                                        .style(crate::theme::button::Button::Transparent)
+                                        .style(theme::button::Button::Transparent)
                                         .on_press(
                                             CommentMessage::Open {
                                                 post: post_index,
@@ -647,7 +643,7 @@ impl Posts {
                 Closeable::new(Image::new(image.clone()).width(Length::Shrink))
                     .width(Length::FillPortion(3))
                     .height(Length::Fill)
-                    .style(crate::theme::closeable::Closeable::SpotLight)
+                    .style(theme::closeable::Closeable::SpotLight)
                     .on_click(Into::<Message>::into(PostsMessage::ToggleModal(
                         ModalType::ShowingImage(image)
                     )))
@@ -682,7 +678,7 @@ impl Posts {
                     .horizontal_alignment(Alignment::Start)
                     .vertical_alignment(Alignment::Start)
                     .padding([30.0, 0.0, 0.0, 10.0])
-                    .style(crate::theme::closeable::Closeable::Default)
+                    .style(theme::closeable::Closeable::Default)
                     .on_close(
                         Into::<Message>::into(PostsMessage::ToggleModal(
                             ModalType::ShowingPost(post_index)
@@ -1068,9 +1064,7 @@ impl Scene for Posts {
                     Err(err) => {
                         return Command::perform(
                             async { },
-                            move |()| Message::Error(Error::DebugError(
-                                DebugError::new(debug_message!(err.to_string()))
-                            ))
+                            move |()| Message::Error(debug_message!("{}", err).into())
                         );
                     }
                 }
@@ -1174,10 +1168,9 @@ impl Scene for Posts {
                             .align_items(Alignment::Center)
                     )
                         .padding(10.0)
-                        .style(crate::theme::container::Container::Badge(crate::theme::pallete::TEXT))
+                        .style(theme::container::Container::Badge(theme::pallete::TEXT))
                 ))
                     .into()
-
             ])
                 .padding([0.0, 300.0, 0.0, 300.0])
                 .spacing(10.0)
@@ -1207,7 +1200,7 @@ impl Scene for Posts {
                 user_tag_input,
                 Text::new(error.to_string())
                     .size(50.0)
-                    .style(crate::theme::text::Text::Error)
+                    .style(theme::text::Text::Error)
                     .into()
             ])
         } else {
@@ -1217,7 +1210,7 @@ impl Scene for Posts {
                     Image::new(self.get_handle(self.user_profile.get_id()))
                         .height(Length::Fill)
                 )
-                    .style(crate::theme::button::Button::Transparent)
+                    .style(theme::button::Button::Transparent)
                     .width(Length::Shrink)
                     .height(Length::FillPortion(1))
                     .on_press(PostsMessage::ToggleModal(

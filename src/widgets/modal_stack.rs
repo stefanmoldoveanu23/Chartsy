@@ -7,7 +7,7 @@ use iced::event::Status;
 use iced::mouse::{Cursor, Interaction};
 use iced_aw::modal;
 use crate::scene::Message;
-use crate::theme::Theme;
+use crate::utils::theme::Theme;
 
 /// A structure that can stack overlays on top of each other
 /// Useful for scenes with multiple overlays
