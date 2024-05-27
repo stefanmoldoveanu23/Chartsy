@@ -1,16 +1,16 @@
 use crate::canvas::style::{Style, StyleUpdate};
 use crate::canvas::tool::{Pending, Tool};
+use crate::scene::Message;
+use crate::scenes::drawing::DrawingMessage;
 use crate::utils::theme::Theme;
 use iced::advanced::mouse;
+use iced::keyboard::Key;
 use iced::mouse::Cursor;
 use iced::widget::canvas::{self};
 use iced::{event, keyboard, Rectangle, Renderer};
 use json::JsonValue;
-use std::sync::Arc;
-use iced::keyboard::Key;
 use mongodb::bson::Uuid;
-use crate::scene::Message;
-use crate::scenes::drawing::DrawingMessage;
+use std::sync::Arc;
 
 /// A layer in the [canvas](crate::canvas::canvas::Canvas).
 pub struct Layer {
@@ -91,8 +91,8 @@ impl Layer {
     }
 }
 
-unsafe impl Send for Layer { }
-unsafe impl Sync for Layer { }
+unsafe impl Send for Layer {}
+unsafe impl Sync for Layer {}
 
 impl Default for Layer {
     fn default() -> Self {
@@ -102,7 +102,6 @@ impl Default for Layer {
             name: "New layer".to_string(),
             new_name: None,
             visible: true,
-
         }
     }
 }
@@ -125,14 +124,13 @@ pub struct LayerVessel<'a> {
     active: bool,
 }
 
-impl<'a> LayerVessel<'a>
-{
+impl<'a> LayerVessel<'a> {
     pub fn new(
         state: &'a canvas::Cache,
         tools: &'a [Arc<dyn Tool>],
         current_tool: &'a Box<dyn Pending>,
         style: &'a Style,
-        active: bool
+        active: bool,
     ) -> Self {
         LayerVessel {
             state,
@@ -165,14 +163,16 @@ impl<'a> canvas::Program<CanvasMessage, Theme, Renderer> for LayerVessel<'a> {
                     modifiers,
                     ..
                 } => {
-                    let value :&str= key.as_str();
+                    let value: &str = key.as_str();
 
                     if (value == "Z" || value == "z") && modifiers == keyboard::Modifiers::CTRL {
                         return (event::Status::Captured, Some(CanvasMessage::Undo));
-                    } else if (value == "S" || value == "s") && modifiers == keyboard::Modifiers::CTRL
+                    } else if (value == "S" || value == "s")
+                        && modifiers == keyboard::Modifiers::CTRL
                     {
                         return (event::Status::Captured, Some(CanvasMessage::Save));
-                    } else if (value == "Y" || value == "y") && modifiers == keyboard::Modifiers::CTRL
+                    } else if (value == "Y" || value == "y")
+                        && modifiers == keyboard::Modifiers::CTRL
                     {
                         return (event::Status::Captured, Some(CanvasMessage::Redo));
                     } else {
@@ -215,9 +215,9 @@ impl<'a> canvas::Program<CanvasMessage, Theme, Renderer> for LayerVessel<'a> {
         cursor: Cursor,
     ) -> Vec<canvas::Geometry> {
         let content = self.state.draw(renderer, bounds.size(), |frame| {
-                for tool in self.tools {
-                    tool.add_to_frame(frame);
-                }
+            for tool in self.tools {
+                tool.add_to_frame(frame);
+            }
         });
 
         if !self.active {
@@ -251,6 +251,12 @@ impl<'a> canvas::Program<CanvasMessage, Theme, Renderer> for LayerVessel<'a> {
 /// Scene messages that relate to the [canvas](crate::canvas::canvas::Canvas).
 #[derive(Clone)]
 pub enum CanvasMessage {
+    /// Toggles the name_being_edited value.
+    ToggleEditName,
+
+    /// Sets the value of the new name input.
+    SetNewName(String),
+
     /// Adds a [Tool] to the active [Layer].
     UseTool(Arc<dyn Tool>),
 

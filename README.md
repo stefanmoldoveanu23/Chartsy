@@ -17,10 +17,12 @@ A desktop application where users can create drawings and share them.
 
 
 ## Plans
-- Finishing touches on drawing page(allow download in different filetypes, drawing name)
+- Add drawing preview
 - Add loading screens where necessary
+- Implement deleting a drawing
 - Stylize pages(replace all images with icons/widgets, other details maybe later)
 - Fix similarities trigger to take into consideration account deletion and reinstatement
+- Solve all unwraps
 - App icon
 - As time constraints may allow
     - take into consideration loss of connection

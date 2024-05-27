@@ -21,5 +21,3 @@ Cargo.lock
 /target
 
 src/config.rs
-
-settings.json

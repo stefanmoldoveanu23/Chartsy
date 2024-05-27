@@ -1,30 +1,29 @@
-use std::collections::HashMap;
 use super::tool::{Pending, Tool};
 use super::tools::line::LinePending;
 use crate::canvas::layer::{CanvasMessage, Layer, LayerVessel};
 use crate::canvas::style::Style;
 use crate::canvas::svg::SVG;
+use crate::database;
 use crate::scene::{Globals, Message};
 use crate::utils::serde::Serialize;
 use crate::utils::theme::Theme;
 use directories::ProjectDirs;
 use iced::advanced::layout::{Limits, Node};
+use iced::advanced::renderer::Quad;
 use iced::advanced::widget::{tree, Tree};
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::event::Status;
 use iced::mouse::{Cursor, Interaction};
 use iced::widget::canvas;
-use iced::{Command, Element, Event, Length, Renderer, Rectangle, Size, Color};
+use iced::{Color, Command, Element, Event, Length, Rectangle, Renderer, Size};
 use json::object::Object;
 use json::JsonValue;
 use mongodb::bson::{Document, Uuid};
-use std::fs::OpenOptions;
-use std::io::Write;
+use std::collections::HashMap;
+use std::fs;
 use std::ops::Deref;
 use std::sync::Arc;
-use iced::advanced::renderer::Quad;
 use svg::node::element::Group;
-use crate::database;
 
 /// The canvas structure.
 pub struct Canvas {
@@ -36,6 +35,12 @@ pub struct Canvas {
 
     /// The height of the [Canvas].
     height: Length,
+
+    /// The name of the drawing.
+    name: String,
+
+    /// Tells whether the name of the drawing is being edited or not.
+    new_name: Option<String>,
 
     /// The ids of layers ordered.
     layer_order: Vec<Uuid>,
@@ -84,6 +89,8 @@ impl Canvas {
             id: Uuid::from_bytes([0; 16]),
             width: Length::Fill,
             height: Length::Fill,
+            name: String::from(""),
+            new_name: None,
             layer_order: vec![],
             layers: Box::new(HashMap::from_iter(vec![])),
             current_layer: Uuid::new(),
@@ -109,6 +116,14 @@ impl Canvas {
         &self.id
     }
 
+    pub fn get_name(&self) -> &String {
+        &self.name
+    }
+
+    pub fn get_new_name(&self) -> &Option<String> {
+        &self.new_name
+    }
+
     pub fn get_svg(&self) -> &SVG {
         &self.svg
     }
@@ -125,18 +140,24 @@ impl Canvas {
         &self.current_layer
     }
 
-    pub fn get_layers(&self) -> &Box<HashMap<Uuid, Layer>>
-    {
+    pub fn get_layers(&self) -> &Box<HashMap<Uuid, Layer>> {
         &self.layers
     }
 
-    pub fn get_current_tool(&self) -> &Box<dyn Pending>
-    {
+    pub fn get_current_tool(&self) -> &Box<dyn Pending> {
         &self.current_tool
     }
 
     pub fn set_id(&mut self, id: impl Into<Uuid>) {
         self.id = id.into();
+    }
+
+    pub fn set_name(&mut self, name: impl Into<String>) {
+        self.name = name.into();
+    }
+
+    pub fn set_new_name(&mut self, new_name: impl Into<Option<String>>) {
+        self.new_name = new_name.into();
     }
 
     /// Returns the new unsaved tools as mongodb [documents](Document).
@@ -220,9 +241,31 @@ impl Canvas {
     /// Update function, all canvas related messages are handled here.
     pub fn update(&mut self, globals: &mut Globals, message: CanvasMessage) -> Command<Message> {
         match message {
+            CanvasMessage::ToggleEditName => match self.new_name.clone().as_deref() {
+                Some("") => {}
+                Some(new_name) => {
+                    self.new_name = None;
+                    if self.name != new_name {
+                        self.name = String::from(new_name);
+                        self.edited_layers = true;
+                    }
+                }
+                None => {
+                    self.new_name = Some(self.name.clone());
+                }
+            },
+            CanvasMessage::SetNewName(new_name) => {
+                if new_name.len() <= 40 {
+                    self.new_name = Some(new_name);
+                }
+            }
             CanvasMessage::UseTool(tool) => {
                 self.tools.push((tool.clone(), self.current_layer));
-                self.layers.get_mut(&self.current_layer).unwrap().get_mut_tools().push(tool.clone());
+                self.layers
+                    .get_mut(&self.current_layer)
+                    .unwrap()
+                    .get_mut_tools()
+                    .push(tool.clone());
                 self.undo_stack = Box::new(vec![]);
                 self.clear_cache(self.current_layer);
             }
@@ -255,19 +298,17 @@ impl Canvas {
             }
             CanvasMessage::RemoveLayer(id) => {
                 if let Some(ref mut json_tools) = self.json_tools {
-                    json_tools.retain(
-                        |tool| {
-                            if let JsonValue::Object(object) = tool {
-                                if let Some(json_value) = object.get("id") {
-                                    if let JsonValue::String(layer_id) = json_value {
-                                        return layer_id.clone() != id.to_string();
-                                    }
+                    json_tools.retain(|tool| {
+                        if let JsonValue::Object(object) = tool {
+                            if let Some(json_value) = object.get("id") {
+                                if let JsonValue::String(layer_id) = json_value {
+                                    return layer_id.clone() != id.to_string();
                                 }
                             }
-
-                            false
                         }
-                    );
+
+                        false
+                    });
                 }
 
                 self.tools.retain(|(_, layer_id)| *layer_id != id);
@@ -284,7 +325,10 @@ impl Canvas {
             }
             CanvasMessage::Save => {
                 let tools_svg = self.get_tools_svg();
-                if tools_svg.is_empty() && self.count_saved == self.last_saved && !self.edited_layers {
+                if tools_svg.is_empty()
+                    && self.count_saved == self.last_saved
+                    && !self.edited_layers
+                {
                     return Command::none();
                 }
 
@@ -299,9 +343,13 @@ impl Canvas {
                 }
 
                 let canvas_id = self.id;
-                let layers :Vec<(Uuid, String)>= self.layer_order.iter().map(
-                    |id| (*id, self.layers.get(id).unwrap().get_name().clone())
-                ).collect();
+                let layers: Vec<(Uuid, String)> = self
+                    .layer_order
+                    .iter()
+                    .map(|id| (*id, self.layers.get(id).unwrap().get_name().clone()))
+                    .collect();
+
+                let canvas_name = self.name.clone();
 
                 return if let Some(mut tools) = self.json_tools.clone() {
                     let tools_json = self.get_tools_json();
@@ -309,10 +357,29 @@ impl Canvas {
                     Command::perform(
                         async move {
                             let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
-                            let file_path = proj_dirs
-                                .data_local_dir()
-                                .join(String::from("./") + &*canvas_id.to_string() + "/data.json");
-                            let mut file = OpenOptions::new().write(true).open(file_path).unwrap();
+                            let dir_path = proj_dirs.data_local_dir();
+
+                            let file_path = dir_path.join(canvas_id.to_string()).join("data.json");
+                            let drawings_path = dir_path.join("drawings.json");
+
+                            let drawings = fs::read_to_string(drawings_path.clone()).unwrap();
+                            let mut drawings = json::parse(&*drawings).unwrap();
+
+                            if let JsonValue::Array(drawings) = &mut drawings {
+                                for drawing in drawings {
+                                    if let JsonValue::Object(drawing) = drawing {
+                                        if let Some(JsonValue::String(id)) = drawing.get("id") {
+                                            if id.clone() == canvas_id.to_string() {
+                                                drawing
+                                                    .insert("name", JsonValue::String(canvas_name));
+                                                break;
+                                            };
+                                        }
+                                    }
+                                }
+                            }
+
+                            fs::write(drawings_path, json::stringify(drawings)).unwrap();
 
                             for _ in delete_lower_bound..delete_upper_bound {
                                 tools.pop();
@@ -321,57 +388,57 @@ impl Canvas {
                             tools.extend(tools_json);
 
                             let mut data = Object::new();
-                            data.insert("layers", JsonValue::Array(
-                                layers.iter().map(
-                                    |(id, name)| {
-                                        let mut object = Object::new();
-                                        object.insert("id", JsonValue::String(id.to_string()));
-                                        object.insert("name", JsonValue::String(name.clone()));
+                            data.insert(
+                                "layers",
+                                JsonValue::Array(
+                                    layers
+                                        .iter()
+                                        .map(|(id, name)| {
+                                            let mut object = Object::new();
+                                            object.insert("id", JsonValue::String(id.to_string()));
+                                            object.insert("name", JsonValue::String(name.clone()));
 
-                                        JsonValue::Object(object)
-                                    }
-                                ).collect()
-                            ));
+                                            JsonValue::Object(object)
+                                        })
+                                        .collect(),
+                                ),
+                            );
                             data.insert("tools", JsonValue::Array(tools));
 
-                            file.write(json::stringify(JsonValue::Object(data)).as_ref())
-                                .unwrap();
+                            fs::write(file_path, json::stringify(JsonValue::Object(data))).unwrap();
                         },
                         |()| CanvasMessage::Saved.into(),
                     )
                 } else {
                     let tools_mongo = self.get_tools_serialized();
                     let removed_layers = self.removed_layers.clone();
-                    let layer_data = self.layers.iter().map(
-                        |(id, layer)| {
-                            (
-                                *id,
-                                layer.get_name().clone()
-                            )
-                        }
-                    ).collect::<Vec<(Uuid, String)>>();
+                    let layer_data = self
+                        .layers
+                        .iter()
+                        .map(|(id, layer)| (*id, layer.get_name().clone()))
+                        .collect::<Vec<(Uuid, String)>>();
                     let db = globals.get_db();
 
                     if let Some(db) = db {
                         Command::perform(
-                        async move {
-                            database::drawing::update_drawing(
-                                &db,
-                                canvas_id,
-                                delete_lower_bound as u32,
-                                delete_upper_bound as u32,
-                                tools_mongo,
-                                removed_layers,
-                                layer_data,
-                            ).await
-                        },
-                        move |result| {
-                            match result {
+                            async move {
+                                database::drawing::update_drawing(
+                                    &db,
+                                    canvas_id,
+                                    canvas_name.clone(),
+                                    delete_lower_bound as u32,
+                                    delete_upper_bound as u32,
+                                    tools_mongo,
+                                    removed_layers,
+                                    layer_data,
+                                )
+                                .await
+                            },
+                            move |result| match result {
                                 Ok(()) => CanvasMessage::Saved.into(),
-                                Err(err) => Message::Error(err)
-                            }
-
-                        })
+                                Err(err) => Message::Error(err),
+                            },
+                        )
                     } else {
                         Command::none()
                     }
@@ -395,7 +462,11 @@ impl Canvas {
 
                 if let Some((tool, layer)) = opt {
                     self.tools.push((tool.clone(), layer));
-                    self.layers.get_mut(&layer).unwrap().get_mut_tools().push(tool.clone());
+                    self.layers
+                        .get_mut(&layer)
+                        .unwrap()
+                        .get_mut_tools()
+                        .push(tool.clone());
                     self.clear_cache(layer);
                 }
             }
@@ -407,18 +478,28 @@ impl Canvas {
                 self.count_saved = self.tools.len();
                 self.last_saved = self.count_saved;
             }
-            CanvasMessage::Loaded { layers, tools, json_tools, } => {
+            CanvasMessage::Loaded {
+                layers,
+                tools,
+                json_tools,
+            } => {
                 self.tools = Box::new(vec![]);
-                self.layers = Box::new(HashMap::from_iter(layers.iter().map(
-                    |(id, name)| (*id, Layer::new(name.clone()))
-                )));
+                self.layers = Box::new(HashMap::from_iter(
+                    layers
+                        .iter()
+                        .map(|(id, name)| (*id, Layer::new(name.clone()))),
+                ));
                 self.layer_order = layers.iter().map(|(id, _)| *id).collect();
                 self.svg = SVG::new(&self.layer_order);
                 self.current_layer = self.layer_order[0];
 
                 for (tool, layer) in tools {
                     self.tools.push((tool.clone(), layer));
-                    self.layers.get_mut(&layer).unwrap().get_mut_tools().push(tool.clone());
+                    self.layers
+                        .get_mut(&layer)
+                        .unwrap()
+                        .get_mut_tools()
+                        .push(tool.clone());
                     self.svg.add_tool(
                         &layer,
                         Serialize::<Group>::serialize(tool.boxed_clone().deref()),
@@ -437,14 +518,12 @@ impl Canvas {
 
 impl<'a> From<&'a Canvas> for Element<'a, Message, Theme, Renderer> {
     fn from(value: &'a Canvas) -> Self {
-        Element::new(CanvasVessel::new(value))
-            .map(Into::into)
+        Element::new(CanvasVessel::new(value)).map(Into::into)
     }
 }
 
 /// A struct that holds the [canvas](canvas::Canvas) objects for each layer, and handles the interaction.
-struct CanvasVessel<'a>
-{
+struct CanvasVessel<'a> {
     /// The width of the [Canvas].
     width: Length,
 
@@ -464,8 +543,7 @@ struct CanvasVessel<'a>
     current_layer: Uuid,
 }
 
-impl<'a> CanvasVessel<'a>
-{
+impl<'a> CanvasVessel<'a> {
     /// Creates a new [Canvas] widget.
     fn new(canvas: &'a Canvas) -> Self {
         let mut vessel = CanvasVessel {
@@ -477,35 +555,26 @@ impl<'a> CanvasVessel<'a>
             current_layer: canvas.current_layer,
         };
 
-        vessel.layers = HashMap::from_iter(
-            vessel
-                .states
-                .iter()
-                .map(|(pos, state)| {
-                    (
-                        *pos,
-                        canvas::Canvas::new(LayerVessel::new(
-                            state.get_cache(),
-                            state.get_tools(),
-                            &canvas.current_tool,
-                            &canvas.style,
-                            *pos == vessel.current_layer
-                        ))
-                    )
-                })
-        );
+        vessel.layers = HashMap::from_iter(vessel.states.iter().map(|(pos, state)| {
+            (
+                *pos,
+                canvas::Canvas::new(LayerVessel::new(
+                    state.get_cache(),
+                    state.get_tools(),
+                    &canvas.current_tool,
+                    &canvas.style,
+                    *pos == vessel.current_layer,
+                )),
+            )
+        }));
 
         vessel
     }
 }
 
-impl<'a> Widget<CanvasMessage, Theme, Renderer> for CanvasVessel<'a>
-{
+impl<'a> Widget<CanvasMessage, Theme, Renderer> for CanvasVessel<'a> {
     fn size(&self) -> Size<Length> {
-        Size::new(
-            self.width,
-            self.height
-        )
+        Size::new(self.width, self.height)
     }
 
     fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
@@ -520,10 +589,7 @@ impl<'a> Widget<CanvasMessage, Theme, Renderer> for CanvasVessel<'a>
             nodes.push(self.layers[&layer].layout(&mut tree.children[index], renderer, &limits));
         }
 
-        Node::with_children(
-            nodes[0].size(),
-            nodes
-        )
+        Node::with_children(nodes[0].size(), nodes)
     }
 
     fn draw(
@@ -546,7 +612,7 @@ impl<'a> Widget<CanvasMessage, Theme, Renderer> for CanvasVessel<'a>
                 border: Default::default(),
                 shadow: Default::default(),
             },
-            Color::WHITE
+            Color::WHITE,
         );
 
         for (layer, index) in self.layer_order.iter().zip(0..self.layers.len()) {
@@ -556,9 +622,11 @@ impl<'a> Widget<CanvasMessage, Theme, Renderer> for CanvasVessel<'a>
                     renderer,
                     theme,
                     style,
-                    children.next().expect(&*format!("Canvas needs to have at least {} layers.", index)),
+                    children
+                        .next()
+                        .expect(&*format!("Canvas needs to have at least {} layers.", index)),
                     cursor,
-                    viewport
+                    viewport,
                 );
             }
         }
@@ -566,27 +634,35 @@ impl<'a> Widget<CanvasMessage, Theme, Renderer> for CanvasVessel<'a>
 
     fn tag(&self) -> tree::Tag {
         struct Tag<T>(T);
-        tree::Tag::of::<Tag<<LayerVessel<'_> as canvas::Program<CanvasMessage, Theme, Renderer>>::State>>()
+        tree::Tag::of::<
+            Tag<<LayerVessel<'_> as canvas::Program<CanvasMessage, Theme, Renderer>>::State>,
+        >()
     }
 
     fn state(&self) -> tree::State {
-        tree::State::new(
-            <LayerVessel<'_> as canvas::Program<CanvasMessage, Theme, Renderer>>::State::default()
-        )
+        tree::State::new(<LayerVessel<'_> as canvas::Program<
+            CanvasMessage,
+            Theme,
+            Renderer,
+        >>::State::default())
     }
 
     fn children(&self) -> Vec<Tree> {
-        self.layer_order.iter().map(
-            |layer|
+        self.layer_order
+            .iter()
+            .map(|layer| {
                 Tree::new(&self.layers[&layer] as &dyn Widget<CanvasMessage, Theme, Renderer>)
-        ).collect()
+            })
+            .collect()
     }
 
     fn diff(&self, tree: &mut Tree) {
         tree.diff_children(
-            self.layer_order.iter().map(
-                |layer| &self.layers[&layer] as &dyn Widget<CanvasMessage, Theme, Renderer>
-            ).collect::<Vec<&dyn Widget<CanvasMessage, Theme, Renderer>>>().as_slice()
+            self.layer_order
+                .iter()
+                .map(|layer| &self.layers[&layer] as &dyn Widget<CanvasMessage, Theme, Renderer>)
+                .collect::<Vec<&dyn Widget<CanvasMessage, Theme, Renderer>>>()
+                .as_slice(),
         )
     }
 
@@ -612,7 +688,10 @@ impl<'a> Widget<CanvasMessage, Theme, Renderer> for CanvasVessel<'a>
         let mut index = 0;
 
         for id in self.layer_order {
-            layout = children.next().expect(&*format!("Canvas needs to have at least {} children.", self.current_layer));
+            layout = children.next().expect(&*format!(
+                "Canvas needs to have at least {} children.",
+                self.current_layer
+            ));
             if *id == self.current_layer {
                 break;
             }
@@ -649,13 +728,22 @@ impl<'a> Widget<CanvasMessage, Theme, Renderer> for CanvasVessel<'a>
         let mut index = 0;
 
         for id in self.layer_order {
-            layout = children.next().expect(&*format!("Canvas needs to have at least {} children.", self.current_layer));
+            layout = children.next().expect(&*format!(
+                "Canvas needs to have at least {} children.",
+                self.current_layer
+            ));
             if *id == self.current_layer {
                 break;
             }
             index += 1;
         }
-        
-        self.layers[&self.current_layer].mouse_interaction(&state.children[index], layout, cursor, viewport, renderer)
+
+        self.layers[&self.current_layer].mouse_interaction(
+            &state.children[index],
+            layout,
+            cursor,
+            viewport,
+            renderer,
+        )
     }
 }

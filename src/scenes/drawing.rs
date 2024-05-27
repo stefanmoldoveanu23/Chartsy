@@ -6,10 +6,10 @@ use std::io::Write;
 
 use crate::canvas::canvas::Canvas;
 use iced::alignment::{Horizontal, Vertical};
-use iced::widget::{Container, Row, Column, Text, Button, TextInput, Image, Scrollable, Space};
-use iced::{Alignment, Command, Element, Length, Padding, Renderer};
 use iced::widget::image::Handle;
 use iced::widget::scrollable::{Direction, Properties};
+use iced::widget::{Button, Column, Container, Image, Row, Scrollable, Space, Text, TextInput};
+use iced::{Alignment, Command, Element, Length, Padding, Renderer};
 use json::object::Object;
 use json::JsonValue;
 use mongodb::bson::Uuid;
@@ -26,23 +26,25 @@ use crate::canvas::tools::{
     circle::CirclePending, ellipse::EllipsePending, line::LinePending, polygon::PolygonPending,
     rect::RectPending, triangle::TrianglePending,
 };
-use crate::{database, debug_message};
 use crate::errors::error::Error;
 use crate::scene::{Globals, Message, Scene, SceneMessage};
+use crate::{database, debug_message};
 
 use crate::utils::theme::{self, Theme};
 
-use crate::widgets::combo_box::ComboBox;
-use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::card::Card;
 use crate::widgets::closeable::Closeable;
+use crate::widgets::combo_box::ComboBox;
 use crate::widgets::grid::Grid;
+use crate::widgets::modal_stack::ModalStack;
 
 use crate::scenes::data::drawing::*;
 use crate::utils::encoder::encode_svg;
 
-use crate::utils::icons::{Icon, ICON, ToolIcon};
+use crate::utils::icons::{Icon, ToolIcon, ICON};
 use crate::widgets::close::Close;
+
+use super::scenes::Scenes;
 
 /// The [Messages](SceneMessage) for the [Drawing] scene.
 #[derive(Clone)]
@@ -122,24 +124,16 @@ impl Drawing {
         if uuid != Uuid::from_bytes([0; 16]) {
             if let Some(db) = globals.get_db() {
                 Command::perform(
-                    async move {
-                        database::drawing::get_drawing(
-                            &db,
-                            uuid
-                        ).await
-                    },
-                    move |res| {
-                        match res {
-                            Ok((layers, tools)) => {
-                                CanvasMessage::Loaded {
-                                    layers,
-                                    tools,
-                                    json_tools: None,
-                                }.into()
-                            }
-                            Err(err) => Message::Error(err)
+                    async move { database::drawing::get_drawing(&db, uuid).await },
+                    move |res| match res {
+                        Ok((layers, tools)) => CanvasMessage::Loaded {
+                            layers,
+                            tools,
+                            json_tools: None,
                         }
-                    }
+                        .into(),
+                        Err(err) => Message::Error(err),
+                    },
                 )
             } else {
                 Command::none()
@@ -152,27 +146,16 @@ impl Drawing {
                 let user_id = globals.get_user().unwrap().get_id();
 
                 Command::perform(
-                    async move {
-                        database::drawing::create_drawing(
-                            &db,
-                            uuid,
-                            user_id
-                        ).await
-                    },
-                    move |result| {
-                        match result {
-                            Ok(layer) => {
-                                CanvasMessage::Loaded {
-                                    layers: vec![layer],
-                                    tools: vec![],
-                                    json_tools: None,
-                                }.into()
-                            }
-                            Err(err) => {
-                                Message::Error(err)
-                            }
+                    async move { database::drawing::create_drawing(&db, uuid, user_id).await },
+                    move |result| match result {
+                        Ok(layer) => CanvasMessage::Loaded {
+                            layers: vec![layer],
+                            tools: vec![],
+                            json_tools: None,
                         }
-                    }
+                        .into(),
+                        Err(err) => Message::Error(err),
+                    },
                 )
             } else {
                 Command::none()
@@ -189,8 +172,12 @@ impl Drawing {
         default_layer.insert("name", JsonValue::String("New layer".into()));
 
         let mut default_json = Object::new();
-        default_json.insert("layers", JsonValue::Array(vec![JsonValue::Object(default_layer)]));
+        default_json.insert(
+            "layers",
+            JsonValue::Array(vec![JsonValue::Object(default_layer)]),
+        );
         default_json.insert("tools", JsonValue::Array(vec![]));
+        default_json.insert("name", JsonValue::String(String::from("New drawing")));
 
         let mut uuid = *self.canvas.get_id();
         if uuid != Uuid::from_bytes([0; 16]) {
@@ -210,18 +197,27 @@ impl Drawing {
                         let mut json_tools = vec![];
 
                         if let Some(JsonValue::Array(layer_array)) = data.get("layers") {
-                            layers = layer_array.iter().filter_map(
-                                |json| {
+                            layers = layer_array
+                                .iter()
+                                .filter_map(|json| {
                                     if let JsonValue::Object(object) = json {
                                         Some((
-                                            Uuid::parse_str(object.get("id").unwrap().as_str().unwrap()).unwrap(),
-                                            object.get("name").unwrap().as_str().unwrap().to_string()
+                                            Uuid::parse_str(
+                                                object.get("id").unwrap().as_str().unwrap(),
+                                            )
+                                            .unwrap(),
+                                            object
+                                                .get("name")
+                                                .unwrap()
+                                                .as_str()
+                                                .unwrap()
+                                                .to_string(),
                                         ))
                                     } else {
                                         None
                                     }
-                                }
-                            ).collect();
+                                })
+                                .collect();
                         }
                         if let Some(JsonValue::Array(tool_list)) = data.get("tools") {
                             json_tools = tool_list.clone();
@@ -245,7 +241,8 @@ impl Drawing {
                         layers,
                         tools,
                         json_tools: Some(json_tools),
-                    }.into()
+                    }
+                    .into()
                 },
             )
         } else {
@@ -253,6 +250,34 @@ impl Drawing {
             self.canvas.set_id(uuid.clone());
 
             let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
+
+            let drawings_path = proj_dirs.data_local_dir().join("drawings.json");
+            let drawings = match json::parse(&*fs::read_to_string(drawings_path.clone()).unwrap()) {
+                Ok(drawings) => drawings,
+                Err(err) => {
+                    return Command::perform(async {}, move |_| {
+                        Message::Error(debug_message!("{}", err).into())
+                    });
+                }
+            };
+
+            if let JsonValue::Array(mut drawings) = drawings {
+                let mut drawing = Object::new();
+                drawing.insert("id", JsonValue::String(uuid.to_string()));
+                drawing.insert("name", JsonValue::String(String::from("New drawing")));
+
+                drawings.push(JsonValue::Object(drawing));
+
+                match fs::write(drawings_path, json::stringify(JsonValue::Array(drawings))) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        return Command::perform(async {}, move |_| {
+                            Message::Error(debug_message!("{}", err).into())
+                        });
+                    }
+                }
+            }
+
             let dir_path = proj_dirs
                 .data_local_dir()
                 .join(String::from("./") + &*uuid.to_string());
@@ -263,22 +288,27 @@ impl Drawing {
             file.write(json::stringify(JsonValue::Object(default_json)).as_bytes())
                 .unwrap();
 
-            self.update(globals,
+            self.update(
+                globals,
                 &CanvasMessage::Loaded {
                     layers: vec![(default_id, "New layer".to_string())],
                     tools: vec![],
                     json_tools: Some(vec![]),
-                }.into(),
+                }
+                .into(),
             )
         }
     }
 }
 
 /// The options of the [Drawing] scene.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct DrawingOptions {
     /// The id of the drawing.
     uuid: Option<Uuid>,
+
+    /// The name of the drawing.
+    name: Option<String>,
 
     /// The save mode of the drawing.
     save_mode: Option<SaveMode>,
@@ -286,8 +316,12 @@ pub struct DrawingOptions {
 
 impl DrawingOptions {
     /// Returns a new instance with the given parameters.
-    pub fn new(uuid: Option<Uuid>, save_mode: Option<SaveMode>) -> Self {
-        DrawingOptions { uuid, save_mode }
+    pub fn new(uuid: Option<Uuid>, name: Option<String>, save_mode: Option<SaveMode>) -> Self {
+        DrawingOptions {
+            uuid,
+            name,
+            save_mode,
+        }
     }
 }
 
@@ -295,10 +329,7 @@ impl Scene for Drawing {
     type Message = DrawingMessage;
     type Options = DrawingOptions;
 
-    fn new(
-        options: Option<Self::Options>,
-        globals: &mut Globals,
-    ) -> (Self, Command<Message>)
+    fn new(options: Option<Self::Options>, globals: &mut Globals) -> (Self, Command<Message>)
     where
         Self: Sized,
     {
@@ -328,12 +359,16 @@ impl Scene for Drawing {
     }
 
     fn get_title(&self) -> String {
-        String::from("Drawing")
+        self.canvas.get_name().clone()
     }
 
     fn apply_options(&mut self, options: Self::Options) {
         if let Some(uuid) = options.uuid {
             self.canvas.set_id(uuid);
+        }
+
+        if let Some(name) = options.name {
+            self.canvas.set_name(name);
         }
 
         if let Some(save_mode) = options.save_mode {
@@ -342,7 +377,6 @@ impl Scene for Drawing {
     }
 
     fn update(&mut self, globals: &mut Globals, message: &Self::Message) -> Command<Message> {
-
         match message {
             DrawingMessage::CanvasMessage(action) => self.canvas.update(globals, action.clone()),
             DrawingMessage::UpdatePostData(update) => {
@@ -355,9 +389,12 @@ impl Scene for Drawing {
                 let user_id = globals.get_user().unwrap().get_id();
                 let description = self.post_data.get_description().clone();
 
-                let tags :Vec<String>= self.post_data.get_post_tags().iter().map(
-                    |tag| tag.get_name().clone()
-                ).collect();
+                let tags: Vec<String> = self
+                    .post_data
+                    .get_post_tags()
+                    .iter()
+                    .map(|tag| tag.get_name().clone())
+                    .collect();
 
                 self.post_data.set_post_tags(vec![]);
                 self.post_data.set_description("");
@@ -370,27 +407,22 @@ impl Scene for Drawing {
 
                         match database::base::upload_file(
                             format!("/{}/{}.webp", user_id, post_id),
-                            img
-                        ).await {
-                            Ok(()) => { }
+                            img,
+                        )
+                        .await
+                        {
+                            Ok(()) => {}
                             Err(err) => {
                                 return Err(err);
                             }
                         }
 
-                        database::drawing::create_post(
-                            &db,
-                            post_id,
-                            user_id,
-                            description,
-                            tags
-                        ).await
+                        database::drawing::create_post(&db, post_id, user_id, description, tags)
+                            .await
                     },
-                    |res| {
-                        match res {
-                            Ok(_) => DrawingMessage::ToggleModal(ModalTypes::PostPrompt).into(),
-                            Err(err) => Message::Error(err)
-                        }
+                    |res| match res {
+                        Ok(_) => DrawingMessage::ToggleModal(ModalTypes::PostPrompt).into(),
+                        Err(err) => Message::Error(err),
                     },
                 )
             }
@@ -402,7 +434,10 @@ impl Scene for Drawing {
                         let file = AsyncFileDialog::new()
                             .set_title("Save As...")
                             .set_directory("~")
-                            .add_filter("image", &["png", "jpg", "jpeg", "webp", "svg", "tiff", "bmp"])
+                            .add_filter(
+                                "image",
+                                &["png", "jpg", "jpeg", "webp", "svg", "tiff", "bmp"],
+                            )
                             .save_file()
                             .await;
 
@@ -412,22 +447,23 @@ impl Scene for Drawing {
                                 let format = name.split(".").last().unwrap();
                                 let img = encode_svg(document, &*format).await?;
 
-                                handle.write(img.as_slice()).await.map_err(|err| err.to_string().into())
+                                handle
+                                    .write(img.as_slice())
+                                    .await
+                                    .map_err(|err| err.to_string().into())
                             }
-                            None => Err(debug_message!("Error getting file.").into())
+                            None => Err(debug_message!("Error getting file.").into()),
                         }
                     },
-                    |result| {
-                        match result {
-                            Ok(_) => Message::None,
-                            Err(err) => Message::Error(err)
-                        }
-                    }
+                    |result| match result {
+                        Ok(_) => Message::None,
+                        Err(err) => Message::Error(err),
+                    },
                 );
 
                 Command::batch(vec![
                     self.update(globals, &CanvasMessage::Save.into()),
-                    download
+                    download,
                 ])
             }
             DrawingMessage::ToggleModal(modal) => {
@@ -438,18 +474,14 @@ impl Scene for Drawing {
                         if self.post_data.no_tags() {
                             if let (Some(_), Some(db)) = (globals.get_user(), globals.get_db()) {
                                 Command::perform(
-                                    async move {
-                                        database::drawing::get_tags(&db).await
+                                    async move { database::drawing::get_tags(&db).await },
+                                    |res| match res {
+                                        Ok(tags) => DrawingMessage::UpdatePostData(
+                                            UpdatePostData::AllTags(tags),
+                                        )
+                                        .into(),
+                                        Err(err) => Message::Error(err),
                                     },
-                                    |res| {
-                                        match res {
-                                            Ok(tags) =>
-                                                DrawingMessage::UpdatePostData(
-                                                    UpdatePostData::AllTags(tags)
-                                                ).into(),
-                                            Err(err) => Message::Error(err)
-                                        }
-                                    }
                                 )
                             } else {
                                 Command::none()
@@ -485,189 +517,203 @@ impl Scene for Drawing {
                         .font(ICON)
                         .line_height(1.0)
                         .size(25.0)
-                        .style(text_style)
+                        .style(text_style),
                 )
-                    .style(style)
-                    .on_press(CanvasMessage::ChangeTool(pending).into())
-                    .padding(10.0)
-                    .into()
+                .style(style)
+                .on_press(CanvasMessage::ChangeTool(pending).into())
+                .padding(10.0)
+                .into()
             };
 
-        let geometry_section :Element<Message, Theme, Renderer>= Grid::new(vec![
+        let geometry_section: Element<Message, Theme, Renderer> = Grid::new(vec![
             tool_button(ToolIcon::Line.to_string(), Box::new(LinePending::None)),
             tool_button(ToolIcon::Rectangle.to_string(), Box::new(RectPending::None)),
-            tool_button(ToolIcon::Triangle.to_string(), Box::new(TrianglePending::None)),
-            tool_button(ToolIcon::Polygon.to_string(), Box::new(PolygonPending::None)),
+            tool_button(
+                ToolIcon::Triangle.to_string(),
+                Box::new(TrianglePending::None),
+            ),
+            tool_button(
+                ToolIcon::Polygon.to_string(),
+                Box::new(PolygonPending::None),
+            ),
             tool_button(ToolIcon::Circle.to_string(), Box::new(CirclePending::None)),
-            tool_button(ToolIcon::Ellipse.to_string(), Box::new(EllipsePending::None)),
+            tool_button(
+                ToolIcon::Ellipse.to_string(),
+                Box::new(EllipsePending::None),
+            ),
         ])
-            .spacing(25.0)
-            .padding(18.0)
-            .into();
+        .spacing(25.0)
+        .padding(18.0)
+        .into();
 
-        let brushes_section :Element<Message, Theme, Renderer>= Grid::new(vec![
-            tool_button(ToolIcon::Pencil.to_string(), Box::new(BrushPending::<Pencil>::None)),
-            tool_button(ToolIcon::FountainPen.to_string(), Box::new(BrushPending::<Pen>::None)),
-            tool_button(ToolIcon::Airbrush.to_string(), Box::new(BrushPending::<Airbrush>::None))
+        let brushes_section: Element<Message, Theme, Renderer> = Grid::new(vec![
+            tool_button(
+                ToolIcon::Pencil.to_string(),
+                Box::new(BrushPending::<Pencil>::None),
+            ),
+            tool_button(
+                ToolIcon::FountainPen.to_string(),
+                Box::new(BrushPending::<Pen>::None),
+            ),
+            tool_button(
+                ToolIcon::Airbrush.to_string(),
+                Box::new(BrushPending::<Airbrush>::None),
+            ),
         ])
-            .spacing(25.0)
-            .padding(18.0)
-            .into();
+        .spacing(25.0)
+        .padding(18.0)
+        .into();
 
-        let eraser_section :Element<Message, Theme, Renderer>= Grid::new(vec![
-            tool_button(ToolIcon::Eraser.to_string(), Box::new(BrushPending::<Eraser>::None))
-        ])
-            .spacing(25.0)
-            .padding(18.0)
-            .into();
+        let eraser_section: Element<Message, Theme, Renderer> = Grid::new(vec![tool_button(
+            ToolIcon::Eraser.to_string(),
+            Box::new(BrushPending::<Eraser>::None),
+        )])
+        .spacing(25.0)
+        .padding(18.0)
+        .into();
 
         let tools_section = Container::new(Scrollable::new(
-            Column::with_children(
-                vec![
-                    Text::new("Geometry")
-                        .horizontal_alignment(Horizontal::Center)
-                        .size(20.0)
-                        .into(),
-                    geometry_section,
-                    Text::new("Brushes")
-                        .horizontal_alignment(Horizontal::Center)
-                        .size(20.0)
-                        .into(),
-                    brushes_section,
-                    Text::new("Eraser")
-                        .horizontal_alignment(Horizontal::Center)
-                        .size(20.0)
-                        .into(),
-                    eraser_section,
-                ]
-            )
-                .padding(8.0)
-                .spacing(15.0)
-                .width(Length::Fill)
+            Column::with_children(vec![
+                Text::new("Geometry")
+                    .horizontal_alignment(Horizontal::Center)
+                    .size(20.0)
+                    .into(),
+                geometry_section,
+                Text::new("Brushes")
+                    .horizontal_alignment(Horizontal::Center)
+                    .size(20.0)
+                    .into(),
+                brushes_section,
+                Text::new("Eraser")
+                    .horizontal_alignment(Horizontal::Center)
+                    .size(20.0)
+                    .into(),
+                eraser_section,
+            ])
+            .padding(8.0)
+            .spacing(15.0)
+            .width(Length::Fill),
         ))
-            .padding(2.0)
-            .width(Length::Fill)
-            .style(theme::container::Container::Bordered)
-            .height(Length::FillPortion(1));
+        .padding(2.0)
+        .width(Length::Fill)
+        .style(theme::container::Container::Bordered)
+        .height(Length::FillPortion(1));
 
         let style_section = Container::new(Scrollable::new(
             self.canvas
                 .get_style()
                 .view()
-                .map(|update| CanvasMessage::UpdateStyle(update).into())
+                .map(|update| CanvasMessage::UpdateStyle(update).into()),
         ))
-            .padding(2.0)
-            .width(Length::Fill)
-            .style(theme::container::Container::Bordered)
-            .height(Length::FillPortion(1));
+        .padding(2.0)
+        .width(Length::Fill)
+        .style(theme::container::Container::Bordered)
+        .height(Length::FillPortion(1));
 
-        let layers_section = Container::new(Scrollable::new(
-            Column::with_children(vec![
-                Row::with_children(vec![
-                    Text::new("Layers")
-                        .size(20.0)
-                        .width(Length::Fill)
-                        .into(),
-                    Button::new(
-                        Text::new(Icon::Add.to_string())
-                            .size(20.0)
-                            .font(ICON)
-                    )
-                        .padding(0.0)
-                        .style(theme::button::Button::Transparent)
-                        .on_press(CanvasMessage::AddLayer.into())
-                        .into()
-                ])
-                    .padding(8.0)
-                    .width(Length::Fill)
+        let layers_section = Container::new(Scrollable::new(Column::with_children(vec![
+            Row::with_children(vec![
+                Text::new("Layers").size(20.0).width(Length::Fill).into(),
+                Button::new(Text::new(Icon::Add.to_string()).size(20.0).font(ICON))
+                    .padding(0.0)
+                    .style(theme::button::Button::Transparent)
+                    .on_press(CanvasMessage::AddLayer.into())
                     .into(),
-                Column::with_children(
-                    self.canvas.get_layer_order().iter().map(
-                        |id| {
-                            let style = if *id == *self.canvas.get_current_layer() {
-                                theme::button::Button::SelectedLayer
-                            } else {
-                                theme::button::Button::UnselectedLayer
-                            };
-                            let text_style = || if *id == *self.canvas.get_current_layer() {
+            ])
+            .padding(8.0)
+            .width(Length::Fill)
+            .into(),
+            Column::with_children(
+                self.canvas
+                    .get_layer_order()
+                    .iter()
+                    .map(|id| {
+                        let style = if *id == *self.canvas.get_current_layer() {
+                            theme::button::Button::SelectedLayer
+                        } else {
+                            theme::button::Button::UnselectedLayer
+                        };
+                        let text_style = || {
+                            if *id == *self.canvas.get_current_layer() {
                                 theme::text::Text::Dark
                             } else {
                                 theme::text::Text::Light
-                            };
+                            }
+                        };
 
-                            let layer = &self.canvas.get_layers().get(id).unwrap();
-                            let layer_count = self.canvas.get_layers().len();
+                        let layer = &self.canvas.get_layers().get(id).unwrap();
+                        let layer_count = self.canvas.get_layers().len();
 
-                            Button::new(
-                                Row::with_children(vec![
-                                    if let Some(new_name) = layer.get_new_name() {
-                                        TextInput::new(
-                                            "Write layer name...",
-                                            &*new_name.clone()
-                                        )
-                                            .on_input(|input|
-                                                    CanvasMessage::UpdateLayerName(*id, input).into()
-                                            )
-                                            .on_submit(CanvasMessage::ToggleEditLayerName(*id).into())
-                                            .into()
-                                    } else {
-                                        Row::with_children(vec![
-                                            Text::new(layer.get_name().clone())
-                                                .width(Length::Fill)
-                                                .into(),
-                                            Button::new(
-                                                Text::new(Icon::Edit.to_string()).font(ICON)
-                                                    .style(text_style())
-                                            )
-                                                .style(theme::button::Button::Transparent)
-                                                .on_press(CanvasMessage::ToggleEditLayerName(*id).into())
-                                                .into()
-                                        ])
-                                            .align_items(Alignment::Center)
-                                            .into()
-                                    },
-                                    Button::new(
-                                        Text::new(
-                                            if layer.is_visible() { Icon::Visible } else { Icon::Hidden }
-                                                .to_string()
-                                        )
-                                            .style(text_style())
-                                            .font(ICON)
-                                    )
-                                        .style(theme::button::Button::Transparent)
-                                        .on_press(CanvasMessage::ToggleLayer(*id).into())
-                                        .into(),
-                                    if layer_count > 1 {
+                        Button::new(
+                            Row::with_children(vec![
+                                if let Some(new_name) = layer.get_new_name() {
+                                    TextInput::new("Write layer name...", &*new_name.clone())
+                                        .on_input(|input| {
+                                            CanvasMessage::UpdateLayerName(*id, input).into()
+                                        })
+                                        .on_submit(CanvasMessage::ToggleEditLayerName(*id).into())
+                                        .into()
+                                } else {
+                                    Row::with_children(vec![
+                                        Text::new(layer.get_name().clone())
+                                            .width(Length::Fill)
+                                            .into(),
                                         Button::new(
-                                            Text::new(Icon::X.to_string()).font(ICON)
-                                                .style(text_style())
+                                            Text::new(Icon::Edit.to_string())
+                                                .font(ICON)
+                                                .style(text_style()),
                                         )
-                                            .style(theme::button::Button::Transparent)
-                                            .on_press(CanvasMessage::RemoveLayer(*id).into())
-                                            .into()
-                                    } else {
-                                        Space::with_width(Length::Shrink)
-                                            .into()
-                                    }
-                                ])
+                                        .style(theme::button::Button::Transparent)
+                                        .on_press(CanvasMessage::ToggleEditLayerName(*id).into())
+                                        .into(),
+                                    ])
                                     .align_items(Alignment::Center)
-                            )
-                                .width(Length::Fill)
-                                .style(style)
-                                .on_press(CanvasMessage::ActivateLayer(*id).into())
-                                .into()
-                        }
-                    ).collect::<Vec<Element<Message, Theme, Renderer>>>()
-                )
-                    .padding(8.0)
-                    .spacing(5.0)
-                    .into()
-            ])
-        ))
-            .padding(2.0)
-            .width(Length::Fill)
-            .style(theme::container::Container::Bordered)
-            .height(Length::FillPortion(1));
+                                    .into()
+                                },
+                                Button::new(
+                                    Text::new(
+                                        if layer.is_visible() {
+                                            Icon::Visible
+                                        } else {
+                                            Icon::Hidden
+                                        }
+                                        .to_string(),
+                                    )
+                                    .style(text_style())
+                                    .font(ICON),
+                                )
+                                .style(theme::button::Button::Transparent)
+                                .on_press(CanvasMessage::ToggleLayer(*id).into())
+                                .into(),
+                                if layer_count > 1 {
+                                    Button::new(
+                                        Text::new(Icon::X.to_string())
+                                            .font(ICON)
+                                            .style(text_style()),
+                                    )
+                                    .style(theme::button::Button::Transparent)
+                                    .on_press(CanvasMessage::RemoveLayer(*id).into())
+                                    .into()
+                                } else {
+                                    Space::with_width(Length::Shrink).into()
+                                },
+                            ])
+                            .align_items(Alignment::Center),
+                        )
+                        .width(Length::Fill)
+                        .style(style)
+                        .on_press(CanvasMessage::ActivateLayer(*id).into())
+                        .into()
+                    })
+                    .collect::<Vec<Element<Message, Theme, Renderer>>>(),
+            )
+            .padding(8.0)
+            .spacing(5.0)
+            .into(),
+        ])))
+        .padding(2.0)
+        .width(Length::Fill)
+        .style(theme::container::Container::Bordered)
+        .height(Length::FillPortion(1));
 
         let menu_section = Container::new(
             Column::with_children(vec![
@@ -676,196 +722,208 @@ impl Scene for Drawing {
                     Text::new("Save")
                         .horizontal_alignment(Horizontal::Center)
                         .width(Length::Fill)
-                        .size(20.0)
+                        .size(20.0),
                 )
-                    .on_press(CanvasMessage::Save.into())
-                    .width(Length::Fill)
-                    .padding(5.0)
-                    .into(),
+                .on_press(CanvasMessage::Save.into())
+                .width(Length::Fill)
+                .padding(5.0)
+                .into(),
                 Space::with_height(Length::Fill).into(),
                 if globals.get_db().is_some() && globals.get_user().is_some() {
                     Button::new(
                         Text::new("Post")
                             .horizontal_alignment(Horizontal::Center)
                             .width(Length::Fill)
-                            .size(20.0)
+                            .size(20.0),
                     )
-                        .on_press(DrawingMessage::ToggleModal(ModalTypes::PostPrompt).into())
+                    .on_press(DrawingMessage::ToggleModal(ModalTypes::PostPrompt).into())
                 } else {
                     Button::new(
                         Text::new("Post")
                             .horizontal_alignment(Horizontal::Center)
                             .width(Length::Fill)
-                            .size(20.0)
+                            .size(20.0),
                     )
                 }
-                    .padding(5.0)
-                    .width(Length::Fill)
-                    .into(),
+                .padding(5.0)
+                .width(Length::Fill)
+                .into(),
                 Space::with_height(Length::Fill).into(),
                 Button::new(
                     Text::new("Save as...")
                         .horizontal_alignment(Horizontal::Center)
                         .width(Length::Fill)
-                        .size(20.0)
+                        .size(20.0),
                 )
-                    .on_press(DrawingMessage::SaveAs.into())
-                    .padding(5.0)
-                    .width(Length::Fill)
-                    .into(),
+                .on_press(DrawingMessage::SaveAs.into())
+                .padding(5.0)
+                .width(Length::Fill)
+                .into(),
                 Space::with_height(Length::Fill).into(),
             ])
-                .spacing(10.0)
-                .align_items(Alignment::Center)
+            .spacing(10.0)
+            .align_items(Alignment::Center),
         )
-            .padding(10.0)
-            .style(theme::container::Container::Bordered)
-            .align_x(Horizontal::Center)
-            .align_y(Vertical::Center)
-            .width(Length::Fill)
-            .height(Length::FillPortion(1));
+        .padding(10.0)
+        .style(theme::container::Container::Bordered)
+        .align_x(Horizontal::Center)
+        .align_y(Vertical::Center)
+        .width(Length::Fill)
+        .height(Length::FillPortion(1));
 
-        let underlay = Row::with_children(
-            vec![
-                Column::with_children(vec![
-                    tools_section.into(),
-                    style_section.into()
-                ])
+        let underlay = Column::with_children(vec![
+            Row::with_children(vec![
+                Button::new(Text::new(Icon::Leave.to_string()).font(ICON).size(30.0))
+                    .padding(0.0)
+                    .style(theme::button::Button::Transparent)
+                    .on_press(Message::ChangeScene(Scenes::Main(None)))
+                    .into(),
+                if let Some(new_name) = self.canvas.get_new_name() {
+                    TextInput::new("Add name", new_name)
+                        .on_input(|value| CanvasMessage::SetNewName(value).into())
+                        .on_submit(CanvasMessage::ToggleEditName.into())
+                        .size(30.0)
+                        .into()
+                } else {
+                    Text::new(self.canvas.get_name()).size(30.0).into()
+                },
+                if self.canvas.get_new_name().is_some() {
+                    Space::with_width(Length::Shrink).into()
+                } else {
+                    Button::new(Text::new(Icon::Edit.to_string()).font(ICON).size(30.0))
+                        .padding(0.0)
+                        .style(theme::button::Button::Transparent)
+                        .on_press(CanvasMessage::ToggleEditName.into())
+                        .into()
+                },
+            ])
+            .spacing(10.0)
+            .padding(10.0)
+            .into(),
+            Row::with_children(vec![
+                Column::with_children(vec![tools_section.into(), style_section.into()])
                     .width(Length::Fixed(250.0))
                     .height(Length::Fill)
                     .into(),
-                Column::with_children(vec![
-                    Text::new(format!("{}", self.get_title()))
-                        .width(Length::Shrink)
-                        .size(50)
-                        .into(),
-                    Container::new::<Scrollable<Message, Theme, Renderer>>(
-                        Scrollable::new(&self.canvas)
-                            .direction(Direction::Both {
-                                vertical: Properties::default(),
-                                horizontal: Properties::default()
-                            })
-                    )
-                        .width(Length::Fill)
-                        .height(Length::Fill)
-                        .center_x()
-                        .center_y()
-                        .into(),
-                ])
-                    .height(Length::Fill)
-                    .into(),
-                Column::with_children(vec![
-                    layers_section.into(),
-                    menu_section.into()
-                ])
+                Container::new::<Scrollable<Message, Theme, Renderer>>(
+                    Scrollable::new(&self.canvas).direction(Direction::Both {
+                        vertical: Properties::default(),
+                        horizontal: Properties::default(),
+                    }),
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .center_x()
+                .center_y()
+                .into(),
+                Column::with_children(vec![layers_section.into(), menu_section.into()])
                     .align_items(Alignment::Center)
                     .width(Length::Fixed(250.0))
                     .height(Length::Fill)
-                    .into()
-            ]
-        )
+                    .into(),
+            ])
             .padding(0)
             .spacing(20)
             .width(Length::Fill)
             .height(Length::Fill)
-            .align_items(Alignment::Center);
+            .align_items(Alignment::Center)
+            .into(),
+        ]);
 
         let modal_transform = |modal_type: ModalTypes| -> Element<Message, Theme, Renderer> {
             match modal_type {
-                ModalTypes::PostPrompt => {
-                    Closeable::new(
-                        Card::new(
-                            Text::new("Create a new post"),
-                            Column::with_children(
-                                vec![
-                                    Text::new("Description:").into(),
-                                    TextInput::new(
-                                        "Write description here...",
-                                        &*self.post_data.get_description()
-                                    )
-                                        .on_input(|new_value| DrawingMessage::UpdatePostData(
-                                            UpdatePostData::Description(new_value)
-                                        ).into())
-                                        .into(),
-                                    Text::new("Tags:").into(),
-                                    Grid::new(self.post_data.get_post_tags().iter().enumerate().map(
-                                        |(index, tag)| Container::new(
-                                            Row::with_children(vec![
-                                                Text::new(tag.get_name().clone()).into(),
-                                                Close::new(
-                                                    Into::<Message>::into(
-                                                        DrawingMessage::UpdatePostData(
-                                                            UpdatePostData::RemoveTag(index)
-                                                        )
-                                                    )
-                                                )
-                                                    .size(15.0)
-                                                    .into()
-                                            ])
-                                                .spacing(5.0)
-                                                .align_items(Alignment::Center)
-                                        )
-                                            .style(theme::container::Container::Badge(
-                                                theme::pallete::TEXT
+                ModalTypes::PostPrompt => Closeable::new(
+                    Card::new(
+                        Text::new("Create a new post"),
+                        Column::with_children(vec![
+                            Text::new("Description:").into(),
+                            TextInput::new(
+                                "Write description here...",
+                                &*self.post_data.get_description(),
+                            )
+                            .on_input(|new_value| {
+                                DrawingMessage::UpdatePostData(UpdatePostData::Description(
+                                    new_value,
+                                ))
+                                .into()
+                            })
+                            .into(),
+                            Text::new("Tags:").into(),
+                            Grid::new(self.post_data.get_post_tags().iter().enumerate().map(
+                                |(index, tag)| {
+                                    Container::new(
+                                        Row::with_children(vec![
+                                            Text::new(tag.get_name().clone()).into(),
+                                            Close::new(Into::<Message>::into(
+                                                DrawingMessage::UpdatePostData(
+                                                    UpdatePostData::RemoveTag(index),
+                                                ),
                                             ))
-                                            .padding(10.0)
-                                    ))
-                                        .padding(Padding::from([5.0, 0.0, 5.0, 0.0]))
+                                            .size(15.0)
+                                            .into(),
+                                        ])
                                         .spacing(5.0)
-                                        .into(),
-                                    Row::with_children(
-                                        vec![
-                                            ComboBox::new(
-                                                self.post_data.get_all_tags().clone(),
-                                                "Add a new tag...",
-                                                &*self.post_data.get_tag_input(),
-                                                |tag|
-                                                    DrawingMessage::UpdatePostData(
-                                                        UpdatePostData::SelectedTag(tag)
-                                                    ).into()
-                                            )
-                                                .width(Length::Fill)
-                                                .on_input(|new_value|
-                                                    DrawingMessage::UpdatePostData(
-                                                        UpdatePostData::TagInput(new_value)
-                                                    ).into()
-                                                )
-                                                .into(),
-                                            Button::new(
-                                                Image::new(Handle::from_memory(
-                                                    fs::read("src/images/add.png").unwrap()
-                                                ))
-                                                    .width(30.0)
-                                                    .height(30.0)
-                                            )
-                                                .on_press(DrawingMessage::UpdatePostData(
-                                                    UpdatePostData::NewTag(self.post_data.get_tag_input().clone())
-                                                ).into())
-                                                .padding(0)
-                                                .into()
-                                        ]
+                                        .align_items(Alignment::Center),
                                     )
-                                        .spacing(10)
+                                    .style(theme::container::Container::Badge(theme::pallete::TEXT))
+                                    .padding(10.0)
+                                },
+                            ))
+                            .padding(Padding::from([5.0, 0.0, 5.0, 0.0]))
+                            .spacing(5.0)
+                            .into(),
+                            Row::with_children(vec![
+                                ComboBox::new(
+                                    self.post_data.get_all_tags().clone(),
+                                    "Add a new tag...",
+                                    &*self.post_data.get_tag_input(),
+                                    |tag| {
+                                        DrawingMessage::UpdatePostData(UpdatePostData::SelectedTag(
+                                            tag,
+                                        ))
                                         .into()
-                                ]
-                            )
-                                .height(Length::Shrink)
-                        )
-                            .footer(
-                                Button::new("Post")
-                                    .on_press(DrawingMessage::PostDrawing.into())
-                            )
-                            .width(Length::Fixed(300.0))
+                                    },
+                                )
+                                .width(Length::Fill)
+                                .on_input(|new_value| {
+                                    DrawingMessage::UpdatePostData(UpdatePostData::TagInput(
+                                        new_value,
+                                    ))
+                                    .into()
+                                })
+                                .into(),
+                                Button::new(
+                                    Image::new(Handle::from_memory(
+                                        fs::read("src/images/add.png").unwrap(),
+                                    ))
+                                    .width(30.0)
+                                    .height(30.0),
+                                )
+                                .on_press(
+                                    DrawingMessage::UpdatePostData(UpdatePostData::NewTag(
+                                        self.post_data.get_tag_input().clone(),
+                                    ))
+                                    .into(),
+                                )
+                                .padding(0)
+                                .into(),
+                            ])
+                            .spacing(10)
+                            .into(),
+                        ])
+                        .height(Length::Shrink),
                     )
-                        .style(theme::closeable::Closeable::Transparent)
-                        .on_close(
-                            Into::<Message>::into(DrawingMessage::ToggleModal(ModalTypes::PostPrompt)),
-                            32.0
-                        )
-                        .width(Length::Shrink)
-                        .height(Length::Shrink)
-                        .into()
-                }
+                    .footer(Button::new("Post").on_press(DrawingMessage::PostDrawing.into()))
+                    .width(Length::Fixed(300.0)),
+                )
+                .style(theme::closeable::Closeable::Transparent)
+                .on_close(
+                    Into::<Message>::into(DrawingMessage::ToggleModal(ModalTypes::PostPrompt)),
+                    32.0,
+                )
+                .width(Length::Shrink)
+                .height(Length::Shrink)
+                .into(),
             }
         };
 
