@@ -3,10 +3,10 @@ use super::tools::line::LinePending;
 use crate::canvas::layer::{CanvasMessage, Layer, LayerVessel};
 use crate::canvas::style::Style;
 use crate::canvas::svg::SVG;
-use crate::database;
 use crate::scene::{Globals, Message};
 use crate::utils::serde::Serialize;
 use crate::utils::theme::Theme;
+use crate::{database, debug_message, utils};
 use directories::ProjectDirs;
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::Quad;
@@ -351,14 +351,32 @@ impl Canvas {
 
                 let canvas_name = self.name.clone();
 
+                let document = self.svg.as_document();
+
                 return if let Some(mut tools) = self.json_tools.clone() {
                     let tools_json = self.get_tools_json();
 
-                    Command::perform(
+                    let save_image = Command::perform(
                         async move {
                             let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
                             let dir_path = proj_dirs.data_local_dir();
+                            let file_path = dir_path.join(canvas_id.to_string()).join("data.webp");
+                            let webp = utils::encoder::encode_svg(document, "webp").await?;
 
+                            tokio::fs::write(file_path, webp)
+                                .await
+                                .map_err(|err| debug_message!("{}", err).into())
+                        },
+                        |result| match result {
+                            Ok(_) => Message::None,
+                            Err(err) => Message::Error(err),
+                        },
+                    );
+
+                    let save_data = Command::perform(
+                        async move {
+                            let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
+                            let dir_path = proj_dirs.data_local_dir();
                             let file_path = dir_path.join(canvas_id.to_string()).join("data.json");
                             let drawings_path = dir_path.join("drawings.json");
 
@@ -408,7 +426,9 @@ impl Canvas {
                             fs::write(file_path, json::stringify(JsonValue::Object(data))).unwrap();
                         },
                         |()| CanvasMessage::Saved.into(),
-                    )
+                    );
+
+                    Command::batch(vec![save_data, save_image])
                 } else {
                     let tools_mongo = self.get_tools_serialized();
                     let removed_layers = self.removed_layers.clone();
@@ -418,27 +438,45 @@ impl Canvas {
                         .map(|(id, layer)| (*id, layer.get_name().clone()))
                         .collect::<Vec<(Uuid, String)>>();
                     let db = globals.get_db();
+                    let user_id = globals.get_user().unwrap().get_id();
 
                     if let Some(db) = db {
-                        Command::perform(
-                            async move {
-                                database::drawing::update_drawing(
-                                    &db,
-                                    canvas_id,
-                                    canvas_name.clone(),
-                                    delete_lower_bound as u32,
-                                    delete_upper_bound as u32,
-                                    tools_mongo,
-                                    removed_layers,
-                                    layer_data,
-                                )
-                                .await
-                            },
-                            move |result| match result {
-                                Ok(()) => CanvasMessage::Saved.into(),
-                                Err(err) => Message::Error(err),
-                            },
-                        )
+                        Command::batch(vec![
+                            Command::perform(
+                                async move {
+                                    let webp = utils::encoder::encode_svg(document, "webp").await?;
+
+                                    database::base::upload_file(
+                                        format!("/{user_id}/{canvas_id}.webp",),
+                                        webp,
+                                    )
+                                    .await
+                                },
+                                |result| match result {
+                                    Ok(_) => Message::None,
+                                    Err(err) => Message::Error(err),
+                                },
+                            ),
+                            Command::perform(
+                                async move {
+                                    database::drawing::update_drawing(
+                                        &db,
+                                        canvas_id,
+                                        canvas_name.clone(),
+                                        delete_lower_bound as u32,
+                                        delete_upper_bound as u32,
+                                        tools_mongo,
+                                        removed_layers,
+                                        layer_data,
+                                    )
+                                    .await
+                                },
+                                move |result| match result {
+                                    Ok(()) => CanvasMessage::Saved.into(),
+                                    Err(err) => Message::Error(err),
+                                },
+                            ),
+                        ])
                     } else {
                         Command::none()
                     }

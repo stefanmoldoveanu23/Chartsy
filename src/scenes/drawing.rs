@@ -5,6 +5,7 @@ use std::fs::{create_dir_all, File};
 use std::io::Write;
 
 use crate::canvas::canvas::Canvas;
+use crate::canvas::svg::SVG;
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::image::Handle;
 use iced::widget::scrollable::{Direction, Properties};
@@ -28,7 +29,7 @@ use crate::canvas::tools::{
 };
 use crate::errors::error::Error;
 use crate::scene::{Globals, Message, Scene, SceneMessage};
-use crate::{database, debug_message};
+use crate::{database, debug_message, utils};
 
 use crate::utils::theme::{self, Theme};
 
@@ -145,18 +146,34 @@ impl Drawing {
             if let Some(db) = globals.get_db() {
                 let user_id = globals.get_user().unwrap().get_id();
 
-                Command::perform(
-                    async move { database::drawing::create_drawing(&db, uuid, user_id).await },
-                    move |result| match result {
-                        Ok(layer) => CanvasMessage::Loaded {
-                            layers: vec![layer],
-                            tools: vec![],
-                            json_tools: None,
-                        }
-                        .into(),
-                        Err(err) => Message::Error(err),
-                    },
-                )
+                Command::batch(vec![
+                    Command::perform(
+                        async move {
+                            let document = SVG::new(&vec![Uuid::new()]).as_document();
+
+                            let webp = utils::encoder::encode_svg(document, "webp").await?;
+
+                            database::base::upload_file(format!("/{}/{}.webp", user_id, uuid), webp)
+                                .await
+                        },
+                        |result| match result {
+                            Ok(_) => Message::None,
+                            Err(err) => Message::Error(err),
+                        },
+                    ),
+                    Command::perform(
+                        async move { database::drawing::create_drawing(&db, uuid, user_id).await },
+                        move |result| match result {
+                            Ok(layer) => CanvasMessage::Loaded {
+                                layers: vec![layer],
+                                tools: vec![],
+                                json_tools: None,
+                            }
+                            .into(),
+                            Err(err) => Message::Error(err),
+                        },
+                    ),
+                ])
             } else {
                 Command::none()
             }
@@ -283,20 +300,38 @@ impl Drawing {
                 .join(String::from("./") + &*uuid.to_string());
             create_dir_all(dir_path.clone()).unwrap();
 
-            let file_path = dir_path.join("./data.json");
+            let drawing_path = dir_path.join("data.webp");
+
+            let file_path = dir_path.join("data.json");
             let mut file = File::create(file_path).unwrap();
             file.write(json::stringify(JsonValue::Object(default_json)).as_bytes())
                 .unwrap();
 
-            self.update(
-                globals,
-                &CanvasMessage::Loaded {
-                    layers: vec![(default_id, "New layer".to_string())],
-                    tools: vec![],
-                    json_tools: Some(vec![]),
-                }
-                .into(),
-            )
+            Command::batch(vec![
+                Command::perform(
+                    async move {
+                        let svg = SVG::new(&vec![Uuid::new()]).as_document();
+                        let webp = utils::encoder::encode_svg(svg, "webp").await?;
+
+                        tokio::fs::write(drawing_path, webp)
+                            .await
+                            .map_err(|err| debug_message!("{}", err).into())
+                    },
+                    |result| match result {
+                        Ok(_) => Message::None,
+                        Err(err) => Message::Error(err),
+                    },
+                ),
+                self.update(
+                    globals,
+                    &CanvasMessage::Loaded {
+                        layers: vec![(default_id, "New layer".to_string())],
+                        tools: vec![],
+                        json_tools: Some(vec![]),
+                    }
+                    .into(),
+                ),
+            ])
         }
     }
 }

@@ -1,14 +1,18 @@
 use directories::ProjectDirs;
+use iced::widget::image::Handle;
+use image::{load_from_memory_with_format, ImageFormat};
 use json::JsonValue;
 use std::any::Any;
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::{fs, io};
 
-use crate::database;
 use crate::errors::error::Error;
 use crate::widgets::card::Card;
 use crate::widgets::modal_stack::ModalStack;
+use crate::{database, debug_message, LOADING_IMAGE};
 use iced::alignment::{Horizontal, Vertical};
-use iced::widget::{Button, Column, Container, Row, Scrollable, Space, Text};
+use iced::widget::{Button, Column, Container, Image, Row, Scrollable, Space, Text};
 use iced::{Alignment, Command, Element, Length, Renderer};
 use iced_aw::{TabLabel, Tabs};
 use mongodb::bson::{Bson, Document, Uuid, UuidRepresentation};
@@ -25,6 +29,8 @@ use crate::widgets::closeable::Closeable;
 
 use crate::scenes::data::main::*;
 
+use super::data::posts::PixelImage;
+
 /// The [Messages](SceneMessage) of the main [Scene].
 #[derive(Clone)]
 pub enum MainMessage {
@@ -33,6 +39,9 @@ pub enum MainMessage {
 
     /// Triggered when the drawings(either online or offline) are loaded.
     LoadedDrawings(Vec<(Uuid, String)>, MainTabIds),
+
+    /// Triggered when a preview image has been loaded.
+    LoadedImage(Uuid, Arc<PixelImage>),
 
     /// Logs out the user from their account.
     LogOut,
@@ -59,6 +68,7 @@ impl SceneMessage for MainMessage {
         match self {
             Self::ToggleModal { .. } => String::from("Toggle modal"),
             Self::LoadedDrawings(_, _) => String::from("Loaded drawings"),
+            Self::LoadedImage(_, _) => String::from("Loaded image"),
             Self::LogOut => String::from("Logged out"),
             Self::SelectTab(_) => String::from("Select tab"),
             Self::ErrorHandler(_) => String::from("Handle error"),
@@ -88,6 +98,9 @@ pub struct Main {
     /// The list of the users' drawings that are stored offline.
     drawings_offline: Option<Vec<(Uuid, String)>>,
 
+    /// The hashmap of previews.
+    previews: HashMap<Uuid, Arc<PixelImage>>,
+
     /// The id of the active tab on the drawing selection tab bar.
     active_tab: MainTabIds,
 }
@@ -97,6 +110,18 @@ pub struct Main {
 pub struct MainOptions {}
 
 impl Main {
+    /// Gets the handle of an image from its id.
+    fn get_image(&self, id: Uuid) -> Handle {
+        match self.previews.get(&id) {
+            Some(pixels) => Handle::from_pixels(
+                pixels.get_width(),
+                pixels.get_height(),
+                pixels.get_data().clone(),
+            ),
+            None => Handle::from_memory(LOADING_IMAGE),
+        }
+    }
+
     /// Toggles a modal.
     fn toggle_modal(&mut self, modal: &ModalType, globals: &mut Globals) -> Command<Message> {
         self.modals.toggle_modal(modal.clone());
@@ -113,18 +138,93 @@ impl Main {
         &mut self,
         tab: &MainTabIds,
         drawings: &Vec<(Uuid, String)>,
-        _globals: &mut Globals,
+        globals: &mut Globals,
     ) -> Command<Message> {
+        let cache = globals.get_cache();
+
         match tab {
             MainTabIds::Offline => {
                 self.drawings_offline = Some(drawings.clone());
+
+                Command::batch(drawings.iter().map(|(id, _)| {
+                    let cache = cache.clone();
+                    let id = *id;
+
+                    Command::perform(
+                        async move {
+                            let proj_dirs = match ProjectDirs::from("", "CharMe", "Chartsy") {
+                                Some(proj_dirs) => proj_dirs,
+                                None => {
+                                    return Err(Arc::new(
+                                        debug_message!("Could not open local project directory.")
+                                            .into(),
+                                    ));
+                                }
+                            };
+
+                            let dir_path = proj_dirs.data_local_dir();
+                            let file_path = dir_path.join(id.to_string()).join("data.webp");
+
+                            cache
+                                .try_get_with(id, async move {
+                                    match tokio::fs::read(file_path).await {
+                                        Ok(data) => load_from_memory_with_format(
+                                            data.as_slice(),
+                                            ImageFormat::WebP,
+                                        )
+                                        .map(|data| Arc::new(data.into()))
+                                        .map_err(|err| debug_message!("{}", err).into()),
+                                        Err(err) => Err(debug_message!("{}", err).into()),
+                                    }
+                                })
+                                .await
+                                .map(|image| (id, image))
+                        },
+                        |result: Result<(Uuid, Arc<PixelImage>), Arc<Error>>| match result {
+                            Ok((id, image)) => MainMessage::LoadedImage(id, image).into(),
+                            Err(err) => Message::Error(err.as_ref().clone()),
+                        },
+                    )
+                }))
             }
             MainTabIds::Online => {
                 self.drawings_online = Some(drawings.clone());
+                let user_id = globals.get_user().unwrap().get_id();
+
+                Command::batch(drawings.iter().map(|(id, _)| {
+                    let cache = cache.clone();
+                    let id = *id;
+
+                    Command::perform(
+                        async move {
+                            cache
+                                .try_get_with(id, async move {
+                                    match database::base::download_file(format!(
+                                        "/{}/{}.webp",
+                                        user_id, id
+                                    ))
+                                    .await
+                                    {
+                                        Ok(data) => load_from_memory_with_format(
+                                            data.as_slice(),
+                                            ImageFormat::WebP,
+                                        )
+                                        .map(|data| Arc::new(data.into()))
+                                        .map_err(|err| debug_message!("{}", err).into()),
+                                        Err(err) => Err(debug_message!("{}", err).into()),
+                                    }
+                                })
+                                .await
+                                .map(|image| (id, image))
+                        },
+                        |result: Result<(Uuid, Arc<PixelImage>), Arc<Error>>| match result {
+                            Ok((id, image)) => MainMessage::LoadedImage(id, image).into(),
+                            Err(err) => Message::Error(err.as_ref().clone()),
+                        },
+                    )
+                }))
             }
         }
-
-        Command::none()
     }
 
     /// Logs out the currently authenticated user.
@@ -266,6 +366,7 @@ impl Scene for Main {
             modals: ModalStack::new(),
             drawings_online: None,
             drawings_offline: None,
+            previews: HashMap::new(),
             active_tab: MainTabIds::Offline,
         };
         if let Some(options) = options {
@@ -286,6 +387,10 @@ impl Scene for Main {
             MainMessage::ToggleModal(modal) => self.toggle_modal(&modal, globals),
             MainMessage::LoadedDrawings(drawings, tab) => {
                 self.loaded_drawings(&tab, &drawings, globals)
+            }
+            MainMessage::LoadedImage(id, image) => {
+                self.previews.insert(*id, image.clone());
+                Command::none()
             }
             MainMessage::LogOut => self.log_out(globals),
             MainMessage::SelectTab(tab_id) => self.select_tab(&tab_id, globals),
@@ -391,6 +496,30 @@ impl Scene for Main {
 
         let modal_generator = |modal_type: ModalType| match modal_type {
             ModalType::ShowingDrawings => {
+                let display_drawing = move |id, name: String, save_mode| {
+                    Button::new(
+                        Row::<Message, Theme, Renderer>::with_children(vec![
+                            Text::new(name.clone())
+                                .width(Length::FillPortion(1))
+                                .horizontal_alignment(Horizontal::Center)
+                                .into(),
+                            Space::with_width(Length::FillPortion(1)).into(),
+                            Image::new(self.get_image(id))
+                                .width(Length::FillPortion(1))
+                                .height(Length::Fixed(200.0))
+                                .into(),
+                        ])
+                        .align_items(Alignment::Center),
+                    )
+                    .on_press(Message::ChangeScene(Scenes::Drawing(Some(
+                        DrawingOptions::new(Some(id), Some(name), Some(save_mode)),
+                    ))))
+                    .style(theme::button::Button::UnselectedLayer)
+                    .width(Length::Fill)
+                    .padding(10.0)
+                    .into()
+                };
+
                 let online_tab = Container::new(Scrollable::new(
                     Column::<Message, Theme, Renderer>::with_children(
                         if let Some(drawings) = self.drawings_online.clone() {
@@ -398,21 +527,14 @@ impl Scene for Main {
                                 .clone()
                                 .iter()
                                 .map(|(uuid, name)| {
-                                    Element::from(Button::new(Text::new(name.clone())).on_press(
-                                        Message::ChangeScene(Scenes::Drawing(Some(
-                                            DrawingOptions::new(
-                                                Some(uuid.clone()),
-                                                Some(name.clone()),
-                                                Some(SaveMode::Online),
-                                            ),
-                                        ))),
-                                    ))
+                                    display_drawing(*uuid, name.clone(), SaveMode::Online)
                                 })
                                 .collect()
                         } else {
                             vec![]
                         },
-                    ),
+                    )
+                    .spacing(20.0),
                 ))
                 .width(Length::Fixed(500.0))
                 .height(Length::Fixed(300.0))
@@ -426,21 +548,14 @@ impl Scene for Main {
                                 .clone()
                                 .iter()
                                 .map(|(uuid, name)| {
-                                    Element::from(Button::new(Text::new(name.clone())).on_press(
-                                        Message::ChangeScene(Scenes::Drawing(Some(
-                                            DrawingOptions::new(
-                                                Some(uuid.clone()),
-                                                Some(name.clone()),
-                                                Some(SaveMode::Offline),
-                                            ),
-                                        ))),
-                                    ))
+                                    display_drawing(*uuid, name.clone(), SaveMode::Offline)
                                 })
                                 .collect()
                         } else {
                             vec![]
                         },
-                    ),
+                    )
+                    .spacing(20.0),
                 ))
                 .width(Length::Fixed(500.0))
                 .height(Length::Fixed(300.0))
@@ -466,13 +581,13 @@ impl Scene for Main {
                     |tab| MainMessage::SelectTab(tab).into(),
                 )
                 .set_active_tab(&self.active_tab)
-                .width(Length::Fill)
-                .height(Length::Fixed(300.0));
+                .height(Length::Fixed(600.0))
+                .width(Length::Fill);
 
                 Closeable::<Message, Theme, Renderer>::new(
                     Card::new(title, tabs)
-                        .width(Length::Fixed(500.0))
-                        .height(Length::Fixed(300.0)),
+                        .width(Length::Fixed(900.0))
+                        .height(Length::Fixed(600.0)),
                 )
                 .style(theme::closeable::Closeable::Transparent)
                 .on_close(

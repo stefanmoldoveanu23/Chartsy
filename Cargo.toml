@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 iced = { version = "0.12.1", features=["canvas", "advanced", "svg", "image", "tokio"] }
-tokio = "1.37.0"
+tokio = { version="1.37.0", features=["fs"] }
 rand = "0.8.5"
 mongodb = "2.8.2"
 dropbox-sdk = { version="0.18.0", features=["dbx_files", "dbx_users", "default_client"] }

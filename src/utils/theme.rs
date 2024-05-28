@@ -323,7 +323,7 @@ pub mod modal {
 pub mod card {
     use super::Theme;
     use crate::widgets::card::{Appearance, StyleSheet};
-    use iced::{Background, Color};
+    use iced::Background;
 
     #[derive(Default)]
     pub enum Card {
@@ -337,9 +337,9 @@ pub mod card {
         fn active(&self, style: &Self::Style) -> Appearance {
             match style {
                 Card::Default => Appearance {
-                    background: Background::Color(Color::WHITE),
-                    header_background: Background::Color(Color::from_rgb(0.0, 0.2, 1.0)),
-                    border_color: Color::from_rgb(0.0, 0.2, 1.0),
+                    background: Background::Color(super::pallete::BACKGROUND),
+                    header_background: Background::Color(super::pallete::HIGHLIGHT),
+                    border_color: super::pallete::HIGHLIGHT,
                 },
             }
         }

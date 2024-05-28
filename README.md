@@ -17,7 +17,6 @@ A desktop application where users can create drawings and share them.
 
 
 ## Plans
-- Add drawing preview
 - Add loading screens where necessary
 - Implement deleting a drawing
 - Stylize pages(replace all images with icons/widgets, other details maybe later)
