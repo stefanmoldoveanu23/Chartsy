@@ -1,24 +1,24 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use iced::widget::image::Handle;
-use image::{DynamicImage, RgbaImage};
-use mongodb::bson::{Bson, doc, Document, Uuid, UuidRepresentation};
 use crate::scene::Message;
 use crate::scenes::data::auth::User;
 use crate::scenes::posts::PostsMessage;
 use crate::utils::serde::{Deserialize, Serialize};
+use iced::widget::image::Handle;
+use image::{DynamicImage, RgbaImage};
+use mongodb::bson::{doc, Bson, Document, Uuid, UuidRepresentation};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 /// An image represented by pixel data.
 #[derive(Debug, Clone)]
 pub struct PixelImage {
     /// The width of the [PixelImage].
     width: u32,
-    
+
     /// The height of the [PixelImage].
     height: u32,
-    
+
     /// The pixel data.
-    data: Vec<u8>
+    data: Vec<u8>,
 }
 
 impl PixelImage {
@@ -27,18 +27,18 @@ impl PixelImage {
         PixelImage {
             width,
             height,
-            data
+            data,
         }
     }
-    
+
     pub fn get_width(&self) -> u32 {
         self.width
     }
-    
+
     pub fn get_height(&self) -> u32 {
         self.height
     }
-    
+
     pub fn get_data(&self) -> &Vec<u8> {
         &self.data
     }
@@ -46,21 +46,13 @@ impl PixelImage {
 
 impl From<DynamicImage> for PixelImage {
     fn from(value: DynamicImage) -> Self {
-        Self::new(
-            value.width(),
-            value.height(),
-            value.to_rgba8().to_vec()
-        )
+        Self::new(value.width(), value.height(), value.to_rgba8().to_vec())
     }
 }
 
 impl Into<DynamicImage> for PixelImage {
     fn into(self) -> DynamicImage {
-        DynamicImage::ImageRgba8(RgbaImage::from_raw(
-            self.width,
-            self.height,
-            self.data
-        ).unwrap())
+        DynamicImage::ImageRgba8(RgbaImage::from_raw(self.width, self.height, self.data).unwrap())
     }
 }
 
@@ -90,7 +82,7 @@ pub struct Comment {
     replies: Option<usize>,
 
     /// The index of the reply that is currently opened(absolute).
-    open_reply: Option<usize>
+    open_reply: Option<usize>,
 }
 
 impl Comment {
@@ -108,7 +100,7 @@ impl Comment {
         user: User,
         content: impl Into<String>,
         reply_to: impl Into<Option<Uuid>>,
-        parent: impl Into<Option<(usize, usize)>>
+        parent: impl Into<Option<(usize, usize)>>,
     ) -> Self {
         Comment {
             id,
@@ -179,7 +171,7 @@ impl Default for Comment {
             reply_input: Default::default(),
             parent: None,
             replies: None,
-            open_reply: None
+            open_reply: None,
         }
     }
 }
@@ -204,11 +196,16 @@ impl Serialize<Document> for Comment {
 }
 
 impl Deserialize<Document> for Comment {
-    fn deserialize(document: &Document) -> Self where Self: Sized {
+    fn deserialize(document: &Document) -> Self
+    where
+        Self: Sized,
+    {
         let mut comment = Comment::default();
 
         if let Some(Bson::Binary(bin)) = document.get("id") {
-            comment.id = bin.to_uuid_with_representation(UuidRepresentation::Standard).unwrap();
+            comment.id = bin
+                .to_uuid_with_representation(UuidRepresentation::Standard)
+                .unwrap();
         }
         if let Some(Bson::Document(user)) = document.get("user") {
             comment.user = Deserialize::deserialize(user);
@@ -224,22 +221,43 @@ impl Deserialize<Document> for Comment {
 #[derive(Clone)]
 pub enum CommentMessage {
     /// Opens a [Comment].
-    Open{ post: usize, position: (usize, usize) },
+    Open {
+        post: usize,
+        position: (usize, usize),
+    },
 
     /// Closes a [Comment] and all the replies to it that are opened.
-    Close{ post: usize, position: (usize, usize) },
+    Close {
+        post: usize,
+        position: (usize, usize),
+    },
 
     /// Updates the content of a [Comment].
-    UpdateInput{ post: usize, position: Option<(usize, usize)>, input: String },
+    UpdateInput {
+        post: usize,
+        position: Option<(usize, usize)>,
+        input: String,
+    },
 
     /// Adds a reply to a [Comment].
-    Add { post: usize, parent: Option<(usize, usize)> },
+    Add {
+        post: usize,
+        parent: Option<(usize, usize)>,
+    },
 
     /// Loads the replies for a [Comment].
-    Load{ post: usize, parent: Option<(usize, usize)> },
+    Load {
+        post: usize,
+        parent: Option<(usize, usize)>,
+    },
 
     /// Loads comments that are replies to another comment.
-    Loaded{ post: usize, parent: Option<(usize, usize)>, comments: Vec<Comment>, tab: PostTabs },
+    Loaded {
+        post: usize,
+        parent: Option<(usize, usize)>,
+        comments: Vec<Comment>,
+        tab: PostTabs,
+    },
 }
 
 impl Into<Message> for CommentMessage {
@@ -274,7 +292,7 @@ pub struct Post {
     comments: Vec<Vec<Comment>>,
 
     /// The index of the comment that is currently opened.
-    open_comment: Option<usize>
+    open_comment: Option<usize>,
 }
 
 impl Post {
@@ -343,8 +361,11 @@ impl Default for Post {
 }
 
 impl Deserialize<Document> for Post {
-    fn deserialize(document: &Document) -> Self where Self: Sized {
-        let mut post :Post= Default::default();
+    fn deserialize(document: &Document) -> Self
+    where
+        Self: Sized,
+    {
+        let mut post: Post = Default::default();
 
         if let Some(Bson::Document(post_data)) = document.get("post") {
             if let Some(Bson::String(description)) = post_data.get("description") {
@@ -359,7 +380,9 @@ impl Deserialize<Document> for Post {
             }
 
             if let Some(Bson::Binary(bin)) = post_data.get("id") {
-                post.id = bin.to_uuid_with_representation(UuidRepresentation::Standard).unwrap();
+                post.id = bin
+                    .to_uuid_with_representation(UuidRepresentation::Standard)
+                    .unwrap();
             }
         }
         if let Some(Bson::Document(user)) = document.get("user") {
@@ -387,15 +410,11 @@ pub struct PostList {
 
 impl PostList {
     pub fn new(posts: Vec<Post>) -> Self {
-        PostList {
-            posts,
-            loaded: 0,
-        }
+        PostList { posts, loaded: 0 }
     }
 
     /// Load the next batch of images.
-    pub fn load_batch(&mut self) -> &[Post]
-    {
+    pub fn load_batch(&mut self) -> &[Post] {
         let start = self.loaded;
         let total = self.posts.len();
 
@@ -405,8 +424,7 @@ impl PostList {
     }
 
     /// Change the rating given to a post by the authenticated user.
-    pub fn rate_post(&mut self, index: usize, rating: usize) -> (Uuid, Option<usize>)
-    {
+    pub fn rate_post(&mut self, index: usize, rating: usize) -> (Uuid, Option<usize>) {
         let post = &mut self.posts[index];
 
         let rating = rating.clone();
@@ -416,8 +434,7 @@ impl PostList {
     }
 
     /// Opens the given comment. If the replies haven't been loaded yet, returns true.
-    pub fn open_comment(&mut self, post_index: usize, line: usize, index: usize) -> bool
-    {
+    pub fn open_comment(&mut self, post_index: usize, line: usize, index: usize) -> bool {
         let post = &mut self.posts[post_index];
         if let Some((parent_line, parent_index)) = post.comments[line][index].parent {
             post.comments[parent_line][parent_index].open_reply = Some(index);
@@ -429,8 +446,7 @@ impl PostList {
     }
 
     /// Closes the given comment.
-    pub fn close_comment(&mut self, post_index: usize, line: usize, index: usize)
-    {
+    pub fn close_comment(&mut self, post_index: usize, line: usize, index: usize) {
         let post = &mut self.posts[post_index];
 
         let mut position = if line != 0 {
@@ -450,8 +466,12 @@ impl PostList {
     }
 
     /// Updates the reply input field of the given comment.
-    pub fn update_input(&mut self, post_index: usize, position: Option<(usize, usize)>, input: String)
-    {
+    pub fn update_input(
+        &mut self,
+        post_index: usize,
+        position: Option<(usize, usize)>,
+        input: String,
+    ) {
         let post = &mut self.posts[post_index];
 
         if let Some((line, index)) = position {
@@ -462,8 +482,13 @@ impl PostList {
     }
 
     /// Adds a reply to the given comment. Returns the reply data serialized.
-    pub fn add_reply(&mut self, user: User, post_index: usize, line: usize, index: usize) -> Document
-    {
+    pub fn add_reply(
+        &mut self,
+        user: User,
+        post_index: usize,
+        line: usize,
+        index: usize,
+    ) -> Document {
         let post = &mut self.posts[post_index];
         let parent = &post.comments[line][index];
 
@@ -472,7 +497,7 @@ impl PostList {
             user,
             parent.get_reply_input().clone(),
             parent.get_id().clone(),
-            (line, index)
+            (line, index),
         );
 
         let document = comment.serialize();
@@ -486,15 +511,10 @@ impl PostList {
     }
 
     /// Adds a comment to the given post. Returns the comment data serialized.
-    pub fn add_comment(&mut self, user: User, post_index: usize) -> Document
-    {
+    pub fn add_comment(&mut self, user: User, post_index: usize) -> Document {
         let post = &mut self.posts[post_index];
 
-        let comment = Comment::new_comment(
-            Uuid::new(),
-            user,
-            post.comment_input.clone(),
-        );
+        let comment = Comment::new_comment(Uuid::new(), user, post.comment_input.clone());
 
         let mut document = comment.serialize();
 
@@ -506,8 +526,7 @@ impl PostList {
     }
 
     /// Returns the load comments request mongo document.
-    pub fn load_comments(&mut self, post_index: usize, parent: Option<(usize, usize)>) -> Document
-    {
+    pub fn load_comments(&mut self, post_index: usize, parent: Option<(usize, usize)>) -> Document {
         if let Some((line, index)) = parent {
             doc! {
                 "reply_to": self.posts[post_index].comments[line][index].id
@@ -520,8 +539,12 @@ impl PostList {
     }
 
     /// Adds a new set of comments that were loaded.
-    pub fn loaded_comments(&mut self, post_index: usize, parent: Option<(usize, usize)>, comments: Vec<Comment>)
-    {
+    pub fn loaded_comments(
+        &mut self,
+        post_index: usize,
+        parent: Option<(usize, usize)>,
+        comments: Vec<Comment>,
+    ) {
         let post = &mut self.posts[post_index];
         post.comments.push(comments);
         let new_line = post.comments.len() - 1;
@@ -536,23 +559,21 @@ impl PostList {
     }
 
     /// Returns true if the given post has already loaded the main comments.
-    pub fn has_loaded_comments(&self, post_index: usize) -> bool
-    {
+    pub fn has_loaded_comments(&self, post_index: usize) -> bool {
         self.posts[post_index].comments.len() > 0
     }
 
     /// Returns the post at the given index.
-    pub fn get_post(&self, index: usize) -> Option<&Post>
-    {
+    pub fn get_post(&self, index: usize) -> Option<&Post> {
         self.posts.get(index)
     }
 
     /// Returns a list of the loaded posts.
-    pub fn get_loaded_posts(&self) -> impl IntoIterator<Item=(&Post, usize)>
-    {
-        self.posts[..self.loaded].iter().enumerate().map(
-            |val| (val.1, val.0)
-        )
+    pub fn get_loaded_posts(&self) -> impl IntoIterator<Item = (&Post, usize)> {
+        self.posts[..self.loaded]
+            .iter()
+            .enumerate()
+            .map(|val| (val.1, val.0))
     }
 
     /// Tells whether the images have all been loaded.
@@ -571,7 +592,7 @@ pub enum ModalType {
     ShowingPost(usize),
 
     /// Modal for reporting a post.
-    ShowingReport(usize)
+    ShowingReport(usize),
 }
 
 impl ModalType {
@@ -587,7 +608,7 @@ impl ModalType {
     fn is_showing_post(&self) -> bool {
         match self {
             ModalType::ShowingPost(_) => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -603,20 +624,14 @@ impl ModalType {
 impl PartialEq for ModalType {
     fn eq(&self, other: &Self) -> bool {
         match self {
-            ModalType::ShowingImage(_) => {
-                other.is_showing_image()
-            }
-            ModalType::ShowingPost(_) => {
-                other.is_showing_post()
-            }
-            ModalType::ShowingReport(_) => {
-                other.is_showing_report()
-            }
+            ModalType::ShowingImage(_) => other.is_showing_image(),
+            ModalType::ShowingPost(_) => other.is_showing_post(),
+            ModalType::ShowingReport(_) => other.is_showing_report(),
         }
     }
 }
 
-impl Eq for ModalType { }
+impl Eq for ModalType {}
 
 /// The tabs the posts page is split into.
 #[derive(Copy, Clone, PartialEq, Eq)]

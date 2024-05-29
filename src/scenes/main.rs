@@ -232,36 +232,50 @@ impl Main {
         globals.set_user(None);
         self.drawings_online = None;
 
-        let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
-        let dir_path = proj_dirs.data_local_dir();
-        let file_path = dir_path.join("./token");
+        Command::perform(
+            async {
+                let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy")
+                    .ok_or(debug_message!("Unable to find project directory.").into())?;
+                let dir_path = proj_dirs.data_local_dir();
+                let file_path = dir_path.join("./token");
 
-        fs::remove_file(file_path).unwrap();
-
-        Command::none()
+                tokio::fs::remove_file(file_path)
+                    .await
+                    .map_err(|err| debug_message!("{}", err).into())
+            },
+            |result: Result<(), Error>| match result {
+                Ok(_) => Message::None,
+                Err(err) => Message::Error(err),
+            },
+        )
     }
 
     /// Returns the ids of the drawings stored locally.
-    async fn get_drawings_offline() -> Vec<(Uuid, String)> {
-        let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
+    async fn get_drawings_offline() -> Result<Vec<(Uuid, String)>, Error> {
+        let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy")
+            .ok_or(debug_message!("Unable to find project directory.").into())?;
 
         let dir_path = proj_dirs.data_local_dir();
-        fs::create_dir_all(dir_path).unwrap();
+        tokio::fs::create_dir_all(dir_path)
+            .await
+            .map_err(|err| debug_message!("{}", err).into())?;
 
         let file_path = dir_path.join("drawings.json");
         let input = match fs::read_to_string(file_path.clone()) {
             Ok(input) => input,
             Err(err) => {
                 if err.kind() == io::ErrorKind::NotFound {
-                    fs::write(file_path, json::stringify(JsonValue::Array(vec![]))).unwrap();
+                    tokio::fs::write(file_path, json::stringify(JsonValue::Array(vec![])))
+                        .await
+                        .map_err(|err| debug_message!("{}", err).into())?;
                 }
 
-                return vec![];
+                return Ok(vec![]);
             }
         };
         let mut list = vec![];
 
-        let json = json::parse(&*input).unwrap();
+        let json = json::parse(&*input).map_err(|err| debug_message!("{}", err).into())?;
         if let JsonValue::Array(drawings) = json {
             for drawing in drawings {
                 if let JsonValue::Object(drawing) = drawing {
@@ -282,7 +296,7 @@ impl Main {
             }
         }
 
-        list
+        Ok(list)
     }
 
     /// Returns the ids of the drawings stored in a database that belong to the currently
@@ -310,9 +324,13 @@ impl Main {
     /// Switches to the tab of locally stored drawings.
     fn select_offline_tab(&mut self, _globals: &mut Globals) -> Command<Message> {
         if self.drawings_offline.is_none() {
-            Command::perform(async { Main::get_drawings_offline().await }, |list| {
-                MainMessage::LoadedDrawings(list, MainTabIds::Offline).into()
-            })
+            Command::perform(
+                async { Main::get_drawings_offline().await },
+                |result| match result {
+                    Ok(list) => MainMessage::LoadedDrawings(list, MainTabIds::Offline).into(),
+                    Err(err) => Message::Error(err),
+                },
+            )
         } else {
             Command::none()
         }
@@ -506,7 +524,7 @@ impl Scene for Main {
                             Space::with_width(Length::FillPortion(1)).into(),
                             Image::new(self.get_image(id))
                                 .width(Length::FillPortion(1))
-                                .height(Length::Fixed(200.0))
+                                .height(Length::Fixed(150.0))
                                 .into(),
                         ])
                         .align_items(Alignment::Center),

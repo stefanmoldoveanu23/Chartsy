@@ -8,7 +8,9 @@ pub struct DebugError {
 
 impl DebugError {
     pub fn new(message: impl Into<String>) -> Self {
-        DebugError { message: message.into() }
+        DebugError {
+            message: message.into(),
+        }
     }
 }
 
@@ -37,5 +39,5 @@ macro_rules! debug_message {
     };
 }
 
-pub use debug_message;
 use crate::errors::error::Error;
+pub use debug_message;

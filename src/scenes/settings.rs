@@ -1,23 +1,23 @@
-use std::any::Any;
-use std::fs;
-use std::ops::Deref;
-use iced::{Alignment, Command, Element, Length, Renderer};
-use iced::advanced::image::Handle;
-use iced::widget::{Button, Column, Row, Scrollable, Space, Text, TextInput};
-use image::load_from_memory;
-use mongodb::bson::doc;
-use rfd::AsyncFileDialog;
+use crate::database;
 use crate::errors::auth::AuthError;
 use crate::errors::debug::{debug_message, DebugError};
 use crate::errors::error::Error;
-use crate::utils::icons::{Icon, ICON};
-use crate::database;
-use crate::scene::{SceneMessage, Globals, Message, Scene};
+use crate::scene::{Globals, Message, Scene, SceneMessage};
 use crate::scenes::data::auth::User;
 use crate::scenes::scenes::Scenes;
+use crate::utils::icons::{Icon, ICON};
 use crate::utils::theme::{self, Theme};
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::wait_panel::WaitPanel;
+use iced::advanced::image::Handle;
+use iced::widget::{Button, Column, Row, Scrollable, Space, Text, TextInput};
+use iced::{Alignment, Command, Element, Length, Renderer};
+use image::load_from_memory;
+use mongodb::bson::doc;
+use rfd::AsyncFileDialog;
+use std::any::Any;
+use std::fs;
+use std::ops::Deref;
 
 /// The struct for the settings [Scene].
 pub struct Settings {
@@ -48,7 +48,7 @@ pub struct Settings {
 
 /// This scene has no options.
 #[derive(Debug, Clone)]
-pub struct SettingsOptions { }
+pub struct SettingsOptions {}
 
 /// The possible [messages](SceneMessage) this [Scene] can trigger.
 #[derive(Clone)]
@@ -93,7 +93,7 @@ pub enum SettingsMessage {
     DeleteAccount,
 
     /// Handles errors.
-    Error(Error)
+    Error(Error),
 }
 
 impl SceneMessage for SettingsMessage {
@@ -116,7 +116,7 @@ impl SceneMessage for SettingsMessage {
             Self::SetImage(_) => String::from("Set image"),
             Self::SavedProfilePicture => String::from("Saved profile picture"),
             Self::DeleteAccount => String::from("Delete account"),
-            Self::Error(_) => String::from("Error")
+            Self::Error(_) => String::from("Error"),
         }
     }
 
@@ -135,9 +135,10 @@ impl Scene for Settings {
     type Message = SettingsMessage;
     type Options = SettingsOptions;
 
-    fn new(options: Option<Self::Options>, globals: &mut Globals)
-        -> (Self, Command<Message>) where Self: Sized {
-
+    fn new(options: Option<Self::Options>, globals: &mut Globals) -> (Self, Command<Message>)
+    where
+        Self: Sized,
+    {
         let user = globals.get_user().unwrap().clone();
 
         let mut settings = Self {
@@ -148,7 +149,7 @@ impl Scene for Settings {
             profile_picture_input: Handle::from_path("./src/images/loading.png"),
             input_error: None,
             deleted_account: false,
-            modal_stack: ModalStack::new()
+            modal_stack: ModalStack::new(),
         };
 
         if let Some(options) = options {
@@ -159,23 +160,18 @@ impl Scene for Settings {
             settings,
             Command::perform(
                 async move {
-                    database::base::download_file(
-                        if user.has_profile_picture() {
-                            format!("/{}/profile_picture.webp", user.get_id())
-                        } else {
-                            String::from("/default_profile_picture.webp")
-                        }
-                    ).await
+                    database::base::download_file(if user.has_profile_picture() {
+                        format!("/{}/profile_picture.webp", user.get_id())
+                    } else {
+                        String::from("/default_profile_picture.webp")
+                    })
+                    .await
                 },
-                |result| {
-                    match result {
-                        Ok(data) => Into::<Message>::into(
-                            SettingsMessage::LoadedProfilePicture(data)
-                        ),
-                        Err(err) => Message::Error(err)
-                    }
-                }
-            )
+                |result| match result {
+                    Ok(data) => Into::<Message>::into(SettingsMessage::LoadedProfilePicture(data)),
+                    Err(err) => Message::Error(err),
+                },
+            ),
         )
     }
 
@@ -183,10 +179,9 @@ impl Scene for Settings {
         "Settings".into()
     }
 
-    fn apply_options(&mut self, _options: Self::Options) { }
+    fn apply_options(&mut self, _options: Self::Options) {}
 
     fn update(&mut self, globals: &mut Globals, message: &Self::Message) -> Command<Message> {
-
         match message {
             SettingsMessage::UpdateUsernameField(username) => {
                 self.username_input = username.clone();
@@ -197,7 +192,7 @@ impl Scene for Settings {
                     self.input_error = Some(Error::AuthError(AuthError::RegisterBadCredentials {
                         email: false,
                         username: true,
-                        password: false
+                        password: false,
                     }));
 
                     return Command::none();
@@ -206,7 +201,11 @@ impl Scene for Settings {
                 let username = self.username_input.clone();
                 let db = globals.get_db().unwrap();
                 let user_id = globals.get_user().unwrap().get_id();
-                globals.get_user_mut().as_mut().unwrap().set_username(username.clone());
+                globals
+                    .get_user_mut()
+                    .as_mut()
+                    .unwrap()
+                    .set_username(username.clone());
                 self.input_error = None;
 
                 Command::perform(
@@ -216,15 +215,14 @@ impl Scene for Settings {
                             user_id,
                             doc! {
                                 "username": username
-                            }
-                        ).await
+                            },
+                        )
+                        .await
                     },
-                    |result| {
-                        match result {
-                            Ok(_) => Message::None,
-                            Err(err) => Message::Error(err)
-                        }
-                    }
+                    |result| match result {
+                        Ok(_) => Message::None,
+                        Err(err) => Message::Error(err),
+                    },
                 )
             }
             SettingsMessage::UpdateUserTagField(user_tag) => {
@@ -239,19 +237,19 @@ impl Scene for Settings {
                     Command::none()
                 } else {
                     let tag = self.user_tag_input.clone();
-                    globals.get_user_mut().as_mut().unwrap().set_user_tag(tag.clone());
+                    globals
+                        .get_user_mut()
+                        .as_mut()
+                        .unwrap()
+                        .set_user_tag(tag.clone());
                     let globals = globals.clone();
 
                     Command::perform(
-                        async move {
-                            database::settings::find_user_by_tag(&globals, tag).await
+                        async move { database::settings::find_user_by_tag(&globals, tag).await },
+                        |result| match result {
+                            Ok(()) => Message::None,
+                            Err(err) => Message::Error(err),
                         },
-                        |result| {
-                            match result {
-                                Ok(()) => Message::None,
-                                Err(err) => Message::Error(err)
-                            }
-                        }
                     )
                 }
             }
@@ -270,7 +268,7 @@ impl Scene for Settings {
                     self.input_error = Some(Error::AuthError(AuthError::RegisterBadCredentials {
                         email: false,
                         username: false,
-                        password: true
+                        password: true,
                     }));
 
                     return Command::none();
@@ -290,15 +288,14 @@ impl Scene for Settings {
                             user_id,
                             doc! {
                                 "password": pwhash::bcrypt::hash(password.clone()).unwrap()
-                            }
-                        ).await
+                            },
+                        )
+                        .await
                     },
-                    |result| {
-                        match result {
-                            Ok(_) => Message::None,
-                            Err(err) => Message::Error(err)
-                        }
-                    }
+                    |result| match result {
+                        Ok(_) => Message::None,
+                        Err(err) => Message::Error(err),
+                    },
                 )
             }
             SettingsMessage::LoadedProfilePicture(data) => {
@@ -306,42 +303,45 @@ impl Scene for Settings {
 
                 Command::none()
             }
-            SettingsMessage::SelectImage => {
-                Command::perform(
-                    async {
-                        let file = AsyncFileDialog::new()
-                            .add_filter("image", &["png", "jpg", "jpeg", "webp"])
-                            .set_directory("~")
-                            .pick_file()
-                            .await;
+            SettingsMessage::SelectImage => Command::perform(
+                async {
+                    let file = AsyncFileDialog::new()
+                        .add_filter("image", &["png", "jpg", "jpeg", "webp"])
+                        .set_directory("~")
+                        .pick_file()
+                        .await;
 
-                        match file {
-                            Some(file) => {
-                                if fs::metadata(file.path()).unwrap().len() > 5000000 {
-                                    Err(Error::AuthError(AuthError::ProfilePictureTooLarge))
-                                } else {
-                                    Ok(file.read().await)
-                                }
+                    match file {
+                        Some(file) => {
+                            if fs::metadata(file.path())
+                                .map_err(|err| debug_message!("{}", err).into())?
+                                .len()
+                                > 5000000 {
+                                Err(Error::AuthError(AuthError::ProfilePictureTooLarge))
+                            } else {
+                                Ok(file.read().await)
                             }
-                            None => Err(Error::DebugError(
-                                DebugError::new(debug_message!("Error getting file path."))
-                            ))
                         }
-                    },
-                    |result| {
-                        match result {
-                            Ok(data) => SettingsMessage::SetImage(data).into(),
-                            Err(err) => Message::Error(err)
-                        }
+                        None => Err(Error::DebugError(DebugError::new(debug_message!(
+                            "Error getting file path."
+                        )))),
                     }
-                )
-            },
+                },
+                |result| match result {
+                    Ok(data) => SettingsMessage::SetImage(data).into(),
+                    Err(err) => Message::Error(err),
+                },
+            ),
             SettingsMessage::SetImage(data) => {
                 self.profile_picture_input = Handle::from_memory(data.clone());
                 self.modal_stack.toggle_modal(());
 
                 let need_mongo_update = !globals.get_user().unwrap().has_profile_picture();
-                globals.get_user_mut().as_mut().unwrap().set_profile_picture();
+                globals
+                    .get_user_mut()
+                    .as_mut()
+                    .unwrap()
+                    .set_profile_picture();
                 let db = globals.get_db().unwrap();
                 let user_id = globals.get_user().unwrap().get_id();
 
@@ -349,37 +349,35 @@ impl Scene for Settings {
 
                 Command::perform(
                     async move {
-                        let data = match tokio::task::spawn_blocking(
-                            move || {
-                                let dyn_image = match load_from_memory(data.as_slice()) {
-                                    Ok(image) => image,
-                                    Err(err) => {
-                                        return Err(debug_message!("{}", err).into());
-                                    }
-                                };
-
-                                match webp::Encoder::from_image(&dyn_image) {
-                                    Ok(encoder) => {
-                                        Ok(encoder.encode(20.0).deref().to_vec())
-                                    },
-                                    Err(err) => Err(debug_message!("{}", err).into())
+                        let data = match tokio::task::spawn_blocking(move || {
+                            let dyn_image = match load_from_memory(data.as_slice()) {
+                                Ok(image) => image,
+                                Err(err) => {
+                                    return Err(debug_message!("{}", err).into());
                                 }
+                            };
+
+                            match webp::Encoder::from_image(&dyn_image) {
+                                Ok(encoder) => Ok(encoder.encode(20.0).deref().to_vec()),
+                                Err(err) => Err(debug_message!("{}", err).into()),
                             }
-                        ).await {
+                        })
+                        .await
+                        {
                             Ok(Ok(data)) => data,
                             Ok(Err(err)) => {
                                 return Err(err);
                             }
-                            Err(err) => {
-                                return Err(debug_message!("{}", err).into())
-                            }
+                            Err(err) => return Err(debug_message!("{}", err).into()),
                         };
 
                         match database::base::upload_file(
                             format!("/{}/profile_picture.webp", user_id),
                             data,
-                        ).await {
-                            Ok(_) => { },
+                        )
+                        .await
+                        {
+                            Ok(_) => {}
                             Err(err) => {
                                 return Err(err);
                             }
@@ -391,18 +389,17 @@ impl Scene for Settings {
                                 user_id,
                                 doc! {
                                     "profile_picture": true
-                                }
-                            ).await
+                                },
+                            )
+                            .await
                         } else {
                             Ok(())
                         }
                     },
-                    |result| {
-                        match result {
-                            Ok(_) => SettingsMessage::SavedProfilePicture.into(),
-                            Err(err) => Message::Error(err)
-                        }
-                    }
+                    |result| match result {
+                        Ok(_) => SettingsMessage::SavedProfilePicture.into(),
+                        Err(err) => Message::Error(err),
+                    },
                 )
             }
             SettingsMessage::SavedProfilePicture => {
@@ -416,15 +413,11 @@ impl Scene for Settings {
                 self.deleted_account = true;
 
                 Command::perform(
-                    async move {
-                        database::settings::delete_account(&db, user_id).await
+                    async move { database::settings::delete_account(&db, user_id).await },
+                    |result| match result {
+                        Ok(_) => Message::ChangeScene(Scenes::Main(None)),
+                        Err(err) => Message::Error(err),
                     },
-                    |result| {
-                        match result {
-                            Ok(_) => Message::ChangeScene(Scenes::Main(None)),
-                            Err(err) => Message::Error(err)
-                        }
-                    }
                 )
             }
             SettingsMessage::None => Command::none(),
@@ -438,55 +431,53 @@ impl Scene for Settings {
 
     fn view(&self, globals: &Globals) -> Element<'_, Message, Theme, Renderer> {
         let (username_error, password_error) =
-            if let Some(Error::AuthError(AuthError::RegisterBadCredentials { email: _, username, password }))
-                = self.input_error {
+            if let Some(Error::AuthError(AuthError::RegisterBadCredentials {
+                email: _,
+                username,
+                password,
+            })) = self.input_error
+            {
                 (username, password)
             } else {
                 (false, false)
             };
 
         let title = Row::with_children(vec![
-            Button::new(
-                Text::new(Icon::Leave.to_string()).font(ICON).size(30.0)
-            )
+            Button::new(Text::new(Icon::Leave.to_string()).font(ICON).size(30.0))
                 .padding(0.0)
                 .style(theme::button::Button::Transparent)
                 .on_press(Message::ChangeScene(Scenes::Main(None)))
                 .into(),
-            Text::new(self.get_title()).size(30.0).into()
+            Text::new(self.get_title()).size(30.0).into(),
         ])
-            .width(Length::Fill)
-            .padding(10.0)
-            .spacing(10.0);
+        .width(Length::Fill)
+        .padding(10.0)
+        .spacing(10.0);
 
         let user = globals.get_user().unwrap();
 
         let username = Column::with_children(vec![
             Text::new("Username").size(20.0).into(),
             Row::with_children(vec![
-                TextInput::new(
-                    "Input username...",
-                    &*self.username_input.clone()
-                )
+                TextInput::new("Input username...", &*self.username_input.clone())
                     .on_input(|value| SettingsMessage::UpdateUsernameField(value.clone()).into())
                     .size(15.0)
                     .into(),
-                Space::with_width(Length::Fill)
-                    .into(),
+                Space::with_width(Length::Fill).into(),
                 if self.username_input.clone() == user.get_username().clone() {
                     Button::new(Text::new("Update").size(15.0))
                 } else {
                     Button::new(Text::new("Update").size(15.0))
                         .on_press(SettingsMessage::UpdateUsername.into())
                 }
-                    .into()
+                .into(),
             ])
-                .spacing(5.0)
-                .into()
-        ])
-            .width(Length::Fill)
             .spacing(5.0)
-            .into();
+            .into(),
+        ])
+        .width(Length::Fill)
+        .spacing(5.0)
+        .into();
 
         let username_error = if username_error {
             Text::new(
@@ -495,11 +486,11 @@ impl Scene for Settings {
                     username: true,
                     password: false,
                 })
-                    .to_string()
+                .to_string(),
             )
-                .style(theme::text::Text::Error)
-                .size(15.0)
-                .into()
+            .style(theme::text::Text::Error)
+            .size(15.0)
+            .into()
         } else {
             Space::with_width(Length::Fill).into()
         };
@@ -507,88 +498,32 @@ impl Scene for Settings {
         let user_tag = Column::with_children(vec![
             Text::new("User Tag").size(20.0).into(),
             Row::with_children(vec![
-                TextInput::new(
-                    "Input user tag...",
-                    &*self.user_tag_input.clone()
-                )
+                TextInput::new("Input user tag...", &*self.user_tag_input.clone())
                     .on_input(|value| SettingsMessage::UpdateUserTagField(value.clone()).into())
                     .size(15.0)
                     .into(),
-                Space::with_width(Length::Fill)
-                    .into(),
+                Space::with_width(Length::Fill).into(),
                 if self.user_tag_input.clone() == user.get_user_tag().clone() {
                     Button::new(Text::new("Update").size(15.0))
                 } else {
                     Button::new(Text::new("Update").size(15.0))
                         .on_press(SettingsMessage::UpdateUserTag.into())
                 }
-                    .into()
-            ])
-                .spacing(5.0)
-                .into()
-        ])
-            .width(Length::Fill)
-            .spacing(5.0)
-            .into();
-
-        let user_tag_error =
-            if Some(Error::AuthError(AuthError::UserTagAlreadyExists)) == self.input_error ||
-                Some(Error::AuthError(AuthError::BadUserTag)) == self.input_error {
-                let error = self.input_error.clone();
-                Text::new(error.unwrap().to_string())
-                    .style(theme::text::Text::Error)
-                    .size(15.0)
-                    .into()
-            } else {
-                Space::with_width(Length::Fill).into()
-            };
-
-        let password = Row::with_children(vec![
-            Column::with_children(vec![
-                Text::new("Password").size(20.0).into(),
-                TextInput::new(
-                    "Input password...",
-                    &*self.password_input.clone()
-                )
-                    .size(15.0)
-                    .on_input(|value| SettingsMessage::UpdatePasswordField(value.clone()).into())
-                    .secure(true)
-                    .into(),
-                TextInput::new(
-                    "Repeat password...",
-                    &*self.password_repeat.clone()
-                )
-                    .size(15.0)
-                    .on_input(|value| SettingsMessage::UpdatePasswordRepeatField(value.clone()).into())
-                    .secure(true)
-                    .into()
-            ])
-                .spacing(5.0)
                 .into(),
-            Space::with_width(Length::Fill)
-                .into(),
-            if self.password_input == self.password_repeat {
-                Button::new(Text::new("Update").size(15.0))
-                    .on_press(SettingsMessage::UpdatePassword.into())
-            } else {
-                Button::new(Text::new("Update").size(15.0))
-            }
-                .into()
-        ])
-            .align_items(Alignment::End)
-            .width(Length::Fill)
+            ])
             .spacing(5.0)
-            .into();
+            .into(),
+        ])
+        .width(Length::Fill)
+        .spacing(5.0)
+        .into();
 
-        let password_error = if password_error {
-            Text::new(
-                Error::AuthError(AuthError::RegisterBadCredentials {
-                    email: false,
-                    username: false,
-                    password: true
-                })
-                    .to_string()
-            )
+        let user_tag_error = if Some(Error::AuthError(AuthError::UserTagAlreadyExists))
+            == self.input_error
+            || Some(Error::AuthError(AuthError::BadUserTag)) == self.input_error
+        {
+            let error = self.input_error.clone();
+            Text::new(error.unwrap().to_string())
                 .style(theme::text::Text::Error)
                 .size(15.0)
                 .into()
@@ -596,11 +531,57 @@ impl Scene for Settings {
             Space::with_width(Length::Fill).into()
         };
 
+        let password = Row::with_children(vec![
+            Column::with_children(vec![
+                Text::new("Password").size(20.0).into(),
+                TextInput::new("Input password...", &*self.password_input.clone())
+                    .size(15.0)
+                    .on_input(|value| SettingsMessage::UpdatePasswordField(value.clone()).into())
+                    .secure(true)
+                    .into(),
+                TextInput::new("Repeat password...", &*self.password_repeat.clone())
+                    .size(15.0)
+                    .on_input(|value| {
+                        SettingsMessage::UpdatePasswordRepeatField(value.clone()).into()
+                    })
+                    .secure(true)
+                    .into(),
+            ])
+            .spacing(5.0)
+            .into(),
+            Space::with_width(Length::Fill).into(),
+            if self.password_input == self.password_repeat {
+                Button::new(Text::new("Update").size(15.0))
+                    .on_press(SettingsMessage::UpdatePassword.into())
+            } else {
+                Button::new(Text::new("Update").size(15.0))
+            }
+            .into(),
+        ])
+        .align_items(Alignment::End)
+        .width(Length::Fill)
+        .spacing(5.0)
+        .into();
+
+        let password_error = if password_error {
+            Text::new(
+                Error::AuthError(AuthError::RegisterBadCredentials {
+                    email: false,
+                    username: false,
+                    password: true,
+                })
+                .to_string(),
+            )
+            .style(theme::text::Text::Error)
+            .size(15.0)
+            .into()
+        } else {
+            Space::with_width(Length::Fill).into()
+        };
+
         let profile_picture = Row::with_children(vec![
-            Text::new("Profile picture").size(20.0)
-                .into(),
-            Space::with_width(Length::Fill)
-                .into(),
+            Text::new("Profile picture").size(20.0).into(),
+            Space::with_width(Length::Fill).into(),
             Column::with_children(vec![
                 iced::widget::image::Image::new(self.profile_picture_input.clone())
                     .height(200.0)
@@ -608,14 +589,14 @@ impl Scene for Settings {
                     .into(),
                 Button::new("Select image")
                     .on_press(SettingsMessage::SelectImage.into())
-                    .into()
+                    .into(),
             ])
-                .align_items(Alignment::Center)
-                .spacing(10.0)
-                .into()
-        ])
             .align_items(Alignment::Center)
-            .into();
+            .spacing(10.0)
+            .into(),
+        ])
+        .align_items(Alignment::Center)
+        .into();
 
         let profile_picture_error =
             if self.input_error == Some(Error::AuthError(AuthError::ProfilePictureTooLarge)) {
@@ -626,57 +607,34 @@ impl Scene for Settings {
                 Space::with_width(Length::Fill).into()
             };
 
-        let delete_account =
-            Button::new("Delete account")
-                .style(theme::button::Button::Danger)
-                .on_press(SettingsMessage::DeleteAccount.into())
-                .into();
+        let delete_account = Button::new("Delete account")
+            .style(theme::button::Button::Danger)
+            .on_press(SettingsMessage::DeleteAccount.into())
+            .into();
 
         let underlay = Column::from_vec(vec![
             title.into(),
-            Scrollable::new(
-                Row::with_children(vec![
-                    Space::with_width(Length::FillPortion(1))
-                        .into(),
-                    Column::with_children(vec![
-                        Column::with_children(vec![
-                            username,
-                            username_error,
-                        ])
-                            .into(),
-                        Column::with_children(vec![
-                            user_tag,
-                            user_tag_error
-                        ])
-                            .into(),
-                        Column::with_children(vec![
-                            password,
-                            password_error
-                        ])
-                            .into(),
-                        Column::with_children(vec![
-                            profile_picture,
-                            profile_picture_error
-                        ])
-                            .into(),
-                        delete_account
-                    ])
-                        .spacing(20.0)
-                        .width(Length::FillPortion(1))
-                        .into(),
-                    Space::with_width(Length::FillPortion(1))
-                        .into()
+            Scrollable::new(Row::with_children(vec![
+                Space::with_width(Length::FillPortion(1)).into(),
+                Column::with_children(vec![
+                    Column::with_children(vec![username, username_error]).into(),
+                    Column::with_children(vec![user_tag, user_tag_error]).into(),
+                    Column::with_children(vec![password, password_error]).into(),
+                    Column::with_children(vec![profile_picture, profile_picture_error]).into(),
+                    delete_account,
                 ])
-            )
+                .spacing(20.0)
+                .width(Length::FillPortion(1))
                 .into(),
+                Space::with_width(Length::FillPortion(1)).into(),
+            ]))
+            .into(),
         ])
-            .width(Length::Fill)
-            .align_items(Alignment::Center)
-            .spacing(20.0);
+        .width(Length::Fill)
+        .align_items(Alignment::Center)
+        .spacing(20.0);
 
-        let generate_modal = |()| {
-            WaitPanel::new("Saving image. Please wait...").into()
-        };
+        let generate_modal = |()| WaitPanel::new("Saving image. Please wait...").into();
 
         self.modal_stack.get_modal(underlay, generate_modal)
     }

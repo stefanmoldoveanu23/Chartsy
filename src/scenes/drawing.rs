@@ -200,13 +200,16 @@ impl Drawing {
         if uuid != Uuid::from_bytes([0; 16]) {
             Command::perform(
                 async move {
-                    let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
+                    let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy")
+                        .ok_or(debug_message!("Unable to find project directory.").into())?;
                     let file_path = proj_dirs
                         .data_local_dir()
                         .join(String::from("./") + &*uuid.to_string() + "/data.json");
-                    let data = fs::read_to_string(file_path).unwrap();
+                    let data = fs::read_to_string(file_path)
+                        .map_err(|err| debug_message!("{}", err).into())?;
 
-                    let data = json::parse(&*data).unwrap();
+                    let data =
+                        json::parse(&*data).map_err(|err| debug_message!("{}", err).into())?;
 
                     if let JsonValue::Object(data) = data.clone() {
                         let mut layers = vec![];
@@ -248,68 +251,63 @@ impl Drawing {
                             }
                         }
 
-                        (layers, tools, json_tools)
+                        Ok((layers, tools, json_tools))
                     } else {
-                        (vec![], vec![], vec![])
+                        Ok((vec![], vec![], vec![]))
                     }
                 },
-                |(layers, tools, json_tools)| {
-                    CanvasMessage::Loaded {
+                |result| match result {
+                    Ok((layers, tools, json_tools)) => CanvasMessage::Loaded {
                         layers,
                         tools,
                         json_tools: Some(json_tools),
                     }
-                    .into()
+                    .into(),
+                    Err(err) => Message::Error(err),
                 },
             )
         } else {
             uuid = Uuid::new();
             self.canvas.set_id(uuid.clone());
 
-            let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
-
-            let drawings_path = proj_dirs.data_local_dir().join("drawings.json");
-            let drawings = match json::parse(&*fs::read_to_string(drawings_path.clone()).unwrap()) {
-                Ok(drawings) => drawings,
-                Err(err) => {
-                    return Command::perform(async {}, move |_| {
-                        Message::Error(debug_message!("{}", err).into())
-                    });
-                }
-            };
-
-            if let JsonValue::Array(mut drawings) = drawings {
-                let mut drawing = Object::new();
-                drawing.insert("id", JsonValue::String(uuid.to_string()));
-                drawing.insert("name", JsonValue::String(String::from("New drawing")));
-
-                drawings.push(JsonValue::Object(drawing));
-
-                match fs::write(drawings_path, json::stringify(JsonValue::Array(drawings))) {
-                    Ok(_) => {}
-                    Err(err) => {
-                        return Command::perform(async {}, move |_| {
-                            Message::Error(debug_message!("{}", err).into())
-                        });
-                    }
-                }
-            }
-
-            let dir_path = proj_dirs
-                .data_local_dir()
-                .join(String::from("./") + &*uuid.to_string());
-            create_dir_all(dir_path.clone()).unwrap();
-
-            let drawing_path = dir_path.join("data.webp");
-
-            let file_path = dir_path.join("data.json");
-            let mut file = File::create(file_path).unwrap();
-            file.write(json::stringify(JsonValue::Object(default_json)).as_bytes())
-                .unwrap();
-
             Command::batch(vec![
                 Command::perform(
                     async move {
+                        let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy")
+                            .ok_or(debug_message!("Unable to find project directory.").into())?;
+
+                        let drawings_path = proj_dirs.data_local_dir().join("drawings.json");
+                        let drawings = json::parse(
+                            &*fs::read_to_string(drawings_path.clone())
+                                .map_err(|err| debug_message!("{}", err).into())?,
+                        )
+                        .map_err(|err| debug_message!("{}", err).into())?;
+
+                        if let JsonValue::Array(mut drawings) = drawings {
+                            let mut drawing = Object::new();
+                            drawing.insert("id", JsonValue::String(uuid.to_string()));
+                            drawing.insert("name", JsonValue::String(String::from("New drawing")));
+
+                            drawings.push(JsonValue::Object(drawing));
+
+                            fs::write(drawings_path, json::stringify(JsonValue::Array(drawings)))
+                                .map_err(|err| debug_message!("{}", err).into())?;
+                        }
+
+                        let dir_path = proj_dirs
+                            .data_local_dir()
+                            .join(String::from("./") + &*uuid.to_string());
+                        create_dir_all(dir_path.clone())
+                            .map_err(|err| debug_message!("{}", err).into())?;
+
+                        let drawing_path = dir_path.join("data.webp");
+
+                        let file_path = dir_path.join("data.json");
+                        let mut file = File::create(file_path)
+                            .map_err(|err| debug_message!("{}", err).into())?;
+                        file.write(json::stringify(JsonValue::Object(default_json)).as_bytes())
+                            .map_err(|err| debug_message!("{}", err).into())?;
+
                         let svg = SVG::new(&vec![Uuid::new()]).as_document();
                         let webp = utils::encoder::encode_svg(svg, "webp").await?;
 
@@ -479,7 +477,9 @@ impl Scene for Drawing {
                         match file {
                             Some(handle) => {
                                 let name = handle.file_name().to_string();
-                                let format = name.split(".").last().unwrap();
+                                let format = name.split(".").last().ok_or(
+                                    debug_message!("File needs to have a readable format.").into(),
+                                )?;
                                 let img = encode_svg(document, &*format).await?;
 
                                 handle

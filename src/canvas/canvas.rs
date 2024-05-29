@@ -3,6 +3,7 @@ use super::tools::line::LinePending;
 use crate::canvas::layer::{CanvasMessage, Layer, LayerVessel};
 use crate::canvas::style::Style;
 use crate::canvas::svg::SVG;
+use crate::errors::error::Error;
 use crate::scene::{Globals, Message};
 use crate::utils::serde::Serialize;
 use crate::utils::theme::Theme;
@@ -358,7 +359,9 @@ impl Canvas {
 
                     let save_image = Command::perform(
                         async move {
-                            let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
+                            let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy")
+                                .ok_or(debug_message!("Unable to find project directory").into())?;
+
                             let dir_path = proj_dirs.data_local_dir();
                             let file_path = dir_path.join(canvas_id.to_string()).join("data.webp");
                             let webp = utils::encoder::encode_svg(document, "webp").await?;
@@ -375,13 +378,16 @@ impl Canvas {
 
                     let save_data = Command::perform(
                         async move {
-                            let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy").unwrap();
+                            let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy")
+                                .ok_or(debug_message!("Unable to find project directory").into())?;
                             let dir_path = proj_dirs.data_local_dir();
                             let file_path = dir_path.join(canvas_id.to_string()).join("data.json");
                             let drawings_path = dir_path.join("drawings.json");
 
-                            let drawings = fs::read_to_string(drawings_path.clone()).unwrap();
-                            let mut drawings = json::parse(&*drawings).unwrap();
+                            let drawings = fs::read_to_string(drawings_path.clone())
+                                .map_err(|err| debug_message!("{}", err).into())?;
+                            let mut drawings = json::parse(&*drawings)
+                                .map_err(|err| debug_message!("{}", err).into())?;
 
                             if let JsonValue::Array(drawings) = &mut drawings {
                                 for drawing in drawings {
@@ -397,7 +403,8 @@ impl Canvas {
                                 }
                             }
 
-                            fs::write(drawings_path, json::stringify(drawings)).unwrap();
+                            fs::write(drawings_path, json::stringify(drawings))
+                                .map_err(|err| debug_message!("{}", err).into())?;
 
                             for _ in delete_lower_bound..delete_upper_bound {
                                 tools.pop();
@@ -423,9 +430,13 @@ impl Canvas {
                             );
                             data.insert("tools", JsonValue::Array(tools));
 
-                            fs::write(file_path, json::stringify(JsonValue::Object(data))).unwrap();
+                            fs::write(file_path, json::stringify(JsonValue::Object(data)))
+                                .map_err(|err| debug_message!("{}", err).into())
                         },
-                        |()| CanvasMessage::Saved.into(),
+                        |result: Result<(), Error>| match result {
+                            Ok(_) => CanvasMessage::Saved.into(),
+                            Err(err) => Message::Error(err),
+                        },
                     );
 
                     Command::batch(vec![save_data, save_image])

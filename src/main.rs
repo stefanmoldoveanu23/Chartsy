@@ -17,6 +17,8 @@ mod scenes;
 mod utils;
 mod widgets;
 
+use errors::error::Error;
+use lettre::transport::smtp::response::Response;
 use scene::{Globals, Message};
 use scenes::scenes::SceneManager;
 use utils::theme::Theme;
@@ -104,15 +106,12 @@ impl Application for Chartsy {
                     println!("Successfully connected to database.");
                     Command::perform(
                         async move {
-                            let result = database::auth::get_user_from_token(&db).await;
+                            let user = database::auth::get_user_from_token(&db).await?;
 
-                            if let Ok(user) = &result {
-                                let user_id = user.get_id();
+                            let user_id = user.get_id();
+                            database::auth::update_user_token(&db, user_id).await?;
 
-                                database::auth::update_user_token(&db, user_id).await;
-                            }
-
-                            result
+                            Ok(user)
                         },
                         |result| match result {
                             Ok(user) => Message::AutoLoggedIn(user),
@@ -134,24 +133,28 @@ impl Application for Chartsy {
             }
             Message::SendSmtpMail(mail) => Command::perform(
                 async {
-                    let connection = AsyncSmtpTransport::<Tokio1Executor>::from_url(&*format!(
-                        "smtps://{}:{}@smtp.gmail.com:465/",
-                        config::email_username(),
-                        config::email_pass()
-                    ))
-                    .unwrap()
-                    .build();
+                    let connection =
+                        match AsyncSmtpTransport::<Tokio1Executor>::from_url(&*format!(
+                            "smtps://{}:{}@smtp.gmail.com:465/",
+                            config::email_username(),
+                            config::email_pass()
+                        )) {
+                            Ok(connection) => connection.build(),
+                            Err(err) => {
+                                return Err(debug_message!("{}", err).into());
+                            }
+                        };
 
                     let result = connection.send(mail).await;
-                    if let Err(ref err) = result {
-                        println!("Error sending mail! {}", err);
-                    } else {
-                        println!("Mail sent successfully!");
-                    }
 
-                    result
+                    result.map_err(|err| debug_message!("{}", err).into())
                 },
-                |_result| Message::None,
+                |result: Result<Response, Error>| match result {
+                    Ok(response) => Message::Error(
+                        format!("Mail sent with response {}.", response.code()).into(),
+                    ),
+                    Err(err) => Message::Error(err),
+                },
             ),
             Message::Error(error) => {
                 if error.is_debug() {
