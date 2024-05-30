@@ -3,8 +3,9 @@ use crate::errors::debug::debug_message;
 use crate::errors::error::Error;
 use crate::utils::serde::Deserialize;
 use dropbox_sdk::default_client::{NoauthDefaultClient, UserAuthDefaultClient};
-use dropbox_sdk::files;
+use dropbox_sdk::files::{self, DeleteArg};
 use dropbox_sdk::files::{DownloadArg, UploadArg, WriteMode};
+use iced::futures::FutureExt;
 use mongodb::bson::Document;
 use mongodb::options::ClientOptions;
 use mongodb::{Client, Cursor};
@@ -80,12 +81,7 @@ pub async fn connect_to_dropbox() -> Result<UserAuthDefaultClient, Error> {
 
 /// Uploads a file to dropbox.
 pub async fn upload_file(path: String, data: Vec<u8>) -> Result<(), Error> {
-    let client = match connect_to_dropbox().await {
-        Ok(client) => client,
-        Err(err) => {
-            return Err(err);
-        }
-    };
+    let client = connect_to_dropbox().await?;
 
     match tokio::task::spawn_blocking(move || {
         match files::upload(
@@ -110,12 +106,7 @@ pub async fn upload_file(path: String, data: Vec<u8>) -> Result<(), Error> {
 
 /// Downloads a file from dropbox.
 pub async fn download_file(path: String) -> Result<Vec<u8>, Error> {
-    let client = match connect_to_dropbox().await {
-        Ok(client) => client,
-        Err(err) => {
-            return Err(err);
-        }
-    };
+    let client = connect_to_dropbox().await?;
 
     match tokio::task::spawn_blocking(move || {
         match files::download(&client, &DownloadArg::new(path.clone()), None, None) {
@@ -142,4 +133,18 @@ pub async fn download_file(path: String) -> Result<Vec<u8>, Error> {
         Ok(Err(err)) => Err(err),
         Err(err) => Err(debug_message!("{}", err).into()),
     }
+}
+
+pub async fn delete_data(path: String) -> Result<(), Error> {
+    let client = connect_to_dropbox().await?;
+
+    tokio::task::spawn_blocking(
+        move || match files::delete_v2(&client, &DeleteArg::new(path)) {
+            Ok(Err(err)) => Err(debug_message!("{}", err).into()),
+            Ok(_) => Ok(()),
+            Err(err) => Err(debug_message!("{}", err).into()),
+        },
+    )
+    .await
+    .map_err(|err| debug_message!("{}", err).into())?
 }

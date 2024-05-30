@@ -17,9 +17,8 @@ A desktop application where users can create drawings and share them.
 
 
 ## Plans
-- Solve all unwraps
-- Add loading screens where necessary
-- Implement deleting a drawing
+- Implement deleting a drawing and post
+- Add loading screens where necessary(save drawing, upload image, make post, delete drawing, delete post)
 - Stylize pages(replace all images with icons/widgets, other details maybe later)
 - Fix similarities trigger to take into consideration account deletion and reinstatement
 - Make better scrollbar for images

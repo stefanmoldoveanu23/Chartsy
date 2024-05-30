@@ -16,6 +16,7 @@ mod scene;
 mod scenes;
 mod utils;
 mod widgets;
+mod services;
 
 use errors::error::Error;
 use lettre::transport::smtp::response::Response;

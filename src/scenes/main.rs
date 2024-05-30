@@ -8,9 +8,10 @@ use std::sync::Arc;
 use std::{fs, io};
 
 use crate::errors::error::Error;
+use crate::utils::icons::{Icon, ICON};
 use crate::widgets::card::Card;
 use crate::widgets::modal_stack::ModalStack;
-use crate::{database, debug_message, LOADING_IMAGE};
+use crate::{database, debug_message, services, LOADING_IMAGE};
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{Button, Column, Container, Image, Row, Scrollable, Space, Text};
 use iced::{Alignment, Command, Element, Length, Renderer};
@@ -43,6 +44,9 @@ pub enum MainMessage {
     /// Triggered when a preview image has been loaded.
     LoadedImage(Uuid, Arc<PixelImage>),
 
+    /// Deletes the given drawing.
+    DeleteDrawing(Uuid, SaveMode),
+
     /// Logs out the user from their account.
     LogOut,
 
@@ -69,6 +73,7 @@ impl SceneMessage for MainMessage {
             Self::ToggleModal { .. } => String::from("Toggle modal"),
             Self::LoadedDrawings(_, _) => String::from("Loaded drawings"),
             Self::LoadedImage(_, _) => String::from("Loaded image"),
+            Self::DeleteDrawing(_, _) => String::from("Delete drawing"),
             Self::LogOut => String::from("Logged out"),
             Self::SelectTab(_) => String::from("Select tab"),
             Self::ErrorHandler(_) => String::from("Handle error"),
@@ -410,6 +415,44 @@ impl Scene for Main {
                 self.previews.insert(*id, image.clone());
                 Command::none()
             }
+            MainMessage::DeleteDrawing(id, save_mode) => {
+                let globals = globals.clone();
+
+                match save_mode {
+                    SaveMode::Offline => {
+                        self.drawings_offline
+                            .as_mut()
+                            .unwrap()
+                            .retain(|(drawing_id, _)| *drawing_id != *id);
+                    }
+                    SaveMode::Online => {
+                        self.drawings_online
+                            .as_mut()
+                            .unwrap()
+                            .retain(|(drawing_id, _)| *drawing_id != *id);
+                    }
+                }
+
+                let id = *id;
+                let save_mode = save_mode.clone();
+
+                Command::perform(
+                    async move {
+                        match save_mode {
+                            SaveMode::Offline => {
+                                services::drawings::delete_drawing_offline(id).await
+                            }
+                            SaveMode::Online => {
+                                services::drawings::delete_drawing_online(id, &globals).await
+                            }
+                        }
+                    },
+                    |result| match result {
+                        Ok(_) => Message::None,
+                        Err(err) => Message::Error(err),
+                    },
+                )
+            }
             MainMessage::LogOut => self.log_out(globals),
             MainMessage::SelectTab(tab_id) => self.select_tab(&tab_id, globals),
             MainMessage::ErrorHandler(_) => Command::none(),
@@ -526,6 +569,14 @@ impl Scene for Main {
                                 .width(Length::FillPortion(1))
                                 .height(Length::Fixed(150.0))
                                 .into(),
+                            Button::new(
+                                Text::new(Icon::Trash.to_string())
+                                    .font(ICON)
+                                    .style(theme::text::Text::Error),
+                            )
+                            .style(theme::button::Button::Transparent)
+                            .on_press(MainMessage::DeleteDrawing(id, save_mode).into())
+                            .into(),
                         ])
                         .align_items(Alignment::Center),
                     )

@@ -3,7 +3,9 @@ use crate::canvas::tool::Tool;
 use crate::database;
 use crate::errors::debug::{debug_message, DebugError};
 use crate::errors::error::Error;
+use crate::scene::Globals;
 use crate::scenes::data::drawing::Tag;
+use iced::futures::TryFutureExt;
 use mongodb::bson::{doc, Bson, Document, Uuid, UuidRepresentation};
 use mongodb::Database;
 use std::sync::Arc;
@@ -229,5 +231,25 @@ pub async fn update_drawing(
             }
         }
         Err(err) => Err(debug_message!("{}", err).into()),
+    }
+}
+
+pub async fn delete_drawing(id: Uuid, globals: &Globals) -> Result<(), Error>
+{
+    let db = globals
+        .get_db()
+        .ok_or(debug_message!("No database connection.").into())?;
+
+    let canvases = db.collection::<Document>("canvases");
+
+    match canvases.delete_one(
+        doc! {
+            "id": id
+        },
+        None
+    ).await {
+        Ok(result) if result.deleted_count == 1 => Ok(()),
+        Ok(_) => Err(debug_message!("Could not find drawing with id {} to delete.", id).into()),
+        Err(err) => Err(debug_message!("{}", err).into())
     }
 }
