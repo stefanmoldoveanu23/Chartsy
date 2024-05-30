@@ -5,7 +5,6 @@ use crate::utils::serde::Deserialize;
 use dropbox_sdk::default_client::{NoauthDefaultClient, UserAuthDefaultClient};
 use dropbox_sdk::files::{self, DeleteArg};
 use dropbox_sdk::files::{DownloadArg, UploadArg, WriteMode};
-use iced::futures::FutureExt;
 use mongodb::bson::Document;
 use mongodb::options::ClientOptions;
 use mongodb::{Client, Cursor};

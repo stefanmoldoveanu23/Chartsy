@@ -161,6 +161,10 @@ impl Canvas {
         self.new_name = new_name.into();
     }
 
+    pub fn is_offline(&self) -> bool {
+        self.json_tools.is_some()
+    }
+
     /// Returns the new unsaved tools as mongodb [documents](Document).
     fn get_tools_serialized(&self) -> Vec<Document> {
         let mut vec = vec![];

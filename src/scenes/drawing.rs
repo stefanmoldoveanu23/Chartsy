@@ -29,7 +29,7 @@ use crate::canvas::tools::{
 };
 use crate::errors::error::Error;
 use crate::scene::{Globals, Message, Scene, SceneMessage};
-use crate::{database, debug_message, utils};
+use crate::{database, debug_message, services, utils};
 
 use crate::utils::theme::{self, Theme};
 
@@ -62,6 +62,9 @@ pub enum DrawingMessage {
     /// Updates the [PostData] given the modified field.
     UpdatePostData(UpdatePostData),
 
+    /// Deletes the currently opened drawing.
+    DeleteDrawing,
+
     /// Toggles a [Modal](ModalTypes).
     ToggleModal(ModalTypes),
 
@@ -86,6 +89,7 @@ impl SceneMessage for DrawingMessage {
             Self::PostDrawing => String::from("Post drawing"),
             Self::SaveAs => String::from("Save as..."),
             Self::UpdatePostData(_) => String::from("Update post data"),
+            Self::DeleteDrawing => String::from("Delete drawing"),
             Self::ToggleModal(_) => String::from("Toggle modal"),
             Self::ErrorHandler(_) => String::from("Handle error"),
         }
@@ -501,6 +505,25 @@ impl Scene for Drawing {
                     download,
                 ])
             }
+            DrawingMessage::DeleteDrawing => {
+                let is_offline = self.canvas.is_offline();
+                let id = *self.canvas.get_id();
+                let globals = globals.clone();
+
+                Command::perform(
+                    async move {
+                        if is_offline {
+                            services::drawings::delete_drawing_offline(id).await
+                        } else {
+                            services::drawings::delete_drawing_online(id, &globals).await
+                        }
+                    },
+                    |result| match result {
+                        Ok(_) => Message::ChangeScene(Scenes::Main(None)),
+                        Err(err) => Message::Error(err),
+                    },
+                )
+            }
             DrawingMessage::ToggleModal(modal) => {
                 self.modal_stack.toggle_modal(modal.clone());
 
@@ -791,6 +814,18 @@ impl Scene for Drawing {
                         .size(20.0),
                 )
                 .on_press(DrawingMessage::SaveAs.into())
+                .padding(5.0)
+                .width(Length::Fill)
+                .into(),
+                Space::with_height(Length::Fill).into(),
+                Button::new(
+                    Text::new("Delete")
+                        .horizontal_alignment(Horizontal::Center)
+                        .width(Length::Fill)
+                        .style(theme::text::Text::Error)
+                        .size(20.0),
+                )
+                .on_press(DrawingMessage::DeleteDrawing.into())
                 .padding(5.0)
                 .width(Length::Fill)
                 .into(),

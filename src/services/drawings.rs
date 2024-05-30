@@ -1,6 +1,6 @@
 use directories::ProjectDirs;
 use json::JsonValue;
-use mongodb::bson::{Document, Uuid};
+use mongodb::bson::Uuid;
 
 use crate::{database, debug_message, errors::error::Error, scene::Globals};
 
