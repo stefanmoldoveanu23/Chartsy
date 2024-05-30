@@ -580,6 +580,26 @@ impl PostList {
     pub fn done_loading(&self) -> bool {
         self.loaded == self.posts.len()
     }
+
+    /// Removes all posts with the given id.
+    pub fn remove_post(&mut self, id: Uuid) {
+        self.posts = self
+            .posts
+            .iter()
+            .enumerate()
+            .filter_map(|(i, post)| {
+                if post.get_id() == id {
+                    if i < self.loaded {
+                        self.loaded -= 1;
+                    }
+
+                    None
+                } else {
+                    Some(post.clone())
+                }
+            })
+            .collect();
+    }
 }
 
 /// The types a modal can have on the [Posts] scene.

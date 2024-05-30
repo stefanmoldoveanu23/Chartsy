@@ -1,14 +1,14 @@
-use lettre::Message;
-use lettre::message::MultiPart;
-use mongodb::bson::{Binary, Bson, DateTime, doc, Document, Uuid, UuidRepresentation};
-use mongodb::bson::spec::BinarySubtype;
-use rand::{random, Rng};
-use regex::Regex;
-use sha2::{Digest, Sha256};
 use crate::config;
 use crate::errors::auth::AuthError;
 use crate::errors::error::Error;
 use crate::utils::serde::{Deserialize, Serialize};
+use lettre::message::MultiPart;
+use lettre::Message;
+use mongodb::bson::spec::BinarySubtype;
+use mongodb::bson::{doc, Binary, Bson, DateTime, Document, Uuid, UuidRepresentation};
+use rand::{random, Rng};
+use regex::Regex;
+use sha2::{Digest, Sha256};
 
 /// User account registration fields.
 #[derive(Clone)]
@@ -27,11 +27,11 @@ pub enum LogInField {
 }
 
 /// User roles.
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub enum Role {
     Admin,
     #[default]
-    User
+    User,
 }
 
 impl Into<i32> for Role {
@@ -47,7 +47,7 @@ impl From<i32> for Role {
     fn from(value: i32) -> Self {
         match value {
             0 => Role::Admin,
-            _ => Role::User
+            _ => Role::User,
         }
     }
 }
@@ -106,14 +106,12 @@ impl User {
     }
 
     /// Sets the username of the [user](User).
-    pub fn set_username(&mut self, username: impl Into<String>)
-    {
+    pub fn set_username(&mut self, username: impl Into<String>) {
         self.username = username.into();
     }
 
     /// Sets the tag of the [user](User).
-    pub fn set_user_tag(&mut self, user_tag: impl Into<String>)
-    {
+    pub fn set_user_tag(&mut self, user_tag: impl Into<String>) {
         self.user_tag = user_tag.into();
     }
 
@@ -125,7 +123,9 @@ impl User {
     /// Generates a registration code.
     pub fn gen_register_code() -> String {
         let mut rng = rand::thread_rng();
-        (0..6).map(|_| rng.gen_range(0..=9).to_string()).collect::<String>()
+        (0..6)
+            .map(|_| rng.gen_range(0..=9).to_string())
+            .collect::<String>()
     }
 
     /// Generates a random authentication token.
@@ -140,7 +140,7 @@ impl User {
             Binary {
                 bytes: Vec::from(hash.iter().as_slice()),
                 subtype: BinarySubtype::Generic,
-            }
+            },
         )
     }
 
@@ -193,7 +193,11 @@ impl User {
 
     /// Checks the provided credentials in the registration form; if there is an issue, then it will return the error;
     /// otherwise, it will return [None].
-    pub fn check_credentials(username: &String, email: &String, password: &String) -> Option<Error> {
+    pub fn check_credentials(
+        username: &String,
+        email: &String,
+        password: &String,
+    ) -> Option<Error> {
         let email_good = Self::check_email(email);
         let username_good = Self::check_username(username);
         let password_good = Self::check_password(password);
@@ -222,8 +226,8 @@ impl User {
 
 impl Deserialize<Document> for User {
     fn deserialize(document: &Document) -> Self
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         let mut user: User = User::default();
 
@@ -344,20 +348,28 @@ impl RegisterForm {
     }
 
     /// Generates a code verification email.
-    pub fn gen_register_email(&self) -> Message
-    {
+    pub fn gen_register_email(&self) -> Message {
         Message::builder()
-            .from(format!("Chartsy <{}>", config::email_address()).parse().unwrap())
-            .to(format!(
-                "{} <{}>",
-                self.username,
-                self.email
-            ).parse().unwrap())
+            .from(
+                format!("Chartsy <{}>", config::email_address())
+                    .parse()
+                    .unwrap(),
+            )
+            .to(format!("{} <{}>", self.username, self.email)
+                .parse()
+                .unwrap())
             .subject("Code validation for Chartsy account")
             .multipart(MultiPart::alternative_plain_html(
-                String::from(format!("Use the following code to validate your email address:\n{}", self.code)),
-                String::from(format!("<p>Use the following code to validate your email address:</p><h1>{}</h1>", self.code))
-            )).unwrap()
+                String::from(format!(
+                    "Use the following code to validate your email address:\n{}",
+                    self.code
+                )),
+                String::from(format!(
+                    "<p>Use the following code to validate your email address:</p><h1>{}</h1>",
+                    self.code
+                )),
+            ))
+            .unwrap()
     }
 }
 
@@ -386,15 +398,15 @@ impl LogInForm {
     pub fn get_email(&self) -> &String {
         &self.email
     }
-    
+
     pub fn get_password(&self) -> &String {
         &self.password
     }
-    
+
     pub fn get_error(&self) -> &Option<AuthError> {
         &self.error
     }
-    
+
     pub fn set_email(&mut self, email: impl Into<String>) {
         self.email = email.into();
     }
