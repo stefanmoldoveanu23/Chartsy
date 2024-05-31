@@ -334,7 +334,10 @@ impl Canvas {
                     && self.count_saved == self.last_saved
                     && !self.edited_layers
                 {
-                    return Command::none();
+                    return Command::perform(
+                        async { },
+                        |_| CanvasMessage::Saved.into()
+                    );
                 }
 
                 let delete_lower_bound = self.count_saved;

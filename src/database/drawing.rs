@@ -222,13 +222,7 @@ pub async fn update_drawing(
         )
         .await
     {
-        Ok(result) => {
-            if result.modified_count > 0 {
-                Ok(())
-            } else {
-                Err(debug_message!("Drawing with id {} not found!", canvas_id).into())
-            }
-        }
+        Ok(_) => Ok(()),
         Err(err) => Err(debug_message!("{}", err).into()),
     }
 }

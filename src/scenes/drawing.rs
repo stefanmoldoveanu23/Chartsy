@@ -6,6 +6,7 @@ use std::io::Write;
 
 use crate::canvas::canvas::Canvas;
 use crate::canvas::svg::SVG;
+use crate::widgets::wait_panel::WaitPanel;
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::image::Handle;
 use iced::widget::scrollable::{Direction, Properties};
@@ -415,7 +416,24 @@ impl Scene for Drawing {
 
     fn update(&mut self, globals: &mut Globals, message: &Self::Message) -> Command<Message> {
         match message {
-            DrawingMessage::CanvasMessage(action) => self.canvas.update(globals, action.clone()),
+            DrawingMessage::CanvasMessage(action) => {
+                let mut commands = vec![];
+
+                match action {
+                    CanvasMessage::Save | CanvasMessage::Saved =>
+                        commands.push(self.update(
+                            globals,
+                            &DrawingMessage::ToggleModal(ModalTypes::WaitScreen(String::from(
+                                "Saving...\nDo not close the program...",
+                            ))),
+                        )),
+                    _ => { }
+                }
+
+                commands.push(self.canvas.update(globals, action.clone()));
+
+                Command::batch(commands)
+            }
             DrawingMessage::UpdatePostData(update) => {
                 self.post_data.update(update.clone());
                 Command::none()
@@ -548,6 +566,7 @@ impl Scene for Drawing {
                             Command::none()
                         }
                     }
+                    _ => Command::none(),
                 }
             }
             DrawingMessage::ErrorHandler(_) => Command::none(),
@@ -994,6 +1013,7 @@ impl Scene for Drawing {
                 .width(Length::Shrink)
                 .height(Length::Shrink)
                 .into(),
+                ModalTypes::WaitScreen(message) => WaitPanel::new(message).into(),
             }
         };
 

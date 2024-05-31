@@ -1,13 +1,41 @@
+use crate::utils::serde::{Deserialize, Serialize};
+use mongodb::bson::{doc, Document};
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
-use mongodb::bson::{doc, Document};
-use crate::utils::serde::{Deserialize, Serialize};
 
 /// The types of the modals that can be opened.
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq)]
 pub enum ModalTypes {
     /// A prompt where the user can write data for a post they are creating.
-    PostPrompt
+    PostPrompt,
+
+    /// A screen that blocks user interaction.
+    WaitScreen(String),
+}
+
+impl ModalTypes {
+    pub fn is_post_prompt(&self) -> bool {
+        match self {
+            Self::PostPrompt => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_wait_screen(&self) -> bool {
+        match self {
+            Self::WaitScreen(_) => true,
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq for ModalTypes {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            Self::PostPrompt => other.is_post_prompt(),
+            Self::WaitScreen(_) => other.is_wait_screen(),
+        }
+    }
 }
 
 /// Data for a post tag.
@@ -23,11 +51,16 @@ pub struct Tag {
 impl Tag {
     /// Reduces the name of a new tag to a base tag form.
     pub fn reduced(mut self) -> Self {
-        self.name = self.name.to_ascii_lowercase().split_whitespace().collect::<Vec<&str>>().join(" ");
+        self.name = self
+            .name
+            .to_ascii_lowercase()
+            .split_whitespace()
+            .collect::<Vec<&str>>()
+            .join(" ");
 
         self
     }
-    
+
     pub fn get_name(&self) -> &String {
         &self.name
     }
@@ -39,7 +72,7 @@ impl PartialEq for Tag {
     }
 }
 
-impl Eq for Tag { }
+impl Eq for Tag {}
 
 impl Hash for Tag {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -63,8 +96,14 @@ impl Serialize<Document> for Tag {
 }
 
 impl Deserialize<Document> for Tag {
-    fn deserialize(document: &Document) -> Self where Self: Sized {
-        let mut tag = Tag { name: "".into(), uses: 0 };
+    fn deserialize(document: &Document) -> Self
+    where
+        Self: Sized,
+    {
+        let mut tag = Tag {
+            name: "".into(),
+            uses: 0,
+        };
 
         if let Ok(name) = document.get_str("name") {
             tag.name = name.into();
@@ -112,13 +151,23 @@ impl PostData {
             UpdatePostData::NewTag(name) => {
                 let tag = Tag { name, uses: 0 }.reduced();
 
-                if self.post_tags.iter().find(|pos_tag| **pos_tag == tag).is_none() {
+                if self
+                    .post_tags
+                    .iter()
+                    .find(|pos_tag| **pos_tag == tag)
+                    .is_none()
+                {
                     self.post_tags.push(tag.clone());
                 }
                 self.tag_input = "".into();
             }
             UpdatePostData::SelectedTag(tag) => {
-                if self.post_tags.iter().find(|pos_tag| **pos_tag == tag).is_none() {
+                if self
+                    .post_tags
+                    .iter()
+                    .find(|pos_tag| **pos_tag == tag)
+                    .is_none()
+                {
                     self.post_tags.push(tag);
                 }
                 self.tag_input = "".into();
@@ -127,38 +176,38 @@ impl PostData {
             UpdatePostData::TagInput(tag_input) => self.tag_input = tag_input,
             UpdatePostData::RemoveTag(index) => {
                 self.post_tags.remove(index);
-            },
+            }
         }
     }
-    
+
     pub fn get_description(&self) -> &String {
         &self.description
     }
-    
+
     pub fn get_post_tags(&self) -> &Vec<Tag> {
         &self.post_tags
     }
-    
+
     pub fn get_all_tags(&self) -> &Vec<Tag> {
         &self.all_tags
     }
-    
+
     pub fn get_tag_input(&self) -> &String {
         &self.tag_input
     }
-    
+
     pub fn no_tags(&self) -> bool {
         self.all_tags.is_empty()
     }
-    
+
     pub fn set_description(&mut self, description: impl Into<String>) {
         self.description = description.into();
     }
-    
+
     pub fn set_post_tags(&mut self, post_tags: impl Into<Vec<Tag>>) {
         self.post_tags = post_tags.into();
     }
-    
+
     pub fn set_tag_input(&mut self, tag_input: impl Into<String>) {
         self.tag_input = tag_input.into();
     }
