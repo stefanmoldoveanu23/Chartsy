@@ -237,11 +237,7 @@ impl Scene for Settings {
                     Command::none()
                 } else {
                     let tag = self.user_tag_input.clone();
-                    globals
-                        .get_user_mut()
-                        .as_mut()
-                        .unwrap()
-                        .set_user_tag(tag.clone());
+                    globals.get_user_mut().unwrap().set_user_tag(tag.clone());
                     let globals = globals.clone();
 
                     Command::perform(
@@ -316,7 +312,8 @@ impl Scene for Settings {
                             if fs::metadata(file.path())
                                 .map_err(|err| debug_message!("{}", err).into())?
                                 .len()
-                                > 5000000 {
+                                > 5000000
+                            {
                                 Err(Error::AuthError(AuthError::ProfilePictureTooLarge))
                             } else {
                                 Ok(file.read().await)

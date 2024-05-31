@@ -420,14 +420,13 @@ impl Scene for Drawing {
                 let mut commands = vec![];
 
                 match action {
-                    CanvasMessage::Save | CanvasMessage::Saved =>
-                        commands.push(self.update(
-                            globals,
-                            &DrawingMessage::ToggleModal(ModalTypes::WaitScreen(String::from(
-                                "Saving...\nDo not close the program...",
-                            ))),
-                        )),
-                    _ => { }
+                    CanvasMessage::Save | CanvasMessage::Saved => commands.push(self.update(
+                        globals,
+                        &DrawingMessage::ToggleModal(ModalTypes::WaitScreen(String::from(
+                            "Saving...",
+                        ))),
+                    )),
+                    _ => {}
                 }
 
                 commands.push(self.canvas.update(globals, action.clone()));
@@ -455,31 +454,43 @@ impl Scene for Drawing {
                 self.post_data.set_description("");
                 self.post_data.set_tag_input("");
 
-                Command::perform(
-                    async move {
-                        let img = encode_svg(document, "webp").await?;
-                        let post_id = Uuid::new();
+                let close_modal_command = self.update(globals, &DrawingMessage::ToggleModal(ModalTypes::PostPrompt));
+                let wait_modal_command = self.update(
+                    globals,
+                    &DrawingMessage::ToggleModal(ModalTypes::WaitScreen(String::from(
+                        "Posting drawing...",
+                    ))),
+                );
 
-                        match database::base::upload_file(
-                            format!("/{}/{}.webp", user_id, post_id),
-                            img,
-                        )
-                        .await
-                        {
-                            Ok(()) => {}
-                            Err(err) => {
-                                return Err(err);
-                            }
-                        }
+                Command::batch(vec![
+                    close_modal_command,
+                    wait_modal_command,
+                    Command::perform(
+                        async move {
+                            let img = encode_svg(document, "webp").await?;
+                            let post_id = Uuid::new();
 
-                        database::drawing::create_post(&db, post_id, user_id, description, tags)
+                            match database::base::upload_file(
+                                format!("/{}/{}.webp", user_id, post_id),
+                                img,
+                            )
                             .await
-                    },
-                    |res| match res {
-                        Ok(_) => DrawingMessage::ToggleModal(ModalTypes::PostPrompt).into(),
-                        Err(err) => Message::Error(err),
-                    },
-                )
+                            {
+                                Ok(()) => {}
+                                Err(err) => {
+                                    return Err(err);
+                                }
+                            }
+
+                            database::drawing::create_post(&db, post_id, user_id, description, tags)
+                                .await
+                        },
+                        |res| match res {
+                            Ok(_) => DrawingMessage::ToggleModal(ModalTypes::WaitScreen(String::from(""))).into(),
+                            Err(err) => Message::Error(err),
+                        },
+                    ),
+                ])
             }
             DrawingMessage::SaveAs => {
                 let document = self.canvas.get_svg().as_document();
