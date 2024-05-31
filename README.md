@@ -6,6 +6,7 @@
 - Handle all cases of accessing deleted user data(comments)
 - App icon
 - As time constraints may allow
+    - restructure into services
     - take into consideration loss of connection
     - more tooling functionality
     - translate+scale drawing

@@ -454,7 +454,10 @@ impl Scene for Drawing {
                 self.post_data.set_description("");
                 self.post_data.set_tag_input("");
 
-                let close_modal_command = self.update(globals, &DrawingMessage::ToggleModal(ModalTypes::PostPrompt));
+                let close_modal_command = self.update(
+                    globals,
+                    &DrawingMessage::ToggleModal(ModalTypes::PostPrompt),
+                );
                 let wait_modal_command = self.update(
                     globals,
                     &DrawingMessage::ToggleModal(ModalTypes::WaitScreen(String::from(
@@ -486,7 +489,10 @@ impl Scene for Drawing {
                                 .await
                         },
                         |res| match res {
-                            Ok(_) => DrawingMessage::ToggleModal(ModalTypes::WaitScreen(String::from(""))).into(),
+                            Ok(_) => DrawingMessage::ToggleModal(ModalTypes::WaitScreen(
+                                String::from(""),
+                            ))
+                            .into(),
                             Err(err) => Message::Error(err),
                         },
                     ),
@@ -535,23 +541,33 @@ impl Scene for Drawing {
                 ])
             }
             DrawingMessage::DeleteDrawing => {
+                let modal_command = self.update(
+                    globals,
+                    &DrawingMessage::ToggleModal(ModalTypes::WaitScreen(String::from(
+                        "Deleting drawing...",
+                    ))),
+                );
+
                 let is_offline = self.canvas.is_offline();
                 let id = *self.canvas.get_id();
                 let globals = globals.clone();
 
-                Command::perform(
-                    async move {
-                        if is_offline {
-                            services::drawings::delete_drawing_offline(id).await
-                        } else {
-                            services::drawings::delete_drawing_online(id, &globals).await
-                        }
-                    },
-                    |result| match result {
-                        Ok(_) => Message::ChangeScene(Scenes::Main(None)),
-                        Err(err) => Message::Error(err),
-                    },
-                )
+                Command::batch(vec![
+                    modal_command,
+                    Command::perform(
+                        async move {
+                            if is_offline {
+                                services::drawings::delete_drawing_offline(id).await
+                            } else {
+                                services::drawings::delete_drawing_online(id, &globals).await
+                            }
+                        },
+                        |result| match result {
+                            Ok(_) => Message::ChangeScene(Scenes::Main(None)),
+                            Err(err) => Message::Error(err),
+                        },
+                    ),
+                ])
             }
             DrawingMessage::ToggleModal(modal) => {
                 self.modal_stack.toggle_modal(modal.clone());
