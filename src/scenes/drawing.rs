@@ -606,22 +606,13 @@ impl Scene for Drawing {
         let tool_button =
             |name, pending: Box<dyn Pending>| -> Element<'a, Message, Theme, Renderer> {
                 let style = if current_tool == pending.id() {
-                    theme::button::Button::SelectedLayer
+                    iced::widget::button::primary
                 } else {
-                    theme::button::Button::UnselectedLayer
-                };
-                let text_style = if current_tool == pending.id() {
-                    theme::text::Text::Dark
-                } else {
-                    theme::text::Text::Light
+                    iced::widget::button::secondary
                 };
 
                 Button::<Message, Theme, Renderer>::new(
-                    Text::new(name)
-                        .font(ICON)
-                        .line_height(1.0)
-                        .size(25.0)
-                        .style(text_style),
+                    Text::new(name).font(ICON).line_height(1.0).size(25.0), //.style(text_style),
                 )
                 .style(style)
                 .on_press(CanvasMessage::ChangeTool(pending).into())
@@ -700,7 +691,7 @@ impl Scene for Drawing {
         ))
         .padding(2.0)
         .width(Length::Fill)
-        .style(theme::container::Container::Bordered)
+        .style(iced::widget::container::bordered_box)
         .height(Length::FillPortion(1));
 
         let style_section = Container::new(Scrollable::new(
@@ -711,7 +702,7 @@ impl Scene for Drawing {
         ))
         .padding(2.0)
         .width(Length::Fill)
-        .style(theme::container::Container::Bordered)
+        .style(iced::widget::container::bordered_box)
         .height(Length::FillPortion(1));
 
         let layers_section = Container::new(Scrollable::new(Column::with_children(vec![
@@ -719,7 +710,7 @@ impl Scene for Drawing {
                 Text::new("Layers").size(20.0).width(Length::Fill).into(),
                 Button::new(Text::new(Icon::Add.to_string()).size(20.0).font(ICON))
                     .padding(0.0)
-                    .style(theme::button::Button::Transparent)
+                    .style(iced::widget::button::text)
                     .on_press(CanvasMessage::AddLayer.into())
                     .into(),
             ])
@@ -732,16 +723,9 @@ impl Scene for Drawing {
                     .iter()
                     .map(|id| {
                         let style = if *id == *self.canvas.get_current_layer() {
-                            theme::button::Button::SelectedLayer
+                            iced::widget::button::primary
                         } else {
-                            theme::button::Button::UnselectedLayer
-                        };
-                        let text_style = || {
-                            if *id == *self.canvas.get_current_layer() {
-                                theme::text::Text::Dark
-                            } else {
-                                theme::text::Text::Light
-                            }
+                            iced::widget::button::secondary
                         };
 
                         let layer = &self.canvas.get_layers().get(id).unwrap();
@@ -762,11 +746,9 @@ impl Scene for Drawing {
                                             .width(Length::Fill)
                                             .into(),
                                         Button::new(
-                                            Text::new(Icon::Edit.to_string())
-                                                .font(ICON)
-                                                .style(text_style()),
+                                            Text::new(Icon::Edit.to_string()).font(ICON), //.style(text_style()),
                                         )
-                                        .style(theme::button::Button::Transparent)
+                                        .style(iced::widget::button::text)
                                         .on_press(CanvasMessage::ToggleEditLayerName(*id).into())
                                         .into(),
                                     ])
@@ -782,19 +764,17 @@ impl Scene for Drawing {
                                         }
                                         .to_string(),
                                     )
-                                    .style(text_style())
+                                    //.style(text_style())
                                     .font(ICON),
                                 )
-                                .style(theme::button::Button::Transparent)
+                                .style(iced::widget::button::text)
                                 .on_press(CanvasMessage::ToggleLayer(*id).into())
                                 .into(),
                                 if layer_count > 1 {
                                     Button::new(
-                                        Text::new(Icon::X.to_string())
-                                            .font(ICON)
-                                            .style(text_style()),
+                                        Text::new(Icon::X.to_string()).font(ICON), //.style(text_style()),
                                     )
-                                    .style(theme::button::Button::Transparent)
+                                    .style(iced::widget::button::text)
                                     .on_press(CanvasMessage::RemoveLayer(*id).into())
                                     .into()
                                 } else {
@@ -816,7 +796,7 @@ impl Scene for Drawing {
         ])))
         .padding(2.0)
         .width(Length::Fill)
-        .style(theme::container::Container::Bordered)
+        .style(iced::widget::container::bordered_box)
         .height(Length::FillPortion(1));
 
         let menu_section = Container::new(
@@ -868,7 +848,7 @@ impl Scene for Drawing {
                     Text::new("Delete")
                         .horizontal_alignment(Horizontal::Center)
                         .width(Length::Fill)
-                        .style(theme::text::Text::Error)
+                        .style(theme::text::danger)
                         .size(20.0),
                 )
                 .on_press(DrawingMessage::DeleteDrawing.into())
@@ -881,7 +861,7 @@ impl Scene for Drawing {
             .align_items(Alignment::Center),
         )
         .padding(10.0)
-        .style(theme::container::Container::Bordered)
+        .style(iced::widget::container::bordered_box)
         .align_x(Horizontal::Center)
         .align_y(Vertical::Center)
         .width(Length::Fill)
@@ -891,7 +871,7 @@ impl Scene for Drawing {
             Row::with_children(vec![
                 Button::new(Text::new(Icon::Leave.to_string()).font(ICON).size(30.0))
                     .padding(0.0)
-                    .style(theme::button::Button::Transparent)
+                    .style(iced::widget::button::text)
                     .on_press(Message::ChangeScene(Scenes::Main(None)))
                     .into(),
                 if let Some(new_name) = self.canvas.get_new_name() {
@@ -908,7 +888,7 @@ impl Scene for Drawing {
                 } else {
                     Button::new(Text::new(Icon::Edit.to_string()).font(ICON).size(30.0))
                         .padding(0.0)
-                        .style(theme::button::Button::Transparent)
+                        .style(iced::widget::button::text)
                         .on_press(CanvasMessage::ToggleEditName.into())
                         .into()
                 },
@@ -921,16 +901,15 @@ impl Scene for Drawing {
                     .width(Length::Fixed(250.0))
                     .height(Length::Fill)
                     .into(),
-                Container::new::<Scrollable<Message, Theme, Renderer>>(
-                    Scrollable::new(&self.canvas).direction(Direction::Both {
+                Container::new(Scrollable::with_direction(
+                    &self.canvas,
+                    Direction::Both {
                         vertical: Properties::default(),
                         horizontal: Properties::default(),
-                    }),
-                )
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .center_x()
-                .center_y()
+                    },
+                ))
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
                 .into(),
                 Column::with_children(vec![layers_section.into(), menu_section.into()])
                     .align_items(Alignment::Center)
@@ -981,7 +960,7 @@ impl Scene for Drawing {
                                         .spacing(5.0)
                                         .align_items(Alignment::Center),
                                     )
-                                    .style(theme::container::Container::Badge(theme::pallete::TEXT))
+                                    .style(theme::container::badge)
                                     .padding(10.0)
                                 },
                             ))
@@ -1009,11 +988,9 @@ impl Scene for Drawing {
                                 })
                                 .into(),
                                 Button::new(
-                                    Image::new(Handle::from_memory(
-                                        fs::read("src/images/add.png").unwrap(),
-                                    ))
-                                    .width(30.0)
-                                    .height(30.0),
+                                    Image::new(Handle::from_path("src/images/add.png"))
+                                        .width(30.0)
+                                        .height(30.0),
                                 )
                                 .on_press(
                                     DrawingMessage::UpdatePostData(UpdatePostData::NewTag(

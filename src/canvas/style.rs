@@ -1,10 +1,10 @@
-use crate::widgets::color_picker::ColorPicker;
 use crate::scene::Message;
 use crate::utils::serde::{Deserialize, Serialize};
 use crate::utils::theme::{self, Theme};
+use crate::widgets::color_picker::ColorPicker;
+use iced::alignment::Horizontal;
 use iced::widget::{Button, Column, Slider, Text};
 use iced::{Color, Command, Element, Length, Renderer};
-use iced::alignment::Horizontal;
 use json::object::Object;
 use json::JsonValue;
 use mongodb::bson::{doc, Bson, Document};
@@ -139,33 +139,33 @@ impl Style {
     pub(crate) fn view<'a>(&self) -> Element<'a, StyleUpdate, Theme, Renderer> {
         let mut column: Vec<Element<'a, StyleUpdate, Theme, Renderer>> = vec![];
 
-        let get_button_style = |condition: bool| -> theme::button::Button {
+        let get_button_style = |condition: bool| {
             if condition {
-                theme::button::Button::SelectedLayer
+                iced::widget::button::primary
             } else {
-                theme::button::Button::UnselectedLayer
+                iced::widget::button::secondary
             }
         };
 
-        let get_text_style = |condition: bool| -> theme::text::Text {
+        /*let get_text_style = |condition: bool| {
             if condition {
                 theme::text::Text::Dark
             } else {
                 theme::text::Text::Light
             }
-        };
+        };*/
 
         if let Some((width, color, visibility_width, visibility_color)) = self.stroke {
             column.push(
                 Button::new(
                     Text::new("Stroke width")
-                        .style(get_text_style(visibility_width))
-                        .horizontal_alignment(Horizontal::Center)
+                        //.style(get_text_style(visibility_width))
+                        .horizontal_alignment(Horizontal::Center),
                 )
-                    .on_press(StyleUpdate::ToggleStrokeWidth)
-                    .style(get_button_style(visibility_width))
-                    .width(Length::Fill)
-                    .into(),
+                .on_press(StyleUpdate::ToggleStrokeWidth)
+                .style(get_button_style(visibility_width))
+                .width(Length::Fill)
+                .into(),
             );
             if visibility_width {
                 column.push(Slider::new(1.0..=5.0, width, StyleUpdate::StrokeWidth).into());
@@ -174,13 +174,13 @@ impl Style {
             column.push(
                 Button::new(
                     Text::new("Stroke color")
-                        .style(get_text_style(visibility_color))
-                        .horizontal_alignment(Horizontal::Center)
+                        //.style(get_text_style(visibility_color))
+                        .horizontal_alignment(Horizontal::Center),
                 )
-                    .on_press(StyleUpdate::ToggleStrokeColor)
-                    .style(get_button_style(visibility_color))
-                    .width(Length::Fill)
-                    .into(),
+                .on_press(StyleUpdate::ToggleStrokeColor)
+                .style(get_button_style(visibility_color))
+                .width(Length::Fill)
+                .into(),
             );
             if visibility_color {
                 let picker = ColorPicker::new(color.r, color.g, color.b, StyleUpdate::StrokeColor);
@@ -192,13 +192,13 @@ impl Style {
             column.push(
                 Button::new(
                     Text::new("Fill")
-                        .style(get_text_style(visibility))
-                        .horizontal_alignment(Horizontal::Center)
+                        //.style(get_text_style(visibility))
+                        .horizontal_alignment(Horizontal::Center),
                 )
-                    .on_press(StyleUpdate::ToggleFill)
-                    .style(get_button_style(visibility))
-                    .width(Length::Fill)
-                    .into()
+                .on_press(StyleUpdate::ToggleFill)
+                .style(get_button_style(visibility))
+                .width(Length::Fill)
+                .into(),
             );
 
             if visibility {

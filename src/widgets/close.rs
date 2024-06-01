@@ -1,16 +1,16 @@
+use crate::utils::icons::{Icon, ICON};
+use crate::utils::theme;
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::Style;
-use iced::advanced::{Clipboard, Layout, Shell, Text, Widget};
 use iced::advanced::widget::Tree;
-use iced::{Element, Event, Length, mouse, Point, Rectangle, Size};
+use iced::advanced::{Clipboard, Layout, Shell, Text, Widget};
 use iced::alignment::{Horizontal, Vertical};
 use iced::event::Status;
 use iced::mouse::{Cursor, Interaction};
-use crate::utils::theme;
-use crate::utils::icons::{Icon, ICON};
+use iced::{mouse, Element, Event, Length, Point, Rectangle, Size};
 
 /// The default size of a close button.
-const DEFAULT_SIZE :f32= 40.0;
+const DEFAULT_SIZE: f32 = 40.0;
 
 /// A [Widget] for a close button. Will be displayed using an [image](Handle). It can be resized.
 pub struct Close<Message>
@@ -19,27 +19,25 @@ where
 {
     /// The size of the button.
     size: f32,
-    
+
     /// The [Message] which will be triggered when the button is pressed.
-    on_trigger: Message
+    on_trigger: Message,
 }
 
 impl<Message> Close<Message>
 where
-    Message: Clone
+    Message: Clone,
 {
     /// Creates a new [Close] instance with the given trigger [Message].
-    pub fn new(on_trigger: impl Into<Message>) -> Self
-    {
+    pub fn new(on_trigger: impl Into<Message>) -> Self {
         Close {
             size: DEFAULT_SIZE,
-            on_trigger: on_trigger.into()
+            on_trigger: on_trigger.into(),
         }
     }
 
     /// Updates the size of the [close button](Close) and resizes the [Handle].
-    pub fn size(mut self, size: impl Into<f32>) -> Self
-    {
+    pub fn size(mut self, size: impl Into<f32>) -> Self {
         self.size = size.into();
         self
     }
@@ -48,13 +46,11 @@ where
 impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Close<Message>
 where
     Message: 'a + Clone,
-    Renderer: 'a + iced::advanced::renderer::Renderer + iced::advanced::text::Renderer<Font=iced::Font>
+    Renderer:
+        'a + iced::advanced::renderer::Renderer + iced::advanced::text::Renderer<Font = iced::Font>,
 {
     fn size(&self) -> Size<Length> {
-        Size::new(
-            Length::Fixed(self.size),
-            Length::Fixed(self.size)
-        )
+        Size::new(Length::Fixed(self.size), Length::Fixed(self.size))
     }
 
     fn layout(&self, _tree: &mut Tree, _renderer: &Renderer, _limits: &Limits) -> Node {
@@ -69,11 +65,11 @@ where
         _style: &Style,
         layout: Layout<'_>,
         _cursor: Cursor,
-        viewport: &Rectangle
+        viewport: &Rectangle,
     ) {
         renderer.fill_text(
             Text {
-                content: &*Icon::X.to_string(),
+                content: Icon::X.to_string(),
                 bounds: layout.bounds().size(),
                 size: self.size.into(),
                 line_height: Default::default(),
@@ -83,8 +79,8 @@ where
                 shaping: Default::default(),
             },
             Point::new(layout.bounds().x, layout.bounds().y - 1.0),
-            theme::pallete::DANGER,
-            *viewport
+            theme::PALETTE.danger,
+            *viewport,
         );
     }
 
@@ -97,7 +93,7 @@ where
         _renderer: &Renderer,
         _clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
-        _viewport: &Rectangle
+        _viewport: &Rectangle,
     ) -> Status {
         let bounds = layout.bounds();
 
@@ -107,7 +103,7 @@ where
                     shell.publish(self.on_trigger.clone());
                     Status::Captured
                 }
-                _ => Status::Ignored
+                _ => Status::Ignored,
             }
         } else {
             Status::Ignored
@@ -115,14 +111,15 @@ where
     }
 
     fn mouse_interaction(
-        &self, _state: &Tree,
+        &self,
+        _state: &Tree,
         layout: Layout<'_>,
         cursor: Cursor,
         _viewport: &Rectangle,
-        _renderer: &Renderer
+        _renderer: &Renderer,
     ) -> Interaction {
         let bounds = layout.bounds();
-        
+
         if cursor.is_over(bounds) {
             Interaction::Pointer
         } else {
@@ -135,7 +132,7 @@ impl<'a, Message, Theme, Renderer> From<Close<Message>> for Element<'a, Message,
 where
     Message: 'a + Clone,
     Theme: 'a,
-    Renderer: 'a + iced::advanced::Renderer + iced::advanced::text::Renderer<Font=iced::Font>
+    Renderer: 'a + iced::advanced::Renderer + iced::advanced::text::Renderer<Font = iced::Font>,
 {
     fn from(value: Close<Message>) -> Self {
         Element::new(value)

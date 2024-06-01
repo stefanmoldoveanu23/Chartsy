@@ -6,14 +6,14 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-iced = { version = "0.12.1", features=["canvas", "advanced", "svg", "image", "tokio"] }
+iced = { git="https://github.com/iced-rs/iced.git", branch="master", features=["canvas", "advanced", "svg", "image", "tokio"] }
 tokio = { version="1.37.0", features=["fs"] }
+bytes = { version="1.6" }
 rand = "0.8.5"
 mongodb = "2.8.2"
 dropbox-sdk = { version="0.18.0", features=["dbx_files", "dbx_users", "default_client"] }
 svg = "0.16.0"
 image = {  version="0.25.1", features = ["webp"] }
-iced_aw = { version= "0.8.0", features=["modal", "card", "tabs", "tab_bar", "badge", "drop_down"] }
 pwhash = "1.0.0"
 directories = "5.0.1"
 lettre = { version="0.11.4", default-features=false, features = ["smtp-transport", "hostname", "builder", "tokio1-rustls-tls"] }

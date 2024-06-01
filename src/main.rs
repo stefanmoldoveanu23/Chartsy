@@ -14,20 +14,22 @@ mod database;
 mod errors;
 mod scene;
 mod scenes;
+mod services;
 mod utils;
 mod widgets;
-mod services;
 
 use errors::error::Error;
+use iced::theme::palette::{self, Background, Danger, Primary, Secondary, Success};
 use lettre::transport::smtp::response::Response;
 use scene::{Globals, Message};
 use scenes::scenes::SceneManager;
-use utils::theme::Theme;
+use utils::theme::SECONDARY;
 
 use crate::widgets::wait_panel::WaitPanel;
 use iced::font::{Family, Stretch, Style, Weight};
 use iced::{
-    executor, window, Application, Command, Element, Font, Renderer, Settings, Subscription,
+    advanced::Application, executor, window, Command, Element, Font, Renderer, Settings,
+    Subscription,
 };
 use lettre::{AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
 
@@ -61,8 +63,9 @@ struct Chartsy {
 impl Application for Chartsy {
     type Executor = executor::Default;
     type Message = Message;
-    type Theme = Theme;
+    type Theme = iced::Theme;
     type Flags = ();
+    type Renderer = iced::Renderer;
 
     fn new(_flags: Self::Flags) -> (Chartsy, Command<Self::Message>) {
         let mut globals = Globals::default();
@@ -187,5 +190,20 @@ impl Application for Chartsy {
 
     fn subscription(&self) -> Subscription<Self::Message> {
         Subscription::none()
+    }
+
+    fn theme(&self) -> Self::Theme {
+        utils::theme::Theme::custom_with_fn(
+            String::from("Chartsy"),
+            utils::theme::PALETTE,
+            |palette| palette::Extended {
+                background: Background::new(palette.background, palette.text),
+                primary: Primary::generate(palette.primary, palette.background, palette.background),
+                secondary: Secondary::generate(SECONDARY, palette.background),
+                success: Success::generate(palette.success, palette.background, palette.text),
+                danger: Danger::generate(palette.danger, palette.background, palette.text),
+                is_dark: true,
+            },
+        )
     }
 }

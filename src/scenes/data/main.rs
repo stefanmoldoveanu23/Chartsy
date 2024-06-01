@@ -9,8 +9,9 @@ pub enum ModalType {
 }
 
 /// The tabs for the drawing list overlay.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
 pub enum MainTabIds {
+    #[default]
     Offline,
     Online,
 }

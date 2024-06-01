@@ -295,7 +295,7 @@ impl Scene for Settings {
                 )
             }
             SettingsMessage::LoadedProfilePicture(data) => {
-                self.profile_picture_input = Handle::from_memory(data.clone());
+                self.profile_picture_input = Handle::from_bytes(data.clone());
 
                 Command::none()
             }
@@ -330,7 +330,7 @@ impl Scene for Settings {
                 },
             ),
             SettingsMessage::SetImage(data) => {
-                self.profile_picture_input = Handle::from_memory(data.clone());
+                self.profile_picture_input = Handle::from_bytes(data.clone());
                 self.modal_stack.toggle_modal(());
 
                 let need_mongo_update = !globals.get_user().unwrap().has_profile_picture();
@@ -442,7 +442,7 @@ impl Scene for Settings {
         let title = Row::with_children(vec![
             Button::new(Text::new(Icon::Leave.to_string()).font(ICON).size(30.0))
                 .padding(0.0)
-                .style(theme::button::Button::Transparent)
+                .style(iced::widget::button::text)
                 .on_press(Message::ChangeScene(Scenes::Main(None)))
                 .into(),
             Text::new(self.get_title()).size(30.0).into(),
@@ -485,7 +485,7 @@ impl Scene for Settings {
                 })
                 .to_string(),
             )
-            .style(theme::text::Text::Error)
+            .style(theme::text::danger)
             .size(15.0)
             .into()
         } else {
@@ -521,7 +521,7 @@ impl Scene for Settings {
         {
             let error = self.input_error.clone();
             Text::new(error.unwrap().to_string())
-                .style(theme::text::Text::Error)
+                .style(theme::text::danger)
                 .size(15.0)
                 .into()
         } else {
@@ -569,7 +569,7 @@ impl Scene for Settings {
                 })
                 .to_string(),
             )
-            .style(theme::text::Text::Error)
+            .style(theme::text::danger)
             .size(15.0)
             .into()
         } else {
@@ -605,7 +605,7 @@ impl Scene for Settings {
             };
 
         let delete_account = Button::new("Delete account")
-            .style(theme::button::Button::Danger)
+            .style(theme::button::danger)
             .on_press(SettingsMessage::DeleteAccount.into())
             .into();
 

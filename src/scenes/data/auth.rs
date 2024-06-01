@@ -420,8 +420,9 @@ impl LogInForm {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Default)]
 pub enum AuthTabIds {
+    #[default]
     Register,
     LogIn,
 }

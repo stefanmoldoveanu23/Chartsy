@@ -1,15 +1,15 @@
-use std::fmt::Display;
+use difflib::sequencematcher::SequenceMatcher;
 use iced::advanced::layout::{Limits, Node};
-use iced::advanced::renderer::{Quad, Style};
-use iced::advanced::{Clipboard, Layout, Overlay, Shell, Widget};
-use iced::advanced::widget::{Operation, Tree};
-use iced::{Border, Color, Event, Length, mouse, Point, Rectangle, Size, Vector};
 use iced::advanced::overlay::Element;
+use iced::advanced::renderer::{Quad, Style};
+use iced::advanced::widget::{Operation, Tree};
+use iced::advanced::{Clipboard, Layout, Overlay, Shell, Widget};
 use iced::event::Status;
 use iced::mouse::{Cursor, Interaction};
-use iced::widget::{Column, Text, TextInput};
-use difflib::sequencematcher::SequenceMatcher;
 use iced::widget::text_input::State;
+use iced::widget::{Column, Text, TextInput};
+use iced::{mouse, Border, Color, Event, Length, Point, Rectangle, Size, Vector};
+use std::fmt::Display;
 
 /// A widget where the user can input text and is offered choices from a given list of options
 ///that are similar to that input.
@@ -18,7 +18,7 @@ where
     Tag: 'a + Clone + Display,
     Message: 'a + Clone,
     Renderer: 'a + iced::advanced::Renderer + iced::advanced::text::Renderer,
-    Theme: 'a + iced::widget::text_input::StyleSheet + iced::widget::text::StyleSheet
+    Theme: 'a + iced::widget::text_input::Catalog + iced::widget::text::Catalog,
 {
     /// The list of options the user can choose from.
     tags: Vec<Tag>,
@@ -41,56 +41,62 @@ where
     Tag: 'a + Clone + Display,
     Message: 'a + Clone,
     Renderer: 'a + iced::advanced::Renderer + iced::advanced::text::Renderer,
-    Theme: 'a + iced::widget::text_input::StyleSheet + iced::widget::text::StyleSheet
+    Theme: 'a + iced::widget::text_input::Catalog + iced::widget::text::Catalog,
 {
     /// Creates a new combo box.
-    pub fn new(tags: impl IntoIterator<Item=Tag>, placeholder: &'a str, value: &'a str, on_selected: fn(Tag) -> Message) -> Self
-    {
-        let filtered_tags :Vec<Tag>= filter_tags(tags.into_iter().collect(), value, 10);
+    pub fn new(
+        tags: impl IntoIterator<Item = Tag>,
+        placeholder: &'a str,
+        value: &'a str,
+        on_selected: fn(Tag) -> Message,
+    ) -> Self {
+        let filtered_tags: Vec<Tag> = filter_tags(tags.into_iter().collect(), value, 10);
 
         ComboBox {
             tags: filtered_tags.clone(),
             text_input: TextInput::new(placeholder, value),
             column: Column::with_children(
-                filtered_tags.iter().map(|tag| Text::new(tag.to_string()).into())
-                    .collect::<Vec<iced::Element<'a, Message, Theme, Renderer>>>()
+                filtered_tags
+                    .iter()
+                    .map(|tag| Text::new(tag.to_string()).into())
+                    .collect::<Vec<iced::Element<'a, Message, Theme, Renderer>>>(),
             )
-                .padding(1.0),
+            .padding(1.0),
             on_selected,
             tag_hovered: None,
         }
     }
 
     /// Sets the event for when the user writes.
-    pub fn on_input(mut self, on_input: fn(String) -> Message) -> Self
-    {
+    pub fn on_input(mut self, on_input: fn(String) -> Message) -> Self {
         self.text_input = self.text_input.on_input(on_input);
 
         self
     }
 
     /// Sets the width of the [ComboBox].
-    pub fn width(mut self, width: impl Into<Length>) -> Self
-    {
+    pub fn width(mut self, width: impl Into<Length>) -> Self {
         self.text_input = self.text_input.width(width);
 
         self
     }
 }
 
-impl<'a, Tag, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for ComboBox<'a, Tag, Message, Theme, Renderer>
+impl<'a, Tag, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
+    for ComboBox<'a, Tag, Message, Theme, Renderer>
 where
     Tag: 'a + Clone + Display,
     Message: 'a + Clone,
     Renderer: 'a + iced::advanced::Renderer + iced::advanced::text::Renderer,
-    Theme: 'a + iced::widget::text_input::StyleSheet + iced::widget::text::StyleSheet
+    Theme: 'a + iced::widget::text_input::Catalog + iced::widget::text::Catalog,
 {
     fn size(&self) -> Size<Length> {
         (&self.text_input as &dyn Widget<Message, Theme, Renderer>).size()
     }
 
     fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
-        self.text_input.layout(&mut tree.children[0], renderer, limits, None)
+        self.text_input
+            .layout(&mut tree.children[0], renderer, limits, None)
     }
 
     fn draw(
@@ -101,7 +107,7 @@ where
         style: &Style,
         layout: Layout<'_>,
         cursor: Cursor,
-        viewport: &Rectangle
+        viewport: &Rectangle,
     ) {
         (&self.text_input as &dyn Widget<Message, Theme, Renderer>).draw(
             &state.children[0],
@@ -110,21 +116,21 @@ where
             style,
             layout,
             cursor,
-            viewport
+            viewport,
         );
     }
 
     fn children(&self) -> Vec<Tree> {
         vec![
             Tree::new(&self.text_input as &dyn Widget<Message, Theme, Renderer>),
-            Tree::new(&self.column as &dyn Widget<Message, Theme, Renderer>)
+            Tree::new(&self.column as &dyn Widget<Message, Theme, Renderer>),
         ]
     }
 
     fn diff(&self, tree: &mut Tree) {
         tree.diff_children(&[
             &self.text_input as &dyn Widget<Message, Theme, Renderer>,
-            &self.column as &dyn Widget<Message, Theme, Renderer>
+            &self.column as &dyn Widget<Message, Theme, Renderer>,
         ]);
     }
 
@@ -133,14 +139,10 @@ where
         state: &mut Tree,
         layout: Layout<'_>,
         renderer: &Renderer,
-        operation: &mut dyn Operation<Message>
+        operation: &mut dyn Operation<Message>,
     ) {
-        self.text_input.operate(
-            &mut state.children[0],
-            layout,
-            renderer,
-            operation
-        );
+        self.text_input
+            .operate(&mut state.children[0], layout, renderer, operation);
     }
 
     fn on_event(
@@ -152,7 +154,7 @@ where
         renderer: &Renderer,
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
-        viewport: &Rectangle
+        viewport: &Rectangle,
     ) -> Status {
         self.text_input.on_event(
             &mut state.children[0],
@@ -162,7 +164,7 @@ where
             renderer,
             clipboard,
             shell,
-            viewport
+            viewport,
         )
     }
 
@@ -172,15 +174,10 @@ where
         layout: Layout<'_>,
         cursor: Cursor,
         viewport: &Rectangle,
-        renderer: &Renderer
+        renderer: &Renderer,
     ) -> Interaction {
-        self.text_input.mouse_interaction(
-            &state.children[0],
-            layout,
-            cursor,
-            viewport,
-            renderer
-        )
+        self.text_input
+            .mouse_interaction(&state.children[0], layout, cursor, viewport, renderer)
     }
 
     fn overlay<'b>(
@@ -192,46 +189,47 @@ where
     ) -> Option<Element<'b, Message, Theme, Renderer>> {
         let mut children = state.children.iter_mut();
         let state_input = children.next().expect("Need to have text input child.");
-        let is_focused = state_input.state.downcast_ref::<State<Renderer::Paragraph>>().is_focused();
-        let text_input_overlay = self.text_input.overlay(
-            state_input,
-            layout,
-            renderer,
-            translation
-        );
+        let is_focused = state_input
+            .state
+            .downcast_ref::<State<Renderer::Paragraph>>()
+            .is_focused();
+        let text_input_overlay =
+            self.text_input
+                .overlay(state_input, layout, renderer, translation);
 
         if self.tags.len() > 0 && is_focused {
             let bounds = layout.bounds();
             let column = Column::<Message, Theme, Renderer>::with_children(
-                self.tags.iter().map(|tag| Text::new(tag.to_string()).into())
-                    .collect::<Vec<iced::Element<'a, Message, Theme, Renderer>>>()
+                self.tags
+                    .iter()
+                    .map(|tag| Text::new(tag.to_string()).into())
+                    .collect::<Vec<iced::Element<'a, Message, Theme, Renderer>>>(),
             )
-                .width(Length::Fixed(bounds.width));
+            .width(Length::Fixed(bounds.width));
             self.column = column;
-            
+
             let state = children.next().expect("Need to have menu child.");
             self.column.diff(state);
-            
-            let menu_overlay = Element::new(
-                Box::new(Menu::new(
-                    state,
-                    &mut self.column,
-                    &mut self.tags,
-                    self.on_selected,
-                    Vector::new(bounds.x + translation.x, bounds.y + translation.y + bounds.height),
-                    &mut self.tag_hovered
-                ))
-            );
-            
+
+            let menu_overlay = Element::new(Box::new(Menu::new(
+                state,
+                &mut self.column,
+                &mut self.tags,
+                self.on_selected,
+                Vector::new(
+                    bounds.x + translation.x,
+                    bounds.y + translation.y + bounds.height,
+                ),
+                &mut self.tag_hovered,
+            )));
+
             if let Some(element) = text_input_overlay {
-                Some(iced::advanced::overlay::Group::with_children(vec![
-                    element,
-                    menu_overlay
-                ]).overlay())
+                Some(
+                    iced::advanced::overlay::Group::with_children(vec![element, menu_overlay])
+                        .overlay(),
+                )
             } else {
-                Some(iced::advanced::overlay::Group::with_children(vec![
-                    menu_overlay
-                ]).overlay())
+                Some(iced::advanced::overlay::Group::with_children(vec![menu_overlay]).overlay())
             }
         } else {
             text_input_overlay
@@ -239,12 +237,13 @@ where
     }
 }
 
-impl<'a, Tag, Message, Theme, Renderer> From<ComboBox<'a, Tag, Message, Theme, Renderer>> for iced::Element<'a, Message, Theme, Renderer>
+impl<'a, Tag, Message, Theme, Renderer> From<ComboBox<'a, Tag, Message, Theme, Renderer>>
+    for iced::Element<'a, Message, Theme, Renderer>
 where
     Tag: 'a + Clone + Display,
     Message: 'a + Clone,
     Renderer: 'a + iced::advanced::Renderer + iced::advanced::text::Renderer,
-    Theme: 'a + iced::widget::text_input::StyleSheet + iced::widget::text::StyleSheet
+    Theme: 'a + iced::widget::text_input::Catalog + iced::widget::text::Catalog,
 {
     fn from(value: ComboBox<'a, Tag, Message, Theme, Renderer>) -> Self {
         iced::Element::new(value)
@@ -281,7 +280,7 @@ impl<'a, 'b, Tag, Message, Theme, Renderer> Menu<'a, 'b, Tag, Message, Theme, Re
 where
     Tag: 'a + Clone + Display,
     Message: 'a + Clone,
-    Renderer: 'a + iced::advanced::Renderer
+    Renderer: 'a + iced::advanced::Renderer,
 {
     /// Creates a new [Menu].
     fn new(
@@ -303,17 +302,14 @@ where
     }
 }
 
-impl<'a, 'b, Tag, Message, Theme, Renderer> Overlay<Message, Theme, Renderer> for Menu<'a, 'b, Tag, Message, Theme, Renderer>
+impl<'a, 'b, Tag, Message, Theme, Renderer> Overlay<Message, Theme, Renderer>
+    for Menu<'a, 'b, Tag, Message, Theme, Renderer>
 where
     Tag: 'a + Clone + Display,
     Message: 'a + Clone,
     Renderer: 'a + iced::advanced::Renderer,
 {
-    fn layout(
-        &mut self,
-        renderer: &Renderer,
-        bounds: Size,
-    ) -> Node {
+    fn layout(&mut self, renderer: &Renderer, bounds: Size) -> Node {
         let limits = Limits::new(Size::ZERO, bounds);
 
         let mut node = self.column.layout(self.state, renderer, &limits);
@@ -328,13 +324,13 @@ where
         theme: &Theme,
         style: &Style,
         layout: Layout<'_>,
-        cursor: Cursor
+        cursor: Cursor,
     ) {
         let bounds = layout.bounds();
         let width = bounds.width;
 
         let children = layout.children();
-        let mut index :usize= 0;
+        let mut index: usize = 0;
         for node in children {
             let mut bounds = node.bounds();
             bounds.width = width;
@@ -355,7 +351,7 @@ where
                     border: Default::default(),
                     shadow: Default::default(),
                 },
-                color
+                color,
             );
 
             index += 1;
@@ -367,11 +363,11 @@ where
                 border: Border {
                     color: Color::BLACK,
                     width: 1.0,
-                    radius: Default::default()
+                    radius: Default::default(),
                 },
                 shadow: Default::default(),
             },
-            Color::TRANSPARENT
+            Color::TRANSPARENT,
         );
 
         self.column.draw(
@@ -381,7 +377,7 @@ where
             style,
             layout,
             cursor,
-            &layout.bounds()
+            &layout.bounds(),
         );
     }
 
@@ -389,14 +385,9 @@ where
         &mut self,
         layout: Layout<'_>,
         renderer: &Renderer,
-        operation: &mut dyn Operation<Message>
+        operation: &mut dyn Operation<Message>,
     ) {
-        self.column.operate(
-            self.state,
-            layout,
-            renderer,
-            operation
-        );
+        self.column.operate(self.state, layout, renderer, operation);
     }
 
     fn on_event(
@@ -406,13 +397,13 @@ where
         cursor: Cursor,
         _renderer: &Renderer,
         _clipboard: &mut dyn Clipboard,
-        shell: &mut Shell<'_, Message>
+        shell: &mut Shell<'_, Message>,
     ) -> Status {
         let width = layout.bounds().width;
 
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
-                let mut index :usize= 0;
+                let mut index: usize = 0;
                 let children = layout.children();
 
                 for node in children {
@@ -430,7 +421,7 @@ where
                 Status::Ignored
             }
             Event::Mouse(mouse::Event::CursorMoved { .. }) => {
-                let mut index :usize= 0;
+                let mut index: usize = 0;
                 let children = layout.children();
 
                 for node in children {
@@ -457,7 +448,7 @@ where
                 *self.tag_hovered = None;
                 Status::Ignored
             }
-            _ => Status::Ignored
+            _ => Status::Ignored,
         }
     }
 
@@ -466,7 +457,7 @@ where
         layout: Layout<'_>,
         cursor: Cursor,
         _viewport: &Rectangle,
-        _renderer: &Renderer
+        _renderer: &Renderer,
     ) -> Interaction {
         let bounds = layout.bounds();
 
@@ -481,10 +472,10 @@ where
 /// Filters the given list of tags and returns only the ones similar to the user input.
 fn filter_tags<Tag>(tags: Vec<Tag>, user_input: &str, count: usize) -> Vec<Tag>
 where
-    Tag: Clone + Display
+    Tag: Clone + Display,
 {
-    let mut scores :Vec<f64>= vec![];
-    let mut filtered :Vec<usize>= vec![];
+    let mut scores: Vec<f64> = vec![];
+    let mut filtered: Vec<usize> = vec![];
     let user_input = user_input.to_lowercase();
     let user_words = user_input.split(" ");
 
@@ -492,7 +483,7 @@ where
         let mut i = i;
         let tag_name = tag.to_string().to_lowercase();
         let tag_words = tag_name.split(" ");
-        let mut total_score :f64= 0.0;
+        let mut total_score: f64 = 0.0;
 
         for (user_word, tag_word) in user_words.clone().zip(tag_words) {
             let mut matcher = SequenceMatcher::new(user_word, tag_word);
@@ -518,6 +509,6 @@ where
             }
         }
     }
-    
+
     filtered.iter().map(|pos| tags[*pos].clone()).collect()
 }

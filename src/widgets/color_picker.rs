@@ -1,16 +1,19 @@
-use std::f32::consts::PI;
-use iced::{Alignment, Background, Color, Element, Event, Gradient, Length, mouse, Padding, Point, Rectangle, Size};
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::{Quad, Style};
-use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::advanced::widget::Tree;
+use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::event::Status;
 use iced::gradient::Linear;
 use iced::mouse::{Button, Cursor, Interaction};
 use iced::widget::{Column, Row, Text, TextInput};
+use iced::{
+    mouse, Alignment, Background, Color, Element, Event, Gradient, Length, Padding, Point,
+    Rectangle, Size,
+};
+use std::f32::consts::PI;
 
 /// The default padding of the [ColorPicker].
-const DEFAULT_PADDING :f32= 8.0;
+const DEFAULT_PADDING: f32 = 8.0;
 
 /// A widget where the user can select any color.
 ///
@@ -21,7 +24,7 @@ const DEFAULT_PADDING :f32= 8.0;
 /// - Text inputs for each color at the bottom.
 pub struct ColorPicker<Message>
 where
-    Message: Clone
+    Message: Clone,
 {
     /// The R component of the [ColorPicker].
     red: f32,
@@ -56,7 +59,7 @@ where
 
 impl<Message> ColorPicker<Message>
 where
-    Message: Clone
+    Message: Clone,
 {
     /// Initializes a [ColorPicker] with colors and an update function.
     pub fn new(red: f32, green: f32, blue: f32, on_update: fn(Color) -> Message) -> Self {
@@ -70,7 +73,7 @@ where
             height: Length::Shrink,
             padding: DEFAULT_PADDING.into(),
             spacing: DEFAULT_PADDING,
-            on_update
+            on_update,
         }
     }
 
@@ -80,35 +83,35 @@ where
             (red as f32) / 255.0,
             (green as f32) / 255.0,
             (blue as f32) / 255.0,
-            on_update
+            on_update,
         )
     }
-    
+
     /// Sets the width of the [ColorPicker].
     pub fn width(mut self, width: impl Into<Length>) -> Self {
         self.width = width.into();
-        
+
         self
     }
-    
+
     /// Sets the height of the [ColorPicker].
     pub fn height(mut self, height: impl Into<Length>) -> Self {
         self.height = height.into();
-        
+
         self
     }
-    
+
     /// Sets the padding of the [ColorPicker].
     pub fn padding(mut self, padding: impl Into<Padding>) -> Self {
         self.padding = padding.into();
-        
+
         self
     }
-    
+
     /// Sets the spacing of the [ColorPicker].
     pub fn spacing(mut self, spacing: impl Into<f32>) -> Self {
         self.spacing = spacing.into();
-        
+
         self
     }
 }
@@ -116,7 +119,7 @@ where
 impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer> for ColorPicker<Message>
 where
     Message: Clone,
-    Renderer: iced::advanced::Renderer
+    Renderer: iced::advanced::Renderer,
 {
     fn size(&self) -> Size<Length> {
         Size::new(self.width, self.height)
@@ -129,48 +132,36 @@ where
             .max_height(limits_max)
             .shrink(Size::new(
                 self.padding.left + self.padding.right,
-                self.padding.top + self.padding.bottom
+                self.padding.top + self.padding.bottom,
             ));
 
         let width_unit = (limits.max().width - self.spacing) / 4.0;
         let height_unit = (limits.max().height - self.spacing) / 4.0;
 
-        let mut gradient_2d = Node::new(Size::new(
-            3.0 * width_unit,
-            3.0 * height_unit
-        ));
+        let mut gradient_2d = Node::new(Size::new(3.0 * width_unit, 3.0 * height_unit));
 
-        gradient_2d.move_to_mut(Point::new(
-            self.padding.left,
-            self.padding.top
-        ));
+        gradient_2d.move_to_mut(Point::new(self.padding.left, self.padding.top));
 
-        let mut gradient_1d = Node::new(Size::new(
-            3.0 * width_unit,
-            height_unit
-        ));
+        let mut gradient_1d = Node::new(Size::new(3.0 * width_unit, height_unit));
 
         gradient_1d.move_to_mut(Point::new(
             self.padding.left,
-            3.0 * height_unit + self.spacing + self.padding.top
+            3.0 * height_unit + self.spacing + self.padding.top,
         ));
 
-        let mut color = Node::new(Size::new(
-            width_unit,
-            4.0 * height_unit + self.spacing
-        ));
+        let mut color = Node::new(Size::new(width_unit, 4.0 * height_unit + self.spacing));
 
         color.move_to_mut(Point::new(
             3.0 * width_unit + self.spacing + self.padding.left,
-            self.padding.top
+            self.padding.top,
         ));
 
         Node::with_children(
             limits.max().expand(Size::new(
                 self.padding.left + self.padding.right,
-                self.padding.top + self.padding.bottom
+                self.padding.top + self.padding.bottom,
             )),
-            vec![gradient_2d, gradient_1d, color]
+            vec![gradient_2d, gradient_1d, color],
         )
     }
 
@@ -182,11 +173,13 @@ where
         _style: &Style,
         layout: Layout<'_>,
         _cursor: Cursor,
-        _viewport: &Rectangle
+        _viewport: &Rectangle,
     ) {
         let mut children = layout.children();
 
-        let layout_2d = children.next().expect("ColorPicker needs to have gradient 2d.");
+        let layout_2d = children
+            .next()
+            .expect("ColorPicker needs to have gradient 2d.");
         let bounds_2d = layout_2d.bounds();
         let unit_height = bounds_2d.height / 256.0;
         let unit_width = bounds_2d.width / 256.0;
@@ -204,8 +197,8 @@ where
                 Background::Gradient(Gradient::Linear(
                     Linear::new(PI / 2.0)
                         .add_stop(0.0, Color::from_rgb((i as f32) / 255.0, 0.0, self.blue))
-                        .add_stop(1.0, Color::from_rgb((i as f32) / 255.0, 1.0, self.blue))
-                ))
+                        .add_stop(1.0, Color::from_rgb((i as f32) / 255.0, 1.0, self.blue)),
+                )),
             );
         }
 
@@ -221,8 +214,8 @@ where
             Background::Gradient(Gradient::Linear(
                 Linear::new(PI)
                     .add_stop(0.0, Color::from_rgb(1.0, 1.0 - self.green, 1.0 - self.blue))
-                    .add_stop(1.0, Color::from_rgb(0.0, 1.0 - self.green, 1.0 - self.blue))
-            ))
+                    .add_stop(1.0, Color::from_rgb(0.0, 1.0 - self.green, 1.0 - self.blue)),
+            )),
         );
 
         renderer.fill_quad(
@@ -237,8 +230,8 @@ where
             Background::Gradient(Gradient::Linear(
                 Linear::new(PI / 2.0)
                     .add_stop(0.0, Color::from_rgb(1.0 - self.red, 1.0, 1.0 - self.blue))
-                    .add_stop(1.0, Color::from_rgb(1.0 - self.red, 0.0, 1.0 - self.blue))
-            ))
+                    .add_stop(1.0, Color::from_rgb(1.0 - self.red, 0.0, 1.0 - self.blue)),
+            )),
         );
 
         let layout_1d = children.next().expect("ColorPicker needs gradient 1d.");
@@ -252,8 +245,8 @@ where
             Background::Gradient(Gradient::Linear(
                 Linear::new(PI / 2.0)
                     .add_stop(0.0, Color::from_rgb(self.red, self.green, 0.0))
-                    .add_stop(1.0, Color::from_rgb(self.red, self.green, 1.0))
-            ))
+                    .add_stop(1.0, Color::from_rgb(self.red, self.green, 1.0)),
+            )),
         );
 
         renderer.fill_quad(
@@ -265,7 +258,11 @@ where
                 },
                 ..Default::default()
             },
-            Background::Color(Color::from_rgb(1.0 - self.red, 1.0 - self.green, 1.0 - self.blue))
+            Background::Color(Color::from_rgb(
+                1.0 - self.red,
+                1.0 - self.green,
+                1.0 - self.blue,
+            )),
         );
 
         let color_layout = children.next().expect("ColorPicker needs color.");
@@ -274,7 +271,7 @@ where
                 bounds: color_layout.bounds(),
                 ..Default::default()
             },
-            Background::Color(Color::from_rgb(self.red, self.green, self.blue))
+            Background::Color(Color::from_rgb(self.red, self.green, self.blue)),
         );
     }
 
@@ -287,12 +284,16 @@ where
         _renderer: &Renderer,
         _clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
-        _viewport: &Rectangle
+        _viewport: &Rectangle,
     ) -> Status {
         let mut children = layout.children();
 
-        let layout_2d = children.next().expect("ColorPicker needs to have gradient 2d.");
-        let layout_1d = children.next().expect("ColorPicker needs to have gradient 1d.");
+        let layout_2d = children
+            .next()
+            .expect("ColorPicker needs to have gradient 2d.");
+        let layout_1d = children
+            .next()
+            .expect("ColorPicker needs to have gradient 1d.");
 
         let bounds_2d = layout_2d.bounds();
         let bounds_1d = layout_1d.bounds();
@@ -315,7 +316,7 @@ where
             Event::Mouse(mouse::Event::ButtonReleased(Button::Left)) => {
                 if self.editing_gradient_2d || self.editing_gradient_1d {
                     shell.publish((self.on_update)(Color::from_rgb(
-                        self.red, self.green, self.blue
+                        self.red, self.green, self.blue,
                     )));
                     self.editing_gradient_2d = false;
                     self.editing_gradient_1d = false;
@@ -336,20 +337,29 @@ where
 
                 if self.editing_gradient_2d {
                     let position = Point::new(
-                        position.x.max(bounds_2d.x).min(bounds_2d.x + bounds_2d.width),
-                        position.y.max(bounds_2d.y).min(bounds_2d.y + bounds_2d.height)
+                        position
+                            .x
+                            .max(bounds_2d.x)
+                            .min(bounds_2d.x + bounds_2d.width),
+                        position
+                            .y
+                            .max(bounds_2d.y)
+                            .min(bounds_2d.y + bounds_2d.height),
                     );
 
                     let position = Point::new(
                         (position.x - bounds_2d.x) / bounds_2d.width,
-                        (position.y - bounds_2d.y) / bounds_2d.height
+                        (position.y - bounds_2d.y) / bounds_2d.height,
                     );
                     self.red = position.y;
                     self.green = position.x;
 
                     Status::Captured
                 } else if self.editing_gradient_1d {
-                    let position_x = position.x.max(bounds_1d.x).min(bounds_1d.x + bounds_1d.width);
+                    let position_x = position
+                        .x
+                        .max(bounds_1d.x)
+                        .min(bounds_1d.x + bounds_1d.width);
                     let position_x = (position_x - bounds_1d.x) / bounds_1d.width;
 
                     self.blue = position_x;
@@ -359,7 +369,7 @@ where
                     Status::Ignored
                 }
             }
-            _ => Status::Ignored
+            _ => Status::Ignored,
         }
     }
 
@@ -369,12 +379,16 @@ where
         layout: Layout<'_>,
         cursor: Cursor,
         _viewport: &Rectangle,
-        _renderer: &Renderer
+        _renderer: &Renderer,
     ) -> Interaction {
         let mut children = layout.children();
 
-        let layout_2d = children.next().expect("ColorPicker should have gradient 2d.");
-        let layout_1d = children.next().expect("ColorPicker should have gradient 1d.");
+        let layout_2d = children
+            .next()
+            .expect("ColorPicker should have gradient 2d.");
+        let layout_1d = children
+            .next()
+            .expect("ColorPicker should have gradient 1d.");
 
         let bounds_2d = layout_2d.bounds();
         let bounds_1d = layout_1d.bounds();
@@ -389,11 +403,12 @@ where
     }
 }
 
-impl<'a, Message, Theme, Renderer> From<ColorPicker<Message>> for Element<'a, Message, Theme, Renderer>
+impl<'a, Message, Theme, Renderer> From<ColorPicker<Message>>
+    for Element<'a, Message, Theme, Renderer>
 where
     Renderer: 'a + iced::advanced::Renderer + iced::advanced::text::Renderer,
-    Theme: 'a + iced::widget::text::StyleSheet + iced::widget::text_input::StyleSheet,
-    Message: 'a + Clone
+    Theme: 'a + iced::widget::text::Catalog + iced::widget::text_input::Catalog,
+    Message: 'a + Clone,
 {
     fn from(value: ColorPicker<Message>) -> Self {
         let red_default = (value.red * 255.0) as u8;
@@ -411,16 +426,32 @@ where
                     0 => (value.on_update)(Color::from_rgb8(number, green_default, blue_default)),
                     1 => (value.on_update)(Color::from_rgb8(red_default, number, blue_default)),
                     2 => (value.on_update)(Color::from_rgb8(red_default, green_default, number)),
-                    _ => (value.on_update)(Color::from_rgb8(red_default, green_default, blue_default))
+                    _ => (value.on_update)(Color::from_rgb8(
+                        red_default,
+                        green_default,
+                        blue_default,
+                    )),
                 }
             } else {
                 (value.on_update)(Color::from_rgb8(red_default, green_default, blue_default))
             }
         };
 
-        let red_text = if red_default == 0 { String::from("") } else { red_default.to_string() };
-        let green_text = if green_default == 0 { String::from("") } else { green_default.to_string() };
-        let blue_text = if blue_default == 0 { String::from("") } else { blue_default.to_string() };
+        let red_text = if red_default == 0 {
+            String::from("")
+        } else {
+            red_default.to_string()
+        };
+        let green_text = if green_default == 0 {
+            String::from("")
+        } else {
+            green_default.to_string()
+        };
+        let blue_text = if blue_default == 0 {
+            String::from("")
+        } else {
+            blue_default.to_string()
+        };
 
         Column::with_children(vec![
             Element::new(value),
@@ -429,35 +460,35 @@ where
                     Text::new("R:").into(),
                     TextInput::new("0", &red_text)
                         .on_input(move |input| parse_input(input, 0))
-                        .into()
+                        .into(),
                 ])
-                    .align_items(Alignment::Center)
-                    .spacing(2.0)
-                    .into(),
+                .align_items(Alignment::Center)
+                .spacing(2.0)
+                .into(),
                 Row::with_children(vec![
                     Text::new("G:").into(),
                     TextInput::new("0", &green_text)
                         .on_input(move |input| parse_input(input, 1))
-                        .into()
+                        .into(),
                 ])
-                    .align_items(Alignment::Center)
-                    .spacing(2.0)
-                    .into(),
+                .align_items(Alignment::Center)
+                .spacing(2.0)
+                .into(),
                 Row::with_children(vec![
                     Text::new("B:").into(),
                     TextInput::new("0", &blue_text)
                         .on_input(move |input| parse_input(input, 2))
-                        .into()
+                        .into(),
                 ])
-                    .align_items(Alignment::Center)
-                    .spacing(2.0)
-                    .into()
-            ])
                 .align_items(Alignment::Center)
-                .spacing(5.0)
-                .padding(DEFAULT_PADDING)
-                .into()
+                .spacing(2.0)
+                .into(),
+            ])
+            .align_items(Alignment::Center)
+            .spacing(5.0)
+            .padding(DEFAULT_PADDING)
+            .into(),
         ])
-            .into()
+        .into()
     }
 }

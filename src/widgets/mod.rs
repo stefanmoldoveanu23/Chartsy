@@ -1,10 +1,11 @@
+pub mod card;
+pub mod close;
+pub mod closeable;
 pub mod color_picker;
+pub mod combo_box;
+pub mod grid;
 pub mod modal_stack;
 pub mod post_summary;
-pub mod closeable;
-pub mod close;
-pub mod combo_box;
-pub mod card;
-pub mod grid;
 pub mod rating;
+pub mod tabs;
 pub mod wait_panel;

@@ -10,6 +10,7 @@ use crate::widgets::closeable::Closeable;
 use crate::widgets::modal_stack::ModalStack;
 use crate::widgets::post_summary::PostSummary;
 use crate::widgets::rating::Rating;
+use crate::widgets::tabs::Tabs;
 use crate::{config, database, services, LOADING_IMAGE};
 use iced::advanced::image::Handle;
 use iced::alignment::Horizontal;
@@ -18,7 +19,6 @@ use iced::widget::{
     Button, Column, Container, Image, Row, Scrollable, Space, Text, TextInput, Tooltip,
 };
 use iced::{Alignment, Command, Element, Length, Renderer};
-use iced_aw::{TabLabel, Tabs};
 use image::{load_from_memory_with_format, ExtendedColorType, ImageFormat};
 use lettre::message::{Attachment, MultiPart, SinglePart};
 use moka::future::Cache;
@@ -192,9 +192,9 @@ impl Posts {
             Some(image) => {
                 let data = image.get_data().clone();
 
-                Handle::from_pixels(image.get_width(), image.get_height(), data)
+                Handle::from_rgba(image.get_width(), image.get_height(), data)
             }
-            None => Handle::from_memory(LOADING_IMAGE),
+            None => Handle::from_bytes(LOADING_IMAGE),
         }
     }
 
@@ -432,7 +432,7 @@ impl Posts {
                                             PostsMessage::OpenProfile(post.get_user().clone())
                                                 .into(),
                                         )
-                                        .style(theme::button::Button::Transparent),
+                                        .style(iced::widget::button::text),
                                         Text::new(format!(
                                             "{}'s profile",
                                             post.get_user().get_user_tag()
@@ -448,9 +448,9 @@ impl Posts {
                                                     post.get_user().get_user_tag()
                                                 ))
                                                 .size(15.0)
-                                                .style(theme::text::Text::Gray),
+                                                .style(theme::text::gray),
                                             )
-                                            .style(theme::button::Button::Transparent)
+                                            .style(iced::widget::button::text)
                                             .on_press(
                                                 PostsMessage::OpenProfile(post.get_user().clone())
                                                     .into(),
@@ -472,7 +472,7 @@ impl Posts {
                                             Button::new(
                                                 Text::new(Icon::Report.to_string())
                                                     .font(ICON)
-                                                    .style(theme::text::Text::Error)
+                                                    .style(theme::text::danger)
                                                     .size(30.0),
                                             )
                                             .on_press(
@@ -482,7 +482,7 @@ impl Posts {
                                                 .into(),
                                             )
                                             .padding(0.0)
-                                            .style(theme::button::Button::Transparent),
+                                            .style(iced::widget::button::text),
                                             Text::new("Report post"),
                                             Position::FollowCursor,
                                         )
@@ -494,14 +494,14 @@ impl Posts {
                                                 Button::new(
                                                     Text::new(Icon::Trash.to_string())
                                                         .font(ICON)
-                                                        .style(theme::text::Text::Error)
+                                                        .style(theme::text::danger)
                                                         .size(30),
                                                 )
                                                 .on_press(
                                                     PostsMessage::DeletePost(post.get_id()).into(),
                                                 )
                                                 .padding(0.0)
-                                                .style(theme::button::Button::Transparent),
+                                                .style(iced::widget::button::text),
                                                 Text::new("Delete post"),
                                                 Position::FollowCursor,
                                             )
@@ -678,7 +678,7 @@ impl Posts {
                                             .into(),
                                         Text::new(comment.get_content().clone()).into(),
                                     ]))
-                                    .style(theme::button::Button::Transparent)
+                                    .style(iced::widget::button::text)
                                     .on_press(
                                         CommentMessage::Open {
                                             post: post_index,
@@ -1208,7 +1208,7 @@ impl Scene for Posts {
                         .align_items(Alignment::Center),
                     )
                     .padding(10.0)
-                    .style(theme::container::Container::Badge(theme::pallete::TEXT))
+                    .style(theme::container::badge)
                 }))
                 .into(),
             ])
@@ -1239,7 +1239,7 @@ impl Scene for Posts {
                 user_tag_input,
                 Text::new(error.to_string())
                     .size(50.0)
-                    .style(theme::text::Text::Error)
+                    .style(theme::text::danger)
                     .into(),
             ])
         } else {
@@ -1248,7 +1248,7 @@ impl Scene for Posts {
                 Button::new(
                     Image::new(self.get_handle(self.user_profile.get_id())).height(Length::Fill),
                 )
-                .style(theme::button::Button::Transparent)
+                .style(iced::widget::button::text)
                 .width(Length::Shrink)
                 .height(Length::FillPortion(1))
                 .on_press(
@@ -1270,27 +1270,25 @@ impl Scene for Posts {
         .align_items(Alignment::Center)
         .into();
 
-        let underlay = Tabs::new_with_tabs(
+        let underlay: Tabs<PostTabs, Message, Theme, Renderer> = Tabs::new_with_tabs(
             vec![
                 (
                     PostTabs::Recommended,
-                    TabLabel::Text(String::from("Recommended")),
+                    Text::new("Recommended").into(),
                     recommended_tab,
                 ),
                 (
                     PostTabs::Filtered,
-                    TabLabel::Text(String::from("Filtered")),
+                    Text::new("Filtered").into(),
                     filtered_tab,
                 ),
-                (
-                    PostTabs::Profile,
-                    TabLabel::Text(String::from("Profile")),
-                    profile_tab,
-                ),
+                (PostTabs::Profile, Text::new("Profile").into(), profile_tab),
             ],
             |tab_id| PostsMessage::SelectTab(tab_id).into(),
         )
-        .set_active_tab(&self.active_tab);
+        .selected(self.active_tab)
+        .width(Length::Fill)
+        .height(Length::Fill);
 
         let modal_generator = |modal_type: ModalType| match modal_type {
             ModalType::ShowingImage(data) => Self::gen_show_image(data.clone(), globals),

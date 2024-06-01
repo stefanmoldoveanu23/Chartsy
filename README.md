@@ -1,6 +1,5 @@
 ## Plans
-- Add loading screens where necessary(delete drawing, delete post)
-- Stylize pages(replace all images with icons/widgets, other details maybe later)
+- Stylize pages(replace all images with icons/widgets, go back buttons to all scenes, other details maybe later)
 - Fix similarities trigger to take into consideration account deletion and reinstatement
 - Make better scrollbar for images
 - Handle all cases of accessing deleted user data(comments)

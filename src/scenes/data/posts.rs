@@ -654,8 +654,9 @@ impl PartialEq for ModalType {
 impl Eq for ModalType {}
 
 /// The tabs the posts page is split into.
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Default)]
 pub enum PostTabs {
+    #[default]
     /// Posts generated from comparing the users ratings to other users.
     Recommended,
 

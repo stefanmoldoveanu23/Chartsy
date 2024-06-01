@@ -1,21 +1,20 @@
+use crate::debug_message;
 use crate::errors::error::Error;
 use crate::scenes::data::auth::User;
+use crate::scenes::data::posts::PixelImage;
 use crate::scenes::scenes::Scenes;
-use crate::utils::theme::Theme;
+use iced::Theme;
 use iced::{Command, Element, Renderer};
+use moka::future::Cache;
+use mongodb::bson::Uuid;
 use mongodb::{Client, ClientSession, Database};
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 use std::time::Duration;
-use moka::future::Cache;
-use mongodb::bson::Uuid;
-use crate::debug_message;
-use crate::scenes::data::posts::PixelImage;
 
 /// An individual scene that handles its actions internally.
-pub trait Scene: Send + Sync
-{
+pub trait Scene: Send + Sync {
     type Message: SceneMessage;
     type Options: Debug + Send + Sync;
 
@@ -23,7 +22,7 @@ pub trait Scene: Send + Sync
     /// the [global](Globals) values.
     fn new(
         options: Option<Self::Options>,
-        globals: &mut Globals
+        globals: &mut Globals,
     ) -> (Self, Command<impl Into<Message>>)
     where
         Self: Sized;
@@ -36,14 +35,16 @@ pub trait Scene: Send + Sync
 
     /// Gets a dynamic [message](SceneMessage) and returns it in the associated type.
     fn unwrap_message<'a>(&self, message: &'a dyn SceneMessage) -> Result<&'a Self::Message, Error>
-    where Self::Message: 'static
+    where
+        Self::Message: 'static,
     {
         message.as_any().downcast_ref().ok_or(
             debug_message!(
                 "Failed to downcast message \"{}\" to scene \"{}\".",
                 message.get_name(),
                 self.get_title()
-            ).into()
+            )
+            .into(),
         )
     }
 
@@ -62,10 +63,10 @@ pub trait Scene: Send + Sync
     fn clear(&self, globals: &mut Globals);
 }
 
-impl<Message, Options> Debug for dyn Scene<Message=Message, Options=Options>
+impl<Message, Options> Debug for dyn Scene<Message = Message, Options = Options>
 where
     Message: SceneMessage,
-    Options: Debug + Send + Sync
+    Options: Debug + Send + Sync,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Scene {{{}}}.", self.get_title())
@@ -113,7 +114,7 @@ pub enum Message {
     /// Sends en e-mail.
     SendSmtpMail(lettre::Message),
     /// Quits the application.
-    Quit
+    Quit,
 }
 
 /// The [Applications](crate::Chartsy) global values.
@@ -126,7 +127,7 @@ pub struct Globals {
     mongo_client: Option<Client>,
 
     /// The caching system.
-    cache: Cache<Uuid, Arc<PixelImage>>
+    cache: Cache<Uuid, Arc<PixelImage>>,
 }
 
 impl Globals {
@@ -136,29 +137,38 @@ impl Globals {
     }
 
     /// Returns the user data.
-    pub fn get_user(&self) -> Option<&User> { self.user.as_ref() }
+    pub fn get_user(&self) -> Option<&User> {
+        self.user.as_ref()
+    }
 
     /// Returns the user data as mutable.
-    pub fn get_user_mut(&mut self) -> Option<&mut User> { self.user.as_mut() }
+    pub fn get_user_mut(&mut self) -> Option<&mut User> {
+        self.user.as_mut()
+    }
 
     /// Updates the client object.
-    pub fn set_client(&mut self, client: Client) { self.mongo_client = Some(client); }
+    pub fn set_client(&mut self, client: Client) {
+        self.mongo_client = Some(client);
+    }
 
     /// Returns the database from the client.
     pub fn get_db(&self) -> Option<Database> {
         match &self.mongo_client {
             Some(client) => Some(client.database("chartsy")),
-            None => None
+            None => None,
         }
     }
 
     /// Starts a mongo session and returns it.
     pub async fn start_session(&self) -> Option<Result<ClientSession, Error>> {
         match &self.mongo_client {
-            Some(client) => Some(client.start_session(None).await.map_err(
-                |err| debug_message!("{}", err).into()
-            )),
-            None => None
+            Some(client) => Some(
+                client
+                    .start_session(None)
+                    .await
+                    .map_err(|err| debug_message!("{}", err).into()),
+            ),
+            None => None,
         }
     }
 
@@ -176,7 +186,7 @@ impl Default for Globals {
             cache: Cache::builder()
                 .time_to_idle(Duration::from_secs(60 * 60))
                 .max_capacity(500 * 1024 * 1024)
-                .build()
+                .build(),
         }
     }
 }

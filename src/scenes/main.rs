@@ -9,13 +9,13 @@ use std::{fs, io};
 
 use crate::errors::error::Error;
 use crate::utils::icons::{Icon, ICON};
+use crate::utils::theme;
 use crate::widgets::card::Card;
 use crate::widgets::modal_stack::ModalStack;
 use crate::{database, debug_message, services, LOADING_IMAGE};
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{Button, Column, Container, Image, Row, Scrollable, Space, Text};
-use iced::{Alignment, Command, Element, Length, Renderer};
-use iced_aw::{TabLabel, Tabs};
+use iced::{Alignment, Command, Element, Length, Renderer, Theme};
 use mongodb::bson::{Bson, Document, Uuid, UuidRepresentation};
 
 use crate::scene::{Globals, Message, Scene, SceneMessage};
@@ -25,8 +25,8 @@ use crate::scenes::scenes::Scenes;
 
 use crate::scenes::data::drawing::SaveMode;
 use crate::scenes::drawing::DrawingOptions;
-use crate::utils::theme::{self, Theme};
 use crate::widgets::closeable::Closeable;
+use crate::widgets::tabs::Tabs;
 
 use crate::scenes::data::main::*;
 
@@ -118,12 +118,12 @@ impl Main {
     /// Gets the handle of an image from its id.
     fn get_image(&self, id: Uuid) -> Handle {
         match self.previews.get(&id) {
-            Some(pixels) => Handle::from_pixels(
+            Some(pixels) => Handle::from_rgba(
                 pixels.get_width(),
                 pixels.get_height(),
                 pixels.get_data().clone(),
             ),
-            None => Handle::from_memory(LOADING_IMAGE),
+            None => Handle::from_bytes(LOADING_IMAGE),
         }
     }
 
@@ -572,9 +572,9 @@ impl Scene for Main {
                             Button::new(
                                 Text::new(Icon::Trash.to_string())
                                     .font(ICON)
-                                    .style(theme::text::Text::Error),
+                                    .style(theme::text::danger),
                             )
-                            .style(theme::button::Button::Transparent)
+                            .style(iced::widget::button::text)
                             .on_press(MainMessage::DeleteDrawing(id, save_mode).into())
                             .into(),
                         ])
@@ -583,7 +583,7 @@ impl Scene for Main {
                     .on_press(Message::ChangeScene(Scenes::Drawing(Some(
                         DrawingOptions::new(Some(id), Some(name), Some(save_mode)),
                     ))))
-                    .style(theme::button::Button::UnselectedLayer)
+                    .style(iced::widget::button::primary)
                     .width(Length::Fill)
                     .padding(10.0)
                     .into()
@@ -638,18 +638,18 @@ impl Scene for Main {
                     vec![
                         (
                             MainTabIds::Offline,
-                            TabLabel::Text("Offline".into()),
+                            Text::new("Offline").into(),
                             offline_tab.into(),
                         ),
                         (
                             MainTabIds::Online,
-                            TabLabel::Text("Online".into()),
+                            Text::new("Online").into(),
                             online_tab.into(),
                         ),
                     ],
                     |tab| MainMessage::SelectTab(tab).into(),
                 )
-                .set_active_tab(&self.active_tab)
+                .selected(self.active_tab)
                 .height(Length::Fixed(600.0))
                 .width(Length::Fill);
 
