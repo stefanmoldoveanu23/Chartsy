@@ -1,15 +1,7 @@
 use crate::scene::Message;
-use iced::advanced::layout::{Limits, Node};
-use iced::advanced::renderer::{Quad, Style};
-use iced::advanced::widget::{Operation, Tree};
-use iced::advanced::{overlay, Clipboard, Layout, Overlay, Shell, Widget};
-use iced::event::Status;
-use iced::mouse::{Cursor, Interaction};
 use iced::widget::{Container, Stack};
 use iced::Theme;
-use iced::{
-    Alignment, Background, Color, Element, Event, Length, Rectangle, Renderer, Size, Vector,
-};
+use iced::{Element, Length, Renderer};
 
 /// A structure that can stack overlays on top of each other
 /// Useful for scenes with multiple overlays

@@ -10,8 +10,7 @@ use std::{fs, io};
 use crate::errors::error::Error;
 use crate::utils::icons::{Icon, ICON};
 use crate::utils::theme;
-use crate::widgets::card::Card;
-use crate::widgets::modal_stack::ModalStack;
+use crate::widgets::{Card, Closeable, ModalStack, Tabs};
 use crate::{database, debug_message, services, LOADING_IMAGE};
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{Button, Column, Container, Image, Row, Scrollable, Space, Text};
@@ -25,8 +24,6 @@ use crate::scenes::scenes::Scenes;
 
 use crate::scenes::data::drawing::SaveMode;
 use crate::scenes::drawing::DrawingOptions;
-use crate::widgets::closeable::Closeable;
-use crate::widgets::tabs::Tabs;
 
 use crate::scenes::data::main::*;
 

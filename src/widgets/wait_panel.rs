@@ -1,8 +1,7 @@
 use crate::utils::icons::{Icon, ICON};
-use crate::utils::theme;
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{Column, Container, Text};
-use iced::{Alignment, Background, Color, Element, Length, Pixels};
+use iced::{Alignment, Element, Length, Pixels};
 
 /// A widget that blocks user input. Displays a custom text.
 pub struct WaitPanel {

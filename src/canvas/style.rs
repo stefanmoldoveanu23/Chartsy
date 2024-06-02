@@ -1,7 +1,7 @@
 use crate::scene::Message;
 use crate::utils::serde::{Deserialize, Serialize};
-use crate::utils::theme::{self, Theme};
-use crate::widgets::color_picker::ColorPicker;
+use crate::utils::theme::Theme;
+use crate::widgets::ColorPicker;
 use iced::alignment::Horizontal;
 use iced::widget::{Button, Column, Slider, Text};
 use iced::{Color, Command, Element, Length, Renderer};

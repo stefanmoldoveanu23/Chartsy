@@ -6,7 +6,7 @@ use crate::scenes::data::auth::*;
 use crate::scenes::scenes::Scenes;
 use crate::utils::serde::Serialize;
 use crate::utils::theme::Theme;
-use crate::widgets::tabs::Tabs;
+use crate::widgets::Tabs;
 use iced::widget::{Button, Column, Container, Row, Space, Text, TextInput};
 use iced::{Command, Element, Length, Renderer};
 use std::any::Any;

@@ -6,7 +6,7 @@ use std::io::Write;
 
 use crate::canvas::canvas::Canvas;
 use crate::canvas::svg::SVG;
-use crate::widgets::wait_panel::WaitPanel;
+use crate::widgets::{Card, Close, Closeable, ComboBox, Grid, ModalStack, WaitPanel};
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::image::Handle;
 use iced::widget::scrollable::{Direction, Properties};
@@ -34,17 +34,10 @@ use crate::{database, debug_message, services, utils};
 
 use crate::utils::theme::{self, Theme};
 
-use crate::widgets::card::Card;
-use crate::widgets::closeable::Closeable;
-use crate::widgets::combo_box::ComboBox;
-use crate::widgets::grid::Grid;
-use crate::widgets::modal_stack::ModalStack;
-
 use crate::scenes::data::drawing::*;
 use crate::utils::encoder::encode_svg;
 
 use crate::utils::icons::{Icon, ToolIcon, ICON};
-use crate::widgets::close::Close;
 
 use super::scenes::Scenes;
 

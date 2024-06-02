@@ -6,11 +6,9 @@ use crate::scenes::data::auth::User;
 use crate::scenes::data::drawing::Tag;
 use crate::utils::icons::{Icon, ICON};
 use crate::utils::theme::{self, Theme};
-use crate::widgets::closeable::Closeable;
-use crate::widgets::modal_stack::ModalStack;
-use crate::widgets::post_summary::PostSummary;
-use crate::widgets::rating::Rating;
-use crate::widgets::tabs::Tabs;
+use crate::widgets::{
+    Card, Close, Closeable, ComboBox, Grid, ModalStack, PostSummary, Rating, Tabs,
+};
 use crate::{config, database, services, LOADING_IMAGE};
 use iced::advanced::image::Handle;
 use iced::alignment::Horizontal;
@@ -30,10 +28,6 @@ use std::io::Cursor;
 use std::sync::Arc;
 
 use crate::scenes::data::posts::*;
-use crate::widgets::card::Card;
-use crate::widgets::close::Close;
-use crate::widgets::combo_box::ComboBox;
-use crate::widgets::grid::Grid;
 
 /// The [messages](SceneMessage) that can be triggered on the [Posts] scene.
 #[derive(Clone)]
@@ -530,15 +524,13 @@ impl Posts {
                 .align_items(Alignment::Center)
                 .spacing(50),
             )
-            /* Severely slows down app; suspect it's because of sync image rendering
             .on_scroll(move |viewport| {
                 if viewport.relative_offset().y == 1.0 && !self.get_tab(tab).done_loading() {
-                    PostsMessage::LoadBatch(tab).into()
+                    Some(PostsMessage::LoadBatch(tab).into())
                 } else {
-                    Message::None
+                    None
                 }
             })
-             */
             .width(Length::Fill),
         )
         .padding([20.0, 0.0, 0.0, 0.0])

@@ -1,3 +1,4 @@
+use iced::theme::palette::{Background, Danger, Primary, Secondary, Success};
 use iced::theme::{palette, Palette};
 use iced::{color, Color};
 
@@ -18,6 +19,17 @@ pub const PALETTE: Palette = Palette {
     danger: DANGER,
 };
 
+pub fn extended_palette_generator(palette: Palette) -> palette::Extended {
+    palette::Extended {
+        background: Background::new(palette.background, palette.text),
+        primary: Primary::generate(palette.primary, palette.background, palette.background),
+        secondary: Secondary::generate(SECONDARY, palette.background),
+        success: Success::generate(palette.success, palette.background, palette.text),
+        danger: Danger::generate(palette.danger, palette.background, palette.text),
+        is_dark: true,
+    }
+}
+
 pub mod text {
     use iced::{widget::text::Style, Color};
 
@@ -29,7 +41,7 @@ pub mod text {
         }
     }
 
-    pub fn gray(theme: &Theme) -> Style {
+    pub fn gray(_theme: &Theme) -> Style {
         Style {
             color: Some(Color::from_rgb(0.5, 0.5, 0.5)),
         }

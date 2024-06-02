@@ -27,3 +27,6 @@ rfd = { version = "0.14.1", features = ["tokio"] }
 moka = { version = "0.12.7", features = ["future"] }
 chrono = "0.4.38"
 webp = "0.3.0"
+
+[patch.'https://github.com/iced-rs/iced']
+iced = { path="../iced" }

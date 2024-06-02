@@ -19,13 +19,11 @@ mod utils;
 mod widgets;
 
 use errors::error::Error;
-use iced::theme::palette::{self, Background, Danger, Primary, Secondary, Success};
 use lettre::transport::smtp::response::Response;
 use scene::{Globals, Message};
 use scenes::scenes::SceneManager;
-use utils::theme::SECONDARY;
 
-use crate::widgets::wait_panel::WaitPanel;
+use crate::widgets::WaitPanel;
 use iced::font::{Family, Stretch, Style, Weight};
 use iced::{
     advanced::Application, executor, window, Command, Element, Font, Renderer, Settings,
@@ -196,14 +194,7 @@ impl Application for Chartsy {
         utils::theme::Theme::custom_with_fn(
             String::from("Chartsy"),
             utils::theme::PALETTE,
-            |palette| palette::Extended {
-                background: Background::new(palette.background, palette.text),
-                primary: Primary::generate(palette.primary, palette.background, palette.background),
-                secondary: Secondary::generate(SECONDARY, palette.background),
-                success: Success::generate(palette.success, palette.background, palette.text),
-                danger: Danger::generate(palette.danger, palette.background, palette.text),
-                is_dark: true,
-            },
+            utils::theme::extended_palette_generator,
         )
     }
 }
