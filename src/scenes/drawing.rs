@@ -1005,8 +1005,9 @@ impl Scene for Drawing {
                 .style(theme::closeable::Closeable::Transparent)
                 .on_close(
                     Into::<Message>::into(DrawingMessage::ToggleModal(ModalTypes::PostPrompt)),
-                    32.0,
+                    25.0,
                 )
+                .close_padding(7.0)
                 .width(Length::Shrink)
                 .height(Length::Shrink)
                 .into(),

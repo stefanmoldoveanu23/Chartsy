@@ -577,10 +577,10 @@ impl Scene for Main {
                         ])
                         .align_items(Alignment::Center),
                     )
+                    .style(iced::widget::button::secondary)
                     .on_press(Message::ChangeScene(Scenes::Drawing(Some(
                         DrawingOptions::new(Some(id), Some(name), Some(save_mode)),
                     ))))
-                    .style(iced::widget::button::primary)
                     .width(Length::Fill)
                     .padding(10.0)
                     .into()
@@ -600,12 +600,11 @@ impl Scene for Main {
                             vec![]
                         },
                     )
-                    .spacing(20.0),
+                    .spacing(20.0)
+                    .padding([15.0, 15.0, 0.0, 15.0]),
                 ))
-                .width(Length::Fixed(500.0))
-                .height(Length::Fixed(300.0))
-                .align_x(Horizontal::Center)
-                .align_y(Vertical::Top);
+                .width(Length::Fill)
+                .height(Length::Fill);
 
                 let offline_tab = Container::new(Scrollable::new(
                     Column::<Message, Theme, Renderer>::with_children(
@@ -621,15 +620,15 @@ impl Scene for Main {
                             vec![]
                         },
                     )
-                    .spacing(20.0),
+                    .spacing(20.0)
+                    .padding([15.0, 15.0, 0.0, 15.0]),
                 ))
-                .width(Length::Fixed(500.0))
-                .height(Length::Fixed(300.0))
-                .align_x(Horizontal::Center)
-                .align_y(Vertical::Top);
+                .width(Length::Fill)
+                .height(Length::Fill);
 
                 let title = Text::new("Your drawings")
                     .horizontal_alignment(Horizontal::Center)
+                    .width(Length::Fill)
                     .size(25);
                 let tabs = Tabs::new_with_tabs(
                     vec![
@@ -647,19 +646,33 @@ impl Scene for Main {
                     |tab| MainMessage::SelectTab(tab).into(),
                 )
                 .selected(self.active_tab)
-                .height(Length::Fixed(600.0))
-                .width(Length::Fill);
+                .width(Length::Fill)
+                .height(Length::Fill);
 
-                Closeable::<Message, Theme, Renderer>::new(
-                    Card::new(title, tabs)
-                        .width(Length::Fixed(900.0))
-                        .height(Length::Fixed(600.0)),
-                )
-                .style(theme::closeable::Closeable::Transparent)
-                .on_close(
-                    Into::<Message>::into(MainMessage::ToggleModal(ModalType::ShowingDrawings)),
-                    32.0,
-                )
+                Row::with_children(vec![
+                    Space::with_width(Length::FillPortion(1)).into(),
+                    Column::with_children(vec![
+                        Space::with_height(Length::FillPortion(1)).into(),
+                        Closeable::<Message, Theme, Renderer>::new(
+                            Card::new(title, tabs).content_padding(0.0),
+                        )
+                        .height(Length::FillPortion(5))
+                        .width(Length::Fill)
+                        .style(theme::closeable::Closeable::Transparent)
+                        .on_close(
+                            Into::<Message>::into(MainMessage::ToggleModal(
+                                ModalType::ShowingDrawings,
+                            )),
+                            32.0,
+                        )
+                        .close_padding(8.0)
+                        .into(),
+                        Space::with_height(Length::FillPortion(1)).into(),
+                    ])
+                    .width(Length::FillPortion(2))
+                    .into(),
+                    Space::with_width(Length::FillPortion(1)).into(),
+                ])
                 .into()
             }
             ModalType::SelectingSaveMode => {

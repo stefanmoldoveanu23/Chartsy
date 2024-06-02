@@ -1,20 +1,23 @@
-use iced::{Alignment, Background, Border, Color, Element, Event, Length, Padding, Point, Rectangle, Size, Vector};
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::{Quad, Style};
-use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::advanced::widget::{Operation, Tree};
+use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::border::Radius;
 use iced::event::Status;
 use iced::mouse::{Cursor, Interaction};
+use iced::{
+    Alignment, Background, Border, Color, Element, Event, Length, Padding, Point, Rectangle, Size,
+    Vector,
+};
 
-const DEFAULT_PADDING :f32= 10.0;
+const DEFAULT_PADDING: f32 = 10.0;
 
 /// A container with a header, content and optional footer sections.
 pub struct Card<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
     Renderer: 'a + iced::advanced::Renderer,
-    Theme: 'a + StyleSheet
+    Theme: 'a + StyleSheet,
 {
     /// The width of the [Card].
     width: Length,
@@ -48,12 +51,12 @@ impl<'a, Message, Theme, Renderer> Card<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
     Renderer: 'a + iced::advanced::Renderer,
-    Theme: 'a + StyleSheet
+    Theme: 'a + StyleSheet,
 {
     /// Creates a new [Card].
     pub fn new(
         header: impl Into<Element<'a, Message, Theme, Renderer>>,
-        content: impl Into<Element<'a, Message, Theme, Renderer>>
+        content: impl Into<Element<'a, Message, Theme, Renderer>>,
     ) -> Self {
         Card {
             width: Length::Shrink,
@@ -69,117 +72,101 @@ where
     }
 
     /// Sets the width of the [Card].
-    pub fn width(mut self, width: impl Into<Length>) -> Self
-    {
+    pub fn width(mut self, width: impl Into<Length>) -> Self {
         self.width = width.into();
 
         self
     }
 
     /// Sets the height of the [Card].
-    pub fn height(mut self, height: impl Into<Length>) -> Self
-    {
+    pub fn height(mut self, height: impl Into<Length>) -> Self {
         self.height = height.into();
 
         self
     }
 
     /// Adds a footer to the [Card].
-    pub fn footer(mut self, footer: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self
-    {
+    pub fn footer(mut self, footer: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self {
         self.footer = Some(footer.into());
 
         self
     }
 
     /// Sets the padding of the header.
-    pub fn header_padding(mut self, header_padding: impl Into<Padding>) -> Self
-    {
+    pub fn header_padding(mut self, header_padding: impl Into<Padding>) -> Self {
         self.header_padding = header_padding.into();
 
         self
     }
 
     /// Sets the padding of the content.
-    pub fn content_padding(mut self, content_padding: impl Into<Padding>) -> Self
-    {
+    pub fn content_padding(mut self, content_padding: impl Into<Padding>) -> Self {
         self.content_padding = content_padding.into();
 
         self
     }
 
     /// Sets the padding of the footer.
-    pub fn footer_padding(mut self, footer_padding: impl Into<Padding>) -> Self
-    {
+    pub fn footer_padding(mut self, footer_padding: impl Into<Padding>) -> Self {
         self.footer_padding = footer_padding.into();
 
         self
     }
 
     /// Sets the style of the [Card].
-    pub fn style(mut self, style: impl Into<<Theme as StyleSheet>::Style>) -> Self
-    {
+    pub fn style(mut self, style: impl Into<<Theme as StyleSheet>::Style>) -> Self {
         self.style = style.into();
 
         self
     }
 }
 
-impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Card<'a, Message, Theme, Renderer>
+impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
+    for Card<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
     Renderer: 'a + iced::advanced::Renderer,
-    Theme: 'a + StyleSheet
+    Theme: 'a + StyleSheet,
 {
     fn size(&self) -> Size<Length> {
-        Size::new(
-            self.width,
-            self.height
-        )
+        Size::new(self.width, self.height)
     }
 
     fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
+        let limits = limits.loose().width(self.width).height(self.height);
+
         let limits_header = limits
             .loose()
             .width(self.width)
             .height(self.header.as_widget().size().height)
             .shrink(self.header_padding);
 
-        let mut header_node = self.header.as_widget().layout(&mut tree.children[0], renderer, &limits_header);
+        let mut header_node =
+            self.header
+                .as_widget()
+                .layout(&mut tree.children[0], renderer, &limits_header);
         let mut header_size = header_node.size();
         header_node.align_mut(Alignment::Start, Alignment::Start, header_size);
-        header_node.move_to_mut(Point::new(self.header_padding.left, self.header_padding.top));
-        header_size = header_size.expand(self.header_padding);
-
-        let limits_content = limits
-            .loose()
-            .width(self.width)
-            .height(self.content.as_widget().size().height)
-            .shrink(self.content_padding);
-
-        let mut content_node = self.content.as_widget().layout(&mut tree.children[1], renderer, &limits_content);
-        let mut content_size = content_node.size();
-        content_node.align_mut(Alignment::Start, Alignment::Start, content_size);
-        content_node.move_to_mut(Point::new(
-            self.content_padding.left,
-            header_size.height + self.content_padding.top
+        header_node.move_to_mut(Point::new(
+            self.header_padding.left,
+            self.header_padding.top,
         ));
-        content_size = content_size.expand(self.content_padding);
+        header_size = header_size.expand(self.header_padding);
 
         let (footer_node, footer_size) = if let Some(footer) = &self.footer {
             let limits_footer = limits
                 .loose()
                 .width(self.width)
+                .shrink(Size::new(0.0, header_size.height))
                 .height(footer.as_widget().size().height)
                 .shrink(self.footer_padding);
 
-            let mut footer_node = footer.as_widget().layout(&mut tree.children[2], renderer, &limits_footer);
+            let footer_node =
+                footer
+                    .as_widget()
+                    .layout(&mut tree.children[2], renderer, &limits_footer);
             let mut footer_size = footer_node.size();
-            footer_node.align_mut(Alignment::Start, Alignment::Start, footer_size);
-            footer_node.move_to_mut(Point::new(
-                self.footer_padding.left,
-                header_size.height + content_size.height + self.footer_padding.top
-            ));
+
             footer_size = footer_size.expand(self.footer_padding);
 
             (Some(footer_node), footer_size)
@@ -187,21 +174,42 @@ where
             (None, Size::ZERO)
         };
 
-        if let Some(footer_node) = footer_node {
+        let limits_content = limits
+            .loose()
+            .width(self.width)
+            .shrink(Size::new(0.0, header_size.height + footer_size.height))
+            .height(self.content.as_widget().size().height)
+            .shrink(self.content_padding);
+
+        let mut content_node =
+            self.content
+                .as_widget()
+                .layout(&mut tree.children[1], renderer, &limits_content);
+        let mut content_size = content_node.size();
+        content_node.align_mut(Alignment::Start, Alignment::Start, content_size);
+        content_node.move_to_mut(Point::new(
+            self.content_padding.left,
+            header_size.height + self.content_padding.top,
+        ));
+        content_size = content_size.expand(self.content_padding);
+
+        if let Some(mut footer_node) = footer_node {
+            footer_node.move_to_mut(Point::new(
+                self.footer_padding.left,
+                header_size.height + content_size.height + self.footer_padding.top,
+            ));
+
             Node::with_children(
                 Size::new(
                     content_size.width,
-                    header_size.height + content_size.height + footer_size.height
+                    header_size.height + content_size.height + footer_size.height,
                 ),
-                vec![header_node, content_node, footer_node]
+                vec![header_node, content_node, footer_node],
             )
         } else {
             Node::with_children(
-                Size::new(
-                    content_size.width,
-                    header_size.height + content_size.height
-                ),
-                vec![header_node, content_node]
+                Size::new(content_size.width, header_size.height + content_size.height),
+                vec![header_node, content_node],
             )
         }
     }
@@ -214,7 +222,7 @@ where
         style: &Style,
         layout: Layout<'_>,
         cursor: Cursor,
-        viewport: &Rectangle
+        viewport: &Rectangle,
     ) {
         let appearance = theme.active(&self.style);
         let bounds = layout.bounds();
@@ -225,11 +233,11 @@ where
                 border: Border {
                     color: appearance.border_color,
                     width: 2.0,
-                    radius: 10.0.into()
+                    radius: 10.0.into(),
                 },
                 shadow: Default::default(),
             },
-            appearance.background
+            appearance.background,
         );
 
         let mut children = layout.children();
@@ -241,11 +249,11 @@ where
                 border: Border {
                     color: Default::default(),
                     width: 0.0,
-                    radius: Radius::from([10.0, 10.0, 0.0, 0.0])
+                    radius: Radius::from([10.0, 10.0, 0.0, 0.0]),
                 },
                 shadow: Default::default(),
             },
-            appearance.header_background
+            appearance.header_background,
         );
         self.header.as_widget().draw(
             &state.children[0],
@@ -254,7 +262,7 @@ where
             style,
             header_layout,
             cursor,
-            viewport
+            viewport,
         );
 
         let content_layout = children.next().expect("Card needs to have content.");
@@ -265,7 +273,7 @@ where
             style,
             content_layout,
             cursor,
-            viewport
+            viewport,
         );
 
         if let Some(footer) = &self.footer {
@@ -277,7 +285,7 @@ where
                 style,
                 footer_layout,
                 cursor,
-                viewport
+                viewport,
             );
         }
     }
@@ -287,21 +295,16 @@ where
             vec![
                 Tree::new(&self.header),
                 Tree::new(&self.content),
-                Tree::new(footer)
+                Tree::new(footer),
             ]
         } else {
-            vec![
-                Tree::new(&self.header),
-                Tree::new(&self.content)
-            ]
+            vec![Tree::new(&self.header), Tree::new(&self.content)]
         }
     }
 
     fn diff(&self, tree: &mut Tree) {
         if let Some(footer) = &self.footer {
-            tree.diff_children(&[
-                &self.header, &self.content, footer
-            ]);
+            tree.diff_children(&[&self.header, &self.content, footer]);
         } else {
             tree.diff_children(&[&self.header, &self.content]);
         }
@@ -312,34 +315,28 @@ where
         state: &mut Tree,
         layout: Layout<'_>,
         renderer: &Renderer,
-        operation: &mut dyn Operation<Message>
+        operation: &mut dyn Operation<Message>,
     ) {
         let mut children = layout.children();
 
         let header_layout = children.next().expect("Card needs to have header.");
-        self.header.as_widget().operate(
-            &mut state.children[0],
-            header_layout,
-            renderer,
-            operation
-        );
+        self.header
+            .as_widget()
+            .operate(&mut state.children[0], header_layout, renderer, operation);
 
         let content_layout = children.next().expect("Card needs to have content.");
         self.content.as_widget().operate(
             &mut state.children[1],
             content_layout,
             renderer,
-            operation
+            operation,
         );
 
         if let Some(footer) = &self.footer {
             let footer_layout = children.next().expect("Card should have footer.");
-            footer.as_widget().operate(
-                &mut state.children[2],
-                footer_layout,
-                renderer,
-                operation
-            );
+            footer
+                .as_widget()
+                .operate(&mut state.children[2], footer_layout, renderer, operation);
         }
     }
 
@@ -352,7 +349,7 @@ where
         renderer: &Renderer,
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
-        viewport: &Rectangle
+        viewport: &Rectangle,
     ) -> Status {
         let mut children = layout.children();
 
@@ -365,7 +362,7 @@ where
             renderer,
             clipboard,
             shell,
-            viewport
+            viewport,
         );
 
         let content_layout = children.next().expect("Card needs to have content.");
@@ -377,7 +374,7 @@ where
             renderer,
             clipboard,
             shell,
-            viewport
+            viewport,
         );
 
         let footer_status = if let Some(footer) = self.footer.as_mut() {
@@ -390,15 +387,13 @@ where
                 renderer,
                 clipboard,
                 shell,
-                viewport
+                viewport,
             )
         } else {
             Status::Ignored
         };
 
-        header_status
-            .merge(content_status)
-            .merge(footer_status)
+        header_status.merge(content_status).merge(footer_status)
     }
 
     fn mouse_interaction(
@@ -407,28 +402,28 @@ where
         layout: Layout<'_>,
         cursor: Cursor,
         viewport: &Rectangle,
-        renderer: &Renderer
+        renderer: &Renderer,
     ) -> Interaction {
         let mut children = layout.children();
-        
+
         let header_layout = children.next().expect("Card needs to have header.");
         let header_interaction = self.header.as_widget().mouse_interaction(
             &state.children[0],
             header_layout,
             cursor,
             viewport,
-            renderer
+            renderer,
         );
-        
+
         let content_layout = children.next().expect("Card needs to have content.");
         let content_interaction = self.content.as_widget().mouse_interaction(
             &state.children[1],
             content_layout,
             cursor,
             viewport,
-            renderer
+            renderer,
         );
-        
+
         let footer_interaction = if let Some(footer) = &self.footer {
             let footer_layout = children.next().expect("Card should have footer.");
             footer.as_widget().mouse_interaction(
@@ -436,12 +431,12 @@ where
                 footer_layout,
                 cursor,
                 viewport,
-                renderer
+                renderer,
             )
         } else {
             Interaction::default()
         };
-        
+
         header_interaction
             .max(content_interaction)
             .max(footer_interaction)
@@ -458,28 +453,29 @@ where
         if let Some(footer) = self.footer.as_mut() {
             children.push(footer);
         }
-        
-        let overlays :Vec<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>>=
-            layout.children().zip(state.children.iter_mut()).zip(children).filter_map(
-                |((layout, state), element)| {
-                    element.as_widget_mut().overlay(
-                        state,
-                        layout,
-                        renderer,
-                        translation
-                    )
-                }
-            ).collect();
 
-        (!overlays.is_empty()).then_some(iced::advanced::overlay::Group::with_children(overlays).overlay())
+        let overlays: Vec<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> = layout
+            .children()
+            .zip(state.children.iter_mut())
+            .zip(children)
+            .filter_map(|((layout, state), element)| {
+                element
+                    .as_widget_mut()
+                    .overlay(state, layout, renderer, translation)
+            })
+            .collect();
+
+        (!overlays.is_empty())
+            .then_some(iced::advanced::overlay::Group::with_children(overlays).overlay())
     }
 }
 
-impl<'a, Message, Theme, Renderer> From<Card<'a, Message, Theme, Renderer>> for Element<'a, Message, Theme, Renderer>
+impl<'a, Message, Theme, Renderer> From<Card<'a, Message, Theme, Renderer>>
+    for Element<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
     Renderer: 'a + iced::advanced::Renderer,
-    Theme: 'a + StyleSheet
+    Theme: 'a + StyleSheet,
 {
     fn from(value: Card<'a, Message, Theme, Renderer>) -> Self {
         Element::new(value)
@@ -487,8 +483,7 @@ where
 }
 
 /// The appearance of the [Card].
-pub struct Appearance
-{
+pub struct Appearance {
     /// The background of the content.
     pub background: Background,
 
@@ -496,11 +491,10 @@ pub struct Appearance
     pub header_background: Background,
 
     /// The color of the border.
-    pub border_color: Color
+    pub border_color: Color,
 }
 
-pub trait StyleSheet
-{
+pub trait StyleSheet {
     type Style: Default;
 
     fn active(&self, style: &Self::Style) -> Appearance;

@@ -1,24 +1,26 @@
-use iced::{Alignment, Background, Element, Event, Length, mouse, Padding, Point, Rectangle, Size, Vector};
+use crate::widgets::close::Close;
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::{Quad, Style};
-use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::advanced::widget::{Operation, Tree};
+use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::event::Status;
 use iced::mouse::{Cursor, Interaction};
 use iced::theme::Palette;
-use crate::widgets::close::Close;
+use iced::{
+    mouse, Alignment, Background, Element, Event, Length, Padding, Point, Rectangle, Size, Vector,
+};
 
 /// The default padding for the content.
-const DEFAULT_PADDING :f32= 0.0;
+const DEFAULT_PADDING: f32 = 0.0;
 /// The default padding for the [close button](Close).
-const DEFAULT_CLOSE_PADDING :f32= 10.0;
+const DEFAULT_CLOSE_PADDING: f32 = 10.0;
 
 /// A [Widget] for a container which can be closed.
 pub struct Closeable<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
-    Renderer: 'a + iced::advanced::Renderer+iced::advanced::text::Renderer<Font=iced::Font>,
-    Theme: 'a + StyleSheet
+    Renderer: 'a + iced::advanced::Renderer + iced::advanced::text::Renderer<Font = iced::Font>,
+    Theme: 'a + StyleSheet,
 {
     /// The width of the [Closeable].
     width: Length,
@@ -48,18 +50,17 @@ where
     close_button: Option<Element<'a, Message, Theme, Renderer>>,
 
     /// The [style](StyleSheet::Style) of the [Closeable].
-    style: <Theme as StyleSheet>::Style
+    style: <Theme as StyleSheet>::Style,
 }
 
 impl<'a, Message, Theme, Renderer> Closeable<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
-    Renderer: 'a + iced::advanced::Renderer+iced::advanced::text::Renderer<Font=iced::Font>,
-    Theme: 'a + StyleSheet
+    Renderer: 'a + iced::advanced::Renderer + iced::advanced::text::Renderer<Font = iced::Font>,
+    Theme: 'a + StyleSheet,
 {
     /// Instantiates a new [Closeable] with the given content.
-    pub fn new(content: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self
-    {
+    pub fn new(content: impl Into<Element<'a, Message, Theme, Renderer>>) -> Self {
         Closeable {
             width: Length::Shrink,
             height: Length::Shrink,
@@ -70,131 +71,118 @@ where
             on_click: None,
             close_padding: DEFAULT_CLOSE_PADDING.into(),
             close_button: None,
-            style: <Theme as StyleSheet>::Style::default()
+            style: <Theme as StyleSheet>::Style::default(),
         }
     }
 
     /// Sets the width of the [Closeable].
-    pub fn width(mut self, width: impl Into<Length>) -> Self
-    {
+    pub fn width(mut self, width: impl Into<Length>) -> Self {
         self.width = width.into();
 
         self
     }
 
     /// Sets the height of the [Closeable].
-    pub fn height(mut self, height: impl Into<Length>) -> Self
-    {
+    pub fn height(mut self, height: impl Into<Length>) -> Self {
         self.height = height.into();
 
         self
     }
 
     /// Sets the horizontal alignment of the [Closeable].
-    pub fn horizontal_alignment(mut self, horizontal_alignment: impl Into<Alignment>) -> Self
-    {
+    pub fn horizontal_alignment(mut self, horizontal_alignment: impl Into<Alignment>) -> Self {
         self.horizontal_alignment = horizontal_alignment.into();
 
         self
     }
 
     /// Sets the vertical alignment of the [Closeable].
-    pub fn vertical_alignment(mut self, vertical_alignment: impl Into<Alignment>) -> Self
-    {
+    pub fn vertical_alignment(mut self, vertical_alignment: impl Into<Alignment>) -> Self {
         self.vertical_alignment = vertical_alignment.into();
 
         self
     }
 
     /// Sets the padding of the content.
-    pub fn padding(mut self, padding: impl Into<Padding>) -> Self
-    {
+    pub fn padding(mut self, padding: impl Into<Padding>) -> Self {
         self.padding = padding.into();
 
         self
     }
 
     /// Sets the triggered message for when the content is pressed.
-    pub fn on_click(mut self, on_click: impl Into<Message>) -> Self
-    {
+    pub fn on_click(mut self, on_click: impl Into<Message>) -> Self {
         self.on_click = Some(on_click.into());
 
         self
     }
 
     /// Sets the padding of the [close button](Close).
-    pub fn close_padding(mut self, close_padding: impl Into<Padding>) -> Self
-    {
+    pub fn close_padding(mut self, close_padding: impl Into<Padding>) -> Self {
         self.close_padding = close_padding.into();
 
         self
     }
 
     /// Sets the message triggered when the [close button](Close) is pressed.
-    pub fn on_close(mut self, on_close: impl Into<Message>, size: impl Into<f32>) -> Self
-    {
-        self.close_button = Some(
-            Close::new(on_close).size(size.into()).into()
-        );
+    pub fn on_close(mut self, on_close: impl Into<Message>, size: impl Into<f32>) -> Self {
+        self.close_button = Some(Close::new(on_close).size(size.into()).into());
 
         self
     }
 
     /// Sets the [style](StyleSheet::Style) of the [Closeable].
-    pub fn style(mut self, style: impl Into<<Theme as StyleSheet>::Style>) -> Self
-    {
+    pub fn style(mut self, style: impl Into<<Theme as StyleSheet>::Style>) -> Self {
         self.style = style.into();
 
         self
     }
 }
 
-impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Closeable<'a, Message, Theme, Renderer>
+impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
+    for Closeable<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
-    Renderer: 'a + iced::advanced::Renderer + iced::advanced::text::Renderer<Font=iced::Font>,
-    Theme: 'a + StyleSheet
+    Renderer: 'a + iced::advanced::Renderer + iced::advanced::text::Renderer<Font = iced::Font>,
+    Theme: 'a + StyleSheet,
 {
     fn size(&self) -> Size<Length> {
-        Size::new(
-            self.width,
-            self.height
-        )
+        Size::new(self.width, self.height)
     }
 
     fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
-        let limits = limits
-            .loose()
-            .width(self.width)
-            .height(self.height);
+        let limits = limits.loose().width(self.width).height(self.height);
 
         let content_limits = limits.shrink(self.padding);
 
-        let mut content_node = self.content.as_widget().layout(&mut tree.children[0], renderer, &content_limits);
+        let mut content_node =
+            self.content
+                .as_widget()
+                .layout(&mut tree.children[0], renderer, &content_limits);
         let size = limits.resolve(self.width, self.height, content_node.size());
 
         let mut close_node = if let Some(close_button) = &self.close_button {
-            let close_node = close_button.as_widget().layout(
-                &mut tree.children[1],
-                renderer,
-                &limits
-            );
+            let close_node =
+                close_button
+                    .as_widget()
+                    .layout(&mut tree.children[1], renderer, &limits);
 
             Some(close_node)
         } else {
             None
         };
 
+        content_node.move_to_mut(Point::new(self.padding.left, self.padding.top));
+        content_node.align_mut(self.horizontal_alignment, self.vertical_alignment, size);
+
         if let Some(close_node) = close_node.as_mut() {
             close_node.move_to_mut(Point::new(
                 -self.close_padding.right,
-                self.close_padding.top
+                self.close_padding.top - close_node.bounds().height / 20.0,
             ));
+
             close_node.align_mut(Alignment::End, Alignment::Start, size);
         }
-
-        content_node.move_to_mut(Point::new(self.padding.left, self.padding.top));
-        content_node.align_mut(self.horizontal_alignment, self.vertical_alignment, size);
 
         Node::with_children(
             size.expand(self.padding),
@@ -202,7 +190,7 @@ where
                 vec![content_node, close_node]
             } else {
                 vec![content_node]
-            }
+            },
         )
     }
 
@@ -214,7 +202,7 @@ where
         style: &Style,
         layout: Layout<'_>,
         cursor: Cursor,
-        viewport: &Rectangle
+        viewport: &Rectangle,
     ) {
         let bounds = layout.bounds();
         let mut children = layout.children();
@@ -227,7 +215,7 @@ where
                 border: Default::default(),
                 shadow: Default::default(),
             },
-            appearance.background
+            appearance.background,
         );
 
         let content_node = children.next().expect("Closeable needs to have content.");
@@ -238,7 +226,7 @@ where
             style,
             content_node,
             cursor,
-            viewport
+            viewport,
         );
 
         if let Some(close_button) = &self.close_button {
@@ -250,7 +238,7 @@ where
                 style,
                 close_node,
                 cursor,
-                viewport
+                viewport,
             );
         }
     }
@@ -276,18 +264,15 @@ where
         state: &mut Tree,
         layout: Layout<'_>,
         renderer: &Renderer,
-        operation: &mut dyn Operation<Message>
+        operation: &mut dyn Operation<Message>,
     ) {
         let mut children = layout.children();
 
         let content_node = children.next().expect("Closeable needs to have content.");
 
-        self.content.as_widget().operate(
-            &mut state.children[0],
-            content_node,
-            renderer,
-            operation
-        );
+        self.content
+            .as_widget()
+            .operate(&mut state.children[0], content_node, renderer, operation);
     }
 
     fn on_event(
@@ -299,7 +284,7 @@ where
         renderer: &Renderer,
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
-        viewport: &Rectangle
+        viewport: &Rectangle,
     ) -> Status {
         let mut children = layout.children();
 
@@ -312,7 +297,7 @@ where
                         shell.publish(on_click.clone());
                         Status::Captured
                     }
-                    _ => Status::Ignored
+                    _ => Status::Ignored,
                 }
             } else {
                 Status::Ignored
@@ -326,7 +311,7 @@ where
                 renderer,
                 clipboard,
                 shell,
-                viewport
+                viewport,
             )
         };
 
@@ -340,7 +325,7 @@ where
                 renderer,
                 clipboard,
                 shell,
-                viewport
+                viewport,
             )
         } else {
             Status::Ignored
@@ -355,7 +340,7 @@ where
         layout: Layout<'_>,
         cursor: Cursor,
         viewport: &Rectangle,
-        renderer: &Renderer
+        renderer: &Renderer,
     ) -> Interaction {
         let mut children = layout.children();
 
@@ -373,7 +358,7 @@ where
                 content_node,
                 cursor,
                 viewport,
-                renderer
+                renderer,
             )
         };
 
@@ -385,7 +370,7 @@ where
                 close_node,
                 cursor,
                 viewport,
-                renderer
+                renderer,
             )
         } else {
             Interaction::default()
@@ -399,22 +384,26 @@ where
         state: &'b mut Tree,
         layout: Layout<'_>,
         renderer: &Renderer,
-        translation: Vector
+        translation: Vector,
     ) -> Option<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
         self.content.as_widget_mut().overlay(
             &mut state.children[0],
-            layout.children().next().expect("Closeable needs to have content."),
+            layout
+                .children()
+                .next()
+                .expect("Closeable needs to have content."),
             renderer,
-            translation
+            translation,
         )
     }
 }
 
-impl<'a, Message, Theme, Renderer> From<Closeable<'a, Message, Theme, Renderer>> for Element<'a, Message, Theme, Renderer>
+impl<'a, Message, Theme, Renderer> From<Closeable<'a, Message, Theme, Renderer>>
+    for Element<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
-    Renderer: 'a + iced::advanced::Renderer+iced::advanced::text::Renderer<Font=iced::Font>,
-    Theme: 'a + StyleSheet
+    Renderer: 'a + iced::advanced::Renderer + iced::advanced::text::Renderer<Font = iced::Font>,
+    Theme: 'a + StyleSheet,
 {
     fn from(value: Closeable<'a, Message, Theme, Renderer>) -> Self {
         Element::new(value)
@@ -424,13 +413,13 @@ where
 /// The appearance of a [Closeable].
 pub struct Appearance {
     /// The [Background] of the [Closeable].
-    pub(crate) background: Background
+    pub(crate) background: Background,
 }
 
 impl Default for Appearance {
     fn default() -> Self {
         Appearance {
-            background: Background::Color(Palette::GRUVBOX_DARK.background)
+            background: Background::Color(Palette::GRUVBOX_DARK.background),
         }
     }
 }

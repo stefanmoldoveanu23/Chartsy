@@ -1,23 +1,24 @@
-use std::{collections::HashMap, hash::Hash};
-
 use iced::{
-    widget::{Button, Column, Row},
+    widget::{
+        button::{Status, Style},
+        Button, Column, Row,
+    },
     Element, Length,
 };
 
+use crate::utils::theme;
+
 pub struct Tabs<'a, Type, Message, Theme, Renderer>
 where
-    Type: 'a + Hash + Eq + Default + Copy,
+    Type: 'a + Eq + Default + Copy,
     Message: 'a + Clone,
     Renderer: 'a + iced::advanced::Renderer,
 {
-    tabs: HashMap<
+    tabs: Vec<(
         Type,
-        (
-            Element<'a, Message, Theme, Renderer>,
-            Element<'a, Message, Theme, Renderer>,
-        ),
-    >,
+        Element<'a, Message, Theme, Renderer>,
+        Element<'a, Message, Theme, Renderer>,
+    )>,
     selected: Type,
     width: Length,
     height: Length,
@@ -26,7 +27,7 @@ where
 
 impl<'a, Type, Message, Theme, Renderer> Tabs<'a, Type, Message, Theme, Renderer>
 where
-    Type: 'a + Hash + Eq + Default + Copy,
+    Type: 'a + Eq + Default + Copy,
     Message: 'a + Clone,
     Renderer: 'a + iced::advanced::Renderer,
 {
@@ -41,10 +42,7 @@ where
         on_select: fn(Type) -> Message,
     ) -> Self {
         Tabs {
-            tabs: tabs
-                .into_iter()
-                .map(|(tab, title, content)| (tab, (title, content)))
-                .collect(),
+            tabs: tabs.into_iter().collect(),
             selected: Type::default(),
             width: Length::Shrink,
             height: Length::Shrink,
@@ -71,18 +69,17 @@ where
     }
 }
 
-impl<'a, Type, Message, Theme, Renderer> From<Tabs<'a, Type, Message, Theme, Renderer>>
-    for Element<'a, Message, Theme, Renderer>
+impl<'a, Type, Message, Renderer> From<Tabs<'a, Type, Message, theme::Theme, Renderer>>
+    for Element<'a, Message, theme::Theme, Renderer>
 where
-    Type: 'a + Hash + Eq + Default + Copy,
+    Type: 'a + Eq + Default + Copy,
     Message: 'a + Clone,
-    Theme: 'a + iced::widget::text::Catalog + iced::widget::button::Catalog,
     Renderer: 'a + iced::advanced::Renderer + iced::advanced::text::Renderer,
 {
-    fn from(value: Tabs<'a, Type, Message, Theme, Renderer>) -> Self {
+    fn from(value: Tabs<'a, Type, Message, theme::Theme, Renderer>) -> Self {
         let (titles, contents) = value.tabs.into_iter().fold(
             (vec![], vec![]),
-            |(mut titles, mut contents), (tab, (title, content))| {
+            |(mut titles, mut contents), (tab, title, content)| {
                 titles.push((tab, title));
                 contents.push((tab, content));
                 (titles, contents)
@@ -94,12 +91,19 @@ where
                 titles
                     .into_iter()
                     .map(|(tab, title)| {
+                        let style: fn(&theme::Theme, Status) -> Style = if tab == value.selected {
+                            theme::button::primary_tab
+                        } else {
+                            theme::button::secondary_tab
+                        };
+
                         Button::new(title)
                             .on_press((value.on_select)(tab))
                             .width(Length::FillPortion(1))
+                            .style(style)
                             .into()
                     })
-                    .collect::<Vec<Element<'a, Message, Theme, Renderer>>>(),
+                    .collect::<Vec<Element<'a, Message, theme::Theme, Renderer>>>(),
             )
             .width(Length::Fill)
             .into(),

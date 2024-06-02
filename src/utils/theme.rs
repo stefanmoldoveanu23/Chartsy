@@ -74,6 +74,26 @@ pub mod button {
             ..Default::default()
         }
     }
+
+    pub fn primary_tab(theme: &Theme, status: Status) -> Style {
+        let mut primary_tab = iced::widget::button::primary(theme, status);
+        primary_tab.border = Border {
+            radius: 0.0.into(),
+            ..primary_tab.border
+        };
+
+        primary_tab
+    }
+
+    pub fn secondary_tab(theme: &Theme, status: Status) -> Style {
+        let mut secondary_tab = iced::widget::button::secondary(theme, status);
+        secondary_tab.border = Border {
+            radius: 0.0.into(),
+            ..secondary_tab.border
+        };
+
+        secondary_tab
+    }
 }
 
 pub mod container {
