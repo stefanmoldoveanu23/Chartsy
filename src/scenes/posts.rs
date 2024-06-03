@@ -1266,15 +1266,11 @@ impl Scene for Posts {
             vec![
                 (
                     PostTabs::Recommended,
-                    Text::new("Recommended").into(),
+                    String::from("Recommended"),
                     recommended_tab,
                 ),
-                (
-                    PostTabs::Filtered,
-                    Text::new("Filtered").into(),
-                    filtered_tab,
-                ),
-                (PostTabs::Profile, Text::new("Profile").into(), profile_tab),
+                (PostTabs::Filtered, String::from("Filtered"), filtered_tab),
+                (PostTabs::Profile, String::from("Profile"), profile_tab),
             ],
             |tab_id| PostsMessage::SelectTab(tab_id).into(),
         )

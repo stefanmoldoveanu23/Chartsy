@@ -1,7 +1,8 @@
 use iced::{
+    alignment::Horizontal,
     widget::{
         button::{Status, Style},
-        Button, Column, Row,
+        Button, Column, Row, Text,
     },
     Element, Length,
 };
@@ -14,11 +15,7 @@ where
     Message: 'a + Clone,
     Renderer: 'a + iced::advanced::Renderer,
 {
-    tabs: Vec<(
-        Type,
-        Element<'a, Message, Theme, Renderer>,
-        Element<'a, Message, Theme, Renderer>,
-    )>,
+    tabs: Vec<(Type, String, Element<'a, Message, Theme, Renderer>)>,
     selected: Type,
     width: Length,
     height: Length,
@@ -32,13 +29,7 @@ where
     Renderer: 'a + iced::advanced::Renderer,
 {
     pub fn new_with_tabs(
-        tabs: impl IntoIterator<
-            Item = (
-                Type,
-                Element<'a, Message, Theme, Renderer>,
-                Element<'a, Message, Theme, Renderer>,
-            ),
-        >,
+        tabs: impl IntoIterator<Item = (Type, String, Element<'a, Message, Theme, Renderer>)>,
         on_select: fn(Type) -> Message,
     ) -> Self {
         Tabs {
@@ -97,11 +88,15 @@ where
                             theme::button::secondary_tab
                         };
 
-                        Button::new(title)
-                            .on_press((value.on_select)(tab))
-                            .width(Length::FillPortion(1))
-                            .style(style)
-                            .into()
+                        Button::new(
+                            Text::new(title)
+                                .width(Length::Fill)
+                                .horizontal_alignment(Horizontal::Center),
+                        )
+                        .on_press((value.on_select)(tab))
+                        .width(Length::FillPortion(1))
+                        .style(style)
+                        .into()
                     })
                     .collect::<Vec<Element<'a, Message, theme::Theme, Renderer>>>(),
             )

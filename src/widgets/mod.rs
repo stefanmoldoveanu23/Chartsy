@@ -1,4 +1,5 @@
 pub mod card;
+pub mod centered;
 pub mod close;
 pub mod closeable;
 pub mod color_picker;
@@ -11,6 +12,8 @@ pub mod tabs;
 pub mod wait_panel;
 
 pub type Card<'a, Message, Theme, Renderer> = card::Card<'a, Message, Theme, Renderer>;
+
+pub type Centered<'a, Message, Theme, Renderer> = centered::Centered<'a, Message, Theme, Renderer>;
 
 pub type Close<Message> = close::Close<Message>;
 

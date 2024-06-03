@@ -10,7 +10,7 @@ use std::{fs, io};
 use crate::errors::error::Error;
 use crate::utils::icons::{Icon, ICON};
 use crate::utils::theme;
-use crate::widgets::{Card, Closeable, ModalStack, Tabs};
+use crate::widgets::{Card, Centered, Closeable, ModalStack, Tabs};
 use crate::{database, debug_message, services, LOADING_IMAGE};
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{Button, Column, Container, Image, Row, Scrollable, Space, Text};
@@ -634,12 +634,12 @@ impl Scene for Main {
                     vec![
                         (
                             MainTabIds::Offline,
-                            Text::new("Offline").into(),
+                            String::from("Offline"),
                             offline_tab.into(),
                         ),
                         (
                             MainTabIds::Online,
-                            Text::new("Online").into(),
+                            String::from("Offline"),
                             online_tab.into(),
                         ),
                     ],
@@ -649,30 +649,20 @@ impl Scene for Main {
                 .width(Length::Fill)
                 .height(Length::Fill);
 
-                Row::with_children(vec![
-                    Space::with_width(Length::FillPortion(1)).into(),
-                    Column::with_children(vec![
-                        Space::with_height(Length::FillPortion(1)).into(),
-                        Closeable::<Message, Theme, Renderer>::new(
-                            Card::new(title, tabs).content_padding(0.0),
-                        )
-                        .height(Length::FillPortion(5))
-                        .width(Length::Fill)
-                        .style(theme::closeable::Closeable::Transparent)
-                        .on_close(
-                            Into::<Message>::into(MainMessage::ToggleModal(
-                                ModalType::ShowingDrawings,
-                            )),
-                            32.0,
-                        )
-                        .close_padding(8.0)
-                        .into(),
-                        Space::with_height(Length::FillPortion(1)).into(),
-                    ])
-                    .width(Length::FillPortion(2))
-                    .into(),
-                    Space::with_width(Length::FillPortion(1)).into(),
-                ])
+                Centered::new(
+                    Closeable::<Message, Theme, Renderer>::new(
+                        Card::new(title, tabs).content_padding(0.0),
+                    )
+                    .height(Length::FillPortion(5))
+                    .width(Length::Fill)
+                    .style(theme::closeable::Closeable::Transparent)
+                    .on_close(
+                        Into::<Message>::into(MainMessage::ToggleModal(ModalType::ShowingDrawings)),
+                        32.0,
+                    )
+                    .close_padding(8.0),
+                )
+                .height(5.0 / 7.0)
                 .into()
             }
             ModalType::SelectingSaveMode => {
@@ -708,10 +698,12 @@ impl Scene for Main {
                     )
                     .width(Length::Fixed(300.0)),
                 )
+                .style(theme::closeable::Closeable::Transparent)
                 .on_close(
                     Into::<Message>::into(MainMessage::ToggleModal(ModalType::SelectingSaveMode)),
                     25.0,
                 )
+                .close_padding(7.0)
                 .into()
             }
         };
