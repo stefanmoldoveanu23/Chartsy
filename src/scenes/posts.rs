@@ -29,6 +29,8 @@ use std::sync::Arc;
 
 use crate::scenes::data::posts::*;
 
+use super::scenes::Scenes;
+
 /// The [messages](SceneMessage) that can be triggered on the [Posts] scene.
 #[derive(Clone)]
 pub enum PostsMessage {
@@ -1262,21 +1264,34 @@ impl Scene for Posts {
         .align_items(Alignment::Center)
         .into();
 
-        let underlay: Tabs<PostTabs, Message, Theme, Renderer> = Tabs::new_with_tabs(
-            vec![
-                (
-                    PostTabs::Recommended,
-                    String::from("Recommended"),
-                    recommended_tab,
-                ),
-                (PostTabs::Filtered, String::from("Filtered"), filtered_tab),
-                (PostTabs::Profile, String::from("Profile"), profile_tab),
-            ],
-            |tab_id| PostsMessage::SelectTab(tab_id).into(),
-        )
-        .selected(self.active_tab)
-        .width(Length::Fill)
-        .height(Length::Fill);
+        let underlay = Column::with_children(vec![
+            Row::with_children(vec![
+                Button::new(Text::new(Icon::Leave.to_string()).size(30.0).font(ICON))
+                    .on_press(Message::ChangeScene(Scenes::Main(None)))
+                    .style(iced::widget::button::text)
+                    .padding(10.0)
+                    .into(),
+                Text::new(self.get_title()).size(30.0).into(),
+            ])
+            .align_items(Alignment::Center)
+            .into(),
+            Tabs::new_with_tabs(
+                vec![
+                    (
+                        PostTabs::Recommended,
+                        String::from("Recommended"),
+                        recommended_tab,
+                    ),
+                    (PostTabs::Filtered, String::from("Filtered"), filtered_tab),
+                    (PostTabs::Profile, String::from("Profile"), profile_tab),
+                ],
+                |tab_id| PostsMessage::SelectTab(tab_id).into(),
+            )
+            .selected(self.active_tab)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into(),
+        ]);
 
         let modal_generator = |modal_type: ModalType| match modal_type {
             ModalType::ShowingImage(data) => Self::gen_show_image(data.clone(), globals),
