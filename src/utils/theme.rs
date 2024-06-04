@@ -56,25 +56,6 @@ pub mod button {
 
     use super::Theme;
 
-    pub fn danger(theme: &Theme, status: Status) -> Style {
-        let background = match status {
-            Status::Disabled | Status::Hovered => theme.extended_palette().background.weak,
-            Status::Pressed => theme.extended_palette().background.strong,
-            Status::Active => theme.extended_palette().background.base,
-        };
-
-        Style {
-            background: Some(background.color.into()),
-            text_color: background.text,
-            border: Border {
-                color: theme.extended_palette().secondary.base.color,
-                width: 2.0,
-                radius: 20.0.into(),
-            },
-            ..Default::default()
-        }
-    }
-
     pub fn primary_tab(theme: &Theme, status: Status) -> Style {
         let mut primary_tab = iced::widget::button::primary(theme, status);
         primary_tab.border = Border {

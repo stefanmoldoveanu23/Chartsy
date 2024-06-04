@@ -496,7 +496,7 @@ impl Scene for Main {
                 Space::with_width(Length::Fill).into(),
                 Row::with_children(vec![register_button.into(), login_button.into()])
                     .width(Length::Shrink)
-                    .spacing(10)
+                    .spacing(20)
                     .into(),
             ])
         };
@@ -507,36 +507,54 @@ impl Scene for Main {
             .align_x(Horizontal::Center)
             .align_y(Vertical::Center);
 
-        let start_drawing_button = Button::new("Start new Drawing")
-            .padding(8)
-            .on_press(MainMessage::ToggleModal(ModalType::SelectingSaveMode).into());
-        let continue_drawing_button = Button::new("Continue drawing")
-            .padding(8)
-            .on_press(MainMessage::ToggleModal(ModalType::ShowingDrawings).into());
-        let browse_posts_button = Button::new("Browse posts")
-            .padding(8)
-            .on_press(Message::ChangeScene(Scenes::Posts(None)));
-        let quit_button = Button::new("Quit").padding(8).on_press(Message::Quit);
+        let start_drawing_button = Button::new(
+            Text::new("Start new Drawing")
+                .width(Length::Fill)
+                .horizontal_alignment(Horizontal::Center),
+        )
+        .padding(8)
+        .on_press(MainMessage::ToggleModal(ModalType::SelectingSaveMode).into());
+        let continue_drawing_button = Button::new(
+            Text::new("Continue drawing")
+                .width(Length::Fill)
+                .horizontal_alignment(Horizontal::Center),
+        )
+        .padding(8)
+        .on_press(MainMessage::ToggleModal(ModalType::ShowingDrawings).into());
+        let browse_posts_button = Button::new(
+            Text::new("Browse posts")
+                .width(Length::Fill)
+                .horizontal_alignment(Horizontal::Center),
+        )
+        .padding(8)
+        .on_press(Message::ChangeScene(Scenes::Posts(None)));
+        let quit_button = Button::new(
+            Text::new("Quit")
+                .width(Length::Fill)
+                .horizontal_alignment(Horizontal::Center),
+        )
+        .padding(8)
+        .on_press(Message::Quit);
 
         let column_buttons = Column::with_children(
             if globals.get_db().is_some() && globals.get_user().is_some() {
                 vec![
-                    start_drawing_button.into(),
-                    continue_drawing_button.into(),
-                    browse_posts_button.into(),
-                    quit_button.into(),
+                    start_drawing_button.width(Length::Fill).into(),
+                    continue_drawing_button.width(Length::Fill).into(),
+                    browse_posts_button.width(Length::Fill).into(),
+                    quit_button.width(Length::Fill).into(),
                 ]
             } else {
                 vec![
-                    start_drawing_button.into(),
-                    continue_drawing_button.into(),
-                    quit_button.into(),
+                    start_drawing_button.width(Length::Fill).into(),
+                    continue_drawing_button.width(Length::Fill).into(),
+                    quit_button.width(Length::Fill).into(),
                 ]
             },
         )
         .spacing(20)
         .height(Length::FillPortion(3))
-        .width(Length::Fill)
+        .width(Length::Fixed(200.0))
         .align_items(Alignment::Center);
 
         let container_entrance: Container<Message, Theme, Renderer> = Container::new(

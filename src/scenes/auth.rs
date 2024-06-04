@@ -6,7 +6,7 @@ use crate::scenes::data::auth::*;
 use crate::scenes::scenes::Scenes;
 use crate::utils::icons::{Icon, ICON};
 use crate::utils::serde::Serialize;
-use crate::utils::theme::Theme;
+use crate::utils::theme::{self, Theme};
 use crate::widgets::{Centered, Tabs};
 use iced::widget::{Button, Column, Row, Text, TextInput};
 use iced::{Alignment, Command, Element, Length, Renderer};
@@ -342,20 +342,26 @@ impl Scene for Auth {
             } else {
                 String::from("")
             },
-        );
+        )
+        .size(14.0)
+        .style(theme::text::danger);
 
         let log_in_error_text =
             Text::new(if let Some(error) = self.log_in_form.get_error().clone() {
                 error.to_string()
             } else {
                 String::from("")
-            });
+            })
+            .size(14.0)
+            .style(theme::text::danger);
 
         let code_error_text = Text::new(if let Some(error) = self.code_error.clone() {
             error.to_string()
         } else {
             String::from("")
-        });
+        })
+        .size(14.0)
+        .style(theme::text::danger);
 
         let register_tab = if let Some(code) = &self.register_code {
             Column::with_children([
@@ -373,7 +379,6 @@ impl Scene for Auth {
                     .on_press(AuthMessage::ValidateEmail.into())
                     .into(),
             ])
-            .spacing(10.0)
         } else {
             Column::with_children([
                 register_error_text.into(),
@@ -404,7 +409,8 @@ impl Scene for Auth {
                     Button::new("Register").into()
                 },
             ])
-        };
+        }
+        .spacing(10.0);
 
         let login_tab = Column::with_children([
             log_in_error_text.into(),
@@ -428,7 +434,8 @@ impl Scene for Auth {
             } else {
                 Button::new("Log In").into()
             },
-        ]);
+        ])
+        .spacing(10.0);
 
         Column::with_children(vec![
             Row::with_children(vec![
@@ -453,9 +460,11 @@ impl Scene for Auth {
                     ],
                     |tab_id| AuthMessage::TabSelection(tab_id).into(),
                 )
-                .width(Length::FillPortion(2))
-                .selected(self.active_tab),
+                .selected(self.active_tab)
+                .width(Length::Fill)
+                .height(Length::Fill),
             )
+            .height(0.75)
             .into(),
         ])
         .into()

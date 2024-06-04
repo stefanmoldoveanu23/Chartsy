@@ -841,9 +841,9 @@ impl Scene for Drawing {
                     Text::new("Delete")
                         .horizontal_alignment(Horizontal::Center)
                         .width(Length::Fill)
-                        .style(theme::text::danger)
                         .size(20.0),
                 )
+                .style(iced::widget::button::danger)
                 .on_press(DrawingMessage::DeleteDrawing.into())
                 .padding(5.0)
                 .width(Length::Fill)

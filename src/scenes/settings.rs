@@ -604,7 +604,7 @@ impl Scene for Settings {
             };
 
         let delete_account = Button::new("Delete account")
-            .style(theme::button::danger)
+            .style(iced::widget::button::danger)
             .on_press(SettingsMessage::DeleteAccount.into())
             .into();
 
