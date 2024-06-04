@@ -11,14 +11,12 @@ use_litcrypt!();
 mod canvas;
 mod config;
 mod database;
-mod errors;
 mod scene;
 mod scenes;
-mod services;
 mod utils;
 mod widgets;
 
-use errors::error::Error;
+use utils::errors::error::Error;
 use lettre::transport::smtp::response::Response;
 use scene::{Globals, Message};
 use scenes::scenes::SceneManager;

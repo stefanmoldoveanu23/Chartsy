@@ -28,9 +28,9 @@ use crate::canvas::tools::{
     circle::CirclePending, ellipse::EllipsePending, line::LinePending, polygon::PolygonPending,
     rect::RectPending, triangle::TrianglePending,
 };
-use crate::errors::error::Error;
 use crate::scene::{Globals, Message, Scene, SceneMessage};
-use crate::{database, debug_message, services, utils};
+use crate::utils::errors::Error;
+use crate::{database, debug_message, scenes::services, utils};
 
 use crate::utils::theme::{self, Theme};
 

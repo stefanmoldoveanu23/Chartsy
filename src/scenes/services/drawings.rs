@@ -2,7 +2,7 @@ use directories::ProjectDirs;
 use json::JsonValue;
 use mongodb::bson::Uuid;
 
-use crate::{database, debug_message, errors::error::Error, scene::Globals};
+use crate::{database, debug_message, scene::Globals, utils::errors::Error};
 
 pub async fn delete_drawing_offline(id: Uuid) -> Result<(), Error> {
     let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy")

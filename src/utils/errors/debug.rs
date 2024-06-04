@@ -39,5 +39,4 @@ macro_rules! debug_message {
     };
 }
 
-use crate::errors::error::Error;
-pub use debug_message;
+use super::error::Error;

@@ -1,10 +1,9 @@
 use crate::database;
-use crate::errors::auth::AuthError;
-use crate::errors::debug::{debug_message, DebugError};
-use crate::errors::error::Error;
+use crate::debug_message;
 use crate::scene::{Globals, Message, Scene, SceneMessage};
 use crate::scenes::data::auth::User;
 use crate::scenes::scenes::Scenes;
+use crate::utils::errors::{AuthError, DebugError, Error};
 use crate::utils::icons::{Icon, ICON};
 use crate::utils::theme::{self, Theme};
 use crate::widgets::{ModalStack, WaitPanel};

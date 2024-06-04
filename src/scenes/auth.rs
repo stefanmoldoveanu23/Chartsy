@@ -1,9 +1,8 @@
 use crate::database;
-use crate::errors::auth::AuthError;
-use crate::errors::error::Error;
 use crate::scene::{Globals, Message, Scene, SceneMessage};
 use crate::scenes::data::auth::*;
 use crate::scenes::scenes::Scenes;
+use crate::utils::errors::{AuthError, Error};
 use crate::utils::icons::{Icon, ICON};
 use crate::utils::serde::Serialize;
 use crate::utils::theme::{self, Theme};

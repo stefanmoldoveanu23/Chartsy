@@ -6,7 +6,7 @@ use resvg::usvg::fontdb;
 use svg::Document;
 use tokio::task;
 use crate::debug_message;
-use crate::errors::error::Error;
+use super::errors::Error;
 
 pub async fn encode_svg(svg: Document, format: impl Into<String>) -> Result<Vec<u8>, Error>
 {

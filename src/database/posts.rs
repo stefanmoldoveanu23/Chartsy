@@ -1,10 +1,9 @@
 use crate::database::base::resolve_cursor;
-use crate::errors::auth::AuthError;
-use crate::errors::debug::{debug_message, DebugError};
-use crate::errors::error::Error;
+use crate::debug_message;
 use crate::scene::Globals;
 use crate::scenes::data::auth::User;
 use crate::scenes::data::posts::{Comment, Post};
+use crate::utils::errors::{AuthError, DebugError, Error};
 use crate::utils::serde::Deserialize;
 use mongodb::bson::{doc, Document, Uuid};
 use mongodb::options::{AggregateOptions, UpdateOptions};
@@ -431,18 +430,23 @@ pub async fn get_user_by_tag(db: &Database, user_tag: String) -> Result<User, Er
 
 /// Deletes the given post.
 pub async fn delete_post(id: Uuid, globals: &Globals) -> Result<(), Error> {
-    let db = globals.get_db().ok_or(debug_message!("Could not access database.").into())?;
+    let db = globals
+        .get_db()
+        .ok_or(debug_message!("Could not access database.").into())?;
 
     let posts = db.collection::<Document>("posts");
 
-    match posts.delete_one(
-        doc! {
-            "id": id
-        },
-        None
-    ).await {
+    match posts
+        .delete_one(
+            doc! {
+                "id": id
+            },
+            None,
+        )
+        .await
+    {
         Ok(result) if result.deleted_count > 0 => Ok(()),
         Ok(_) => Err(debug_message!("Could not find post with id {} to delete.", id).into()),
-        Err(err) => Err(debug_message!("{}", err).into())
+        Err(err) => Err(debug_message!("{}", err).into()),
     }
 }

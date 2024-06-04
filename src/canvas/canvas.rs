@@ -3,7 +3,7 @@ use super::tools::line::LinePending;
 use crate::canvas::layer::{CanvasMessage, Layer, LayerVessel};
 use crate::canvas::style::Style;
 use crate::canvas::svg::SVG;
-use crate::errors::error::Error;
+use crate::utils::errors::Error;
 use crate::scene::{Globals, Message};
 use crate::utils::serde::Serialize;
 use crate::utils::theme::Theme;

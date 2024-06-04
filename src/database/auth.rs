@@ -1,7 +1,6 @@
-use crate::errors::auth::AuthError;
-use crate::errors::debug::{debug_message, DebugError};
-use crate::errors::error::Error;
+use crate::debug_message;
 use crate::scenes::data::auth::User;
+use crate::utils::errors::{AuthError, DebugError, Error};
 use crate::utils::serde::Deserialize;
 use directories::ProjectDirs;
 use mongodb::bson::spec::BinarySubtype;

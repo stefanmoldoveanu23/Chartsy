@@ -7,11 +7,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::{fs, io};
 
-use crate::errors::error::Error;
+use crate::utils::errors::Error;
 use crate::utils::icons::{Icon, ICON};
 use crate::utils::theme;
 use crate::widgets::{Card, Centered, Closeable, ModalStack, Tabs};
-use crate::{database, debug_message, services, LOADING_IMAGE};
+use crate::{database, debug_message, LOADING_IMAGE};
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{Button, Column, Container, Image, Row, Scrollable, Space, Text};
 use iced::{Alignment, Command, Element, Length, Renderer, Theme};
@@ -21,6 +21,7 @@ use crate::scene::{Globals, Message, Scene, SceneMessage};
 use crate::scenes::auth::AuthOptions;
 use crate::scenes::data::auth::AuthTabIds;
 use crate::scenes::scenes::Scenes;
+use crate::scenes::services;
 
 use crate::scenes::data::drawing::SaveMode;
 use crate::scenes::drawing::DrawingOptions;

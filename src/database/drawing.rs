@@ -1,8 +1,8 @@
 use crate::canvas::tool;
 use crate::canvas::tool::Tool;
 use crate::database;
-use crate::errors::debug::{debug_message, DebugError};
-use crate::errors::error::Error;
+use crate::utils::errors::{Error, DebugError};
+use crate::debug_message;
 use crate::scene::Globals;
 use crate::scenes::data::drawing::Tag;
 use mongodb::bson::{doc, Bson, Document, Uuid, UuidRepresentation};

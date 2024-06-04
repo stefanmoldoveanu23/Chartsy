@@ -1,5 +1,5 @@
 use std::fmt::{Debug, Display, Formatter};
-use crate::errors::error::Error;
+use super::Error;
 
 /// Errors for the authentication page.
 #[derive(Clone, Eq, PartialEq)]

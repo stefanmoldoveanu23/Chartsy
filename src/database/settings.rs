@@ -1,7 +1,6 @@
-use crate::errors::auth::AuthError;
-use crate::errors::debug::{debug_message, DebugError};
-use crate::errors::error::Error;
+use crate::debug_message;
 use crate::scene::Globals;
+use crate::utils::errors::{AuthError, DebugError, Error};
 use mongodb::bson::{doc, Bson, DateTime, Document, Uuid};
 use mongodb::Database;
 

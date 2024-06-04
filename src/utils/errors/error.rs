@@ -1,5 +1,5 @@
-use crate::errors::auth::AuthError;
-use crate::errors::debug::DebugError;
+use super::AuthError;
+use super::DebugError;
 use std::fmt::{Debug, Display, Formatter};
 
 /// Error types.

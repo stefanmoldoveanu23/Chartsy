@@ -1,15 +1,16 @@
-use crate::errors::debug::debug_message;
-use crate::errors::error::Error;
 use crate::scene::{Globals, Message, Scene, SceneMessage};
 use crate::scenes::data::auth::Role;
 use crate::scenes::data::auth::User;
 use crate::scenes::data::drawing::Tag;
+use crate::scenes::services;
+use crate::debug_message;
+use crate::utils::errors::Error;
 use crate::utils::icons::{Icon, ICON};
 use crate::utils::theme::{self, Theme};
 use crate::widgets::{
     Card, Close, Closeable, ComboBox, Grid, ModalStack, PostSummary, Rating, Tabs,
 };
-use crate::{config, database, services, LOADING_IMAGE};
+use crate::{config, database, LOADING_IMAGE};
 use iced::advanced::image::Handle;
 use iced::alignment::Horizontal;
 use iced::widget::tooltip::Position;

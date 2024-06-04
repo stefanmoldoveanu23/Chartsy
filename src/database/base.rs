@@ -1,6 +1,6 @@
 use crate::config;
-use crate::errors::debug::debug_message;
-use crate::errors::error::Error;
+use crate::debug_message;
+use crate::utils::errors::Error;
 use crate::utils::serde::Deserialize;
 use dropbox_sdk::default_client::{NoauthDefaultClient, UserAuthDefaultClient};
 use dropbox_sdk::files::{self, DeleteArg};

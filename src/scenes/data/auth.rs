@@ -1,6 +1,6 @@
 use crate::config;
-use crate::errors::auth::AuthError;
-use crate::errors::error::Error;
+use crate::utils::errors::AuthError;
+use crate::utils::errors::Error;
 use crate::utils::serde::{Deserialize, Serialize};
 use lettre::message::MultiPart;
 use lettre::Message;

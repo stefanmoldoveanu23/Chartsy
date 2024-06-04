@@ -1,6 +1,6 @@
 use mongodb::bson::Uuid;
 
-use crate::{database, debug_message, errors::error::Error, scene::Globals};
+use crate::{database, debug_message, scene::Globals, utils::errors::Error};
 
 pub async fn delete_post(id: Uuid, globals: &Globals) -> Result<(), Error> {
     let user_id = globals

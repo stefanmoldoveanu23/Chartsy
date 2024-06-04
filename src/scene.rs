@@ -1,8 +1,8 @@
 use crate::debug_message;
-use crate::errors::error::Error;
 use crate::scenes::data::auth::User;
 use crate::scenes::data::posts::PixelImage;
 use crate::scenes::scenes::Scenes;
+use crate::utils::errors::Error;
 use iced::Theme;
 use iced::{Command, Element, Renderer};
 use moka::future::Cache;
