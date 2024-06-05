@@ -1,21 +1,18 @@
 use crate::database;
-use crate::debug_message;
 use crate::scene::{Globals, Message, Scene, SceneMessage};
 use crate::scenes::data::auth::User;
 use crate::scenes::scenes::Scenes;
-use crate::utils::errors::{AuthError, DebugError, Error};
-use crate::utils::icons::{Icon, ICON};
+use crate::utils::errors::{AuthError, Error};
 use crate::utils::theme::{self, Theme};
 use crate::widgets::{ModalStack, WaitPanel};
 use iced::advanced::image::Handle;
-use iced::widget::{Button, Column, Row, Scrollable, Space, Text, TextInput};
+use iced::widget::{Button, Column, Row, Scrollable, Space, Text};
 use iced::{Alignment, Command, Element, Length, Renderer};
-use image::load_from_memory;
 use mongodb::bson::doc;
-use rfd::AsyncFileDialog;
 use std::any::Any;
-use std::fs;
-use std::ops::Deref;
+use std::sync::Arc;
+
+use super::services;
 
 /// The struct for the settings [Scene].
 pub struct Settings {
@@ -51,9 +48,6 @@ pub struct SettingsOptions {}
 /// The possible [messages](SceneMessage) this [Scene] can trigger.
 #[derive(Clone)]
 pub enum SettingsMessage {
-    /// Default [Message].
-    None,
-
     /// When the username TextInput field is modified.
     UpdateUsernameField(String),
 
@@ -84,11 +78,12 @@ pub enum SettingsMessage {
     /// Sets the users profile picture to the image selected in the file dialog.
     SetImage(Vec<u8>),
 
-    /// Triggered when a new profile picture has been saved.
-    SavedProfilePicture,
-
     /// Deletes the current users account.
     DeleteAccount,
+
+    /// Triggered upon successful update.
+    /// After securing that the database has been updated, the data will be set in the program as well.
+    DoneUpdate(Arc<dyn Fn(&mut Settings, &mut Globals) + Send + Sync + 'static>),
 
     /// Handles errors.
     Error(Error),
@@ -101,7 +96,6 @@ impl SceneMessage for SettingsMessage {
 
     fn get_name(&self) -> String {
         match self {
-            Self::None => String::from("None"),
             Self::UpdateUsernameField(_) => String::from("Update username field"),
             Self::UpdateUsername => String::from("Update username"),
             Self::UpdateUserTagField(_) => String::from("Update user tag field"),
@@ -112,8 +106,8 @@ impl SceneMessage for SettingsMessage {
             Self::LoadedProfilePicture(_) => String::from("Loaded profile picture"),
             Self::SelectImage => String::from("Select image"),
             Self::SetImage(_) => String::from("Set image"),
-            Self::SavedProfilePicture => String::from("Saved profile picture"),
             Self::DeleteAccount => String::from("Delete account"),
+            Self::DoneUpdate(_) => String::from("Done update"),
             Self::Error(_) => String::from("Error"),
         }
     }
@@ -126,6 +120,144 @@ impl SceneMessage for SettingsMessage {
 impl Into<Message> for SettingsMessage {
     fn into(self) -> Message {
         Message::DoAction(Box::new(self))
+    }
+}
+
+impl Settings {
+    fn update_username(&mut self, globals: &mut Globals) -> Command<Message> {
+        if !User::check_username(&self.username_input) {
+            self.input_error = Some(Error::AuthError(AuthError::RegisterBadCredentials {
+                email: false,
+                username: true,
+                password: false,
+            }));
+
+            return Command::none();
+        }
+
+        let username = self.username_input.clone();
+        let db = globals.get_db().unwrap();
+        let user_id = globals.get_user().unwrap().get_id();
+        self.input_error = None;
+
+        Command::perform(
+            async move {
+                database::settings::update_user(&db, user_id, doc! { "username": username.clone() })
+                    .await
+                    .map(|()| username)
+            },
+            move |result| match result {
+                Ok(username) => SettingsMessage::DoneUpdate(Arc::new(move |_settings, globals| {
+                    globals
+                        .get_user_mut()
+                        .unwrap()
+                        .set_username(username.clone())
+                }))
+                .into(),
+                Err(err) => Message::Error(err),
+            },
+        )
+    }
+
+    fn update_user_tag(&mut self, globals: &mut Globals) -> Command<Message> {
+        if !User::check_user_tag(&self.user_tag_input) {
+            self.input_error = Some(Error::AuthError(AuthError::BadUserTag));
+
+            Command::none()
+        } else {
+            let tag = self.user_tag_input.clone();
+            let globals = globals.clone();
+            self.input_error = None;
+
+            Command::perform(
+                async move {
+                    database::settings::find_user_by_tag(&globals, tag.clone())
+                        .await
+                        .map(|()| tag)
+                },
+                |result| match result {
+                    Ok(tag) => SettingsMessage::DoneUpdate(Arc::new(move |_settings, globals| {
+                        globals.get_user_mut().unwrap().set_user_tag(tag.clone())
+                    }))
+                    .into(),
+                    Err(err) => Message::Error(err),
+                },
+            )
+        }
+    }
+
+    fn update_password(&mut self, globals: &mut Globals) -> Command<Message> {
+        if !User::check_password(&self.password_input) {
+            self.input_error = Some(Error::AuthError(AuthError::RegisterBadCredentials {
+                email: false,
+                username: false,
+                password: true,
+            }));
+
+            return Command::none();
+        }
+
+        let password = self.password_input.clone();
+        let db = globals.get_db().unwrap();
+        let user_id = globals.get_user().unwrap().get_id();
+        self.input_error = None;
+
+        Command::perform(
+            async move {
+                database::settings::update_user(
+                    &db,
+                    user_id,
+                    doc! {
+                        "password": pwhash::bcrypt::hash(password.clone()).unwrap()
+                    },
+                )
+                .await
+            },
+            |result| match result {
+                Ok(_) => SettingsMessage::DoneUpdate(Arc::new(move |settings, _globals| {
+                    settings.password_input = String::from("");
+                    settings.password_repeat = String::from("");
+                }))
+                .into(),
+                Err(err) => Message::Error(err),
+            },
+        )
+    }
+
+    fn update_profile_picture(
+        &mut self,
+        data: &Vec<u8>,
+        globals: &mut Globals,
+    ) -> Command<Message> {
+        let data = data.clone();
+        self.modal_stack.toggle_modal(());
+
+        let need_mongo_update = !globals.get_user().unwrap().has_profile_picture();
+        let db = globals.get_db().unwrap();
+        let user_id = globals.get_user().unwrap().get_id();
+
+        let data = data.clone();
+
+        Command::perform(
+            async move {
+                services::settings::set_user_image(
+                    data.clone(),
+                    user_id,
+                    if need_mongo_update { Some(&db) } else { None },
+                )
+                .await
+                .map(|()| data)
+            },
+            |result| match result {
+                Ok(data) => SettingsMessage::DoneUpdate(Arc::new(move |settings, globals| {
+                    settings.profile_picture_input = Handle::from_bytes(data.clone());
+                    globals.get_user_mut().unwrap().set_profile_picture();
+                    settings.modal_stack.toggle_modal(());
+                }))
+                .into(),
+                Err(err) => Message::Error(err),
+            },
+        )
     }
 }
 
@@ -157,14 +289,7 @@ impl Scene for Settings {
         (
             settings,
             Command::perform(
-                async move {
-                    database::base::download_file(if user.has_profile_picture() {
-                        format!("/{}/profile_picture.webp", user.get_id())
-                    } else {
-                        String::from("/default_profile_picture.webp")
-                    })
-                    .await
-                },
+                async move { services::settings::get_profile_picture(&user).await },
                 |result| match result {
                     Ok(data) => Into::<Message>::into(SettingsMessage::LoadedProfilePicture(data)),
                     Err(err) => Message::Error(err),
@@ -185,68 +310,13 @@ impl Scene for Settings {
                 self.username_input = username.clone();
                 Command::none()
             }
-            SettingsMessage::UpdateUsername => {
-                if !User::check_username(&self.username_input) {
-                    self.input_error = Some(Error::AuthError(AuthError::RegisterBadCredentials {
-                        email: false,
-                        username: true,
-                        password: false,
-                    }));
-
-                    return Command::none();
-                }
-
-                let username = self.username_input.clone();
-                let db = globals.get_db().unwrap();
-                let user_id = globals.get_user().unwrap().get_id();
-                globals
-                    .get_user_mut()
-                    .as_mut()
-                    .unwrap()
-                    .set_username(username.clone());
-                self.input_error = None;
-
-                Command::perform(
-                    async move {
-                        database::settings::update_user(
-                            &db,
-                            user_id,
-                            doc! {
-                                "username": username
-                            },
-                        )
-                        .await
-                    },
-                    |result| match result {
-                        Ok(_) => Message::None,
-                        Err(err) => Message::Error(err),
-                    },
-                )
-            }
+            SettingsMessage::UpdateUsername => self.update_username(globals),
             SettingsMessage::UpdateUserTagField(user_tag) => {
                 self.user_tag_input = user_tag.clone();
 
                 Command::none()
             }
-            SettingsMessage::UpdateUserTag => {
-                if !User::check_user_tag(&self.user_tag_input) {
-                    self.input_error = Some(Error::AuthError(AuthError::BadUserTag));
-
-                    Command::none()
-                } else {
-                    let tag = self.user_tag_input.clone();
-                    globals.get_user_mut().unwrap().set_user_tag(tag.clone());
-                    let globals = globals.clone();
-
-                    Command::perform(
-                        async move { database::settings::find_user_by_tag(&globals, tag).await },
-                        |result| match result {
-                            Ok(()) => Message::None,
-                            Err(err) => Message::Error(err),
-                        },
-                    )
-                }
-            }
+            SettingsMessage::UpdateUserTag => self.update_user_tag(globals),
             SettingsMessage::UpdatePasswordField(password) => {
                 self.password_input = password.clone();
 
@@ -257,151 +327,20 @@ impl Scene for Settings {
 
                 Command::none()
             }
-            SettingsMessage::UpdatePassword => {
-                if !User::check_password(&self.password_input) {
-                    self.input_error = Some(Error::AuthError(AuthError::RegisterBadCredentials {
-                        email: false,
-                        username: false,
-                        password: true,
-                    }));
-
-                    return Command::none();
-                }
-
-                let password = self.password_input.clone();
-                let db = globals.get_db().unwrap();
-                let user_id = globals.get_user().unwrap().get_id();
-                self.input_error = None;
-                self.password_input = String::from("");
-                self.password_repeat = String::from("");
-
-                Command::perform(
-                    async move {
-                        database::settings::update_user(
-                            &db,
-                            user_id,
-                            doc! {
-                                "password": pwhash::bcrypt::hash(password.clone()).unwrap()
-                            },
-                        )
-                        .await
-                    },
-                    |result| match result {
-                        Ok(_) => Message::None,
-                        Err(err) => Message::Error(err),
-                    },
-                )
-            }
+            SettingsMessage::UpdatePassword => self.update_password(globals),
             SettingsMessage::LoadedProfilePicture(data) => {
                 self.profile_picture_input = Handle::from_bytes(data.clone());
 
                 Command::none()
             }
             SettingsMessage::SelectImage => Command::perform(
-                async {
-                    let file = AsyncFileDialog::new()
-                        .add_filter("image", &["png", "jpg", "jpeg", "webp"])
-                        .set_directory("~")
-                        .pick_file()
-                        .await;
-
-                    match file {
-                        Some(file) => {
-                            if fs::metadata(file.path())
-                                .map_err(|err| debug_message!("{}", err).into())?
-                                .len()
-                                > 5000000
-                            {
-                                Err(Error::AuthError(AuthError::ProfilePictureTooLarge))
-                            } else {
-                                Ok(file.read().await)
-                            }
-                        }
-                        None => Err(Error::DebugError(DebugError::new(debug_message!(
-                            "Error getting file path."
-                        )))),
-                    }
-                },
+                async { services::settings::select_image().await },
                 |result| match result {
                     Ok(data) => SettingsMessage::SetImage(data).into(),
                     Err(err) => Message::Error(err),
                 },
             ),
-            SettingsMessage::SetImage(data) => {
-                self.profile_picture_input = Handle::from_bytes(data.clone());
-                self.modal_stack.toggle_modal(());
-
-                let need_mongo_update = !globals.get_user().unwrap().has_profile_picture();
-                globals
-                    .get_user_mut()
-                    .as_mut()
-                    .unwrap()
-                    .set_profile_picture();
-                let db = globals.get_db().unwrap();
-                let user_id = globals.get_user().unwrap().get_id();
-
-                let data = data.clone();
-
-                Command::perform(
-                    async move {
-                        let data = match tokio::task::spawn_blocking(move || {
-                            let dyn_image = match load_from_memory(data.as_slice()) {
-                                Ok(image) => image,
-                                Err(err) => {
-                                    return Err(debug_message!("{}", err).into());
-                                }
-                            };
-
-                            match webp::Encoder::from_image(&dyn_image) {
-                                Ok(encoder) => Ok(encoder.encode(20.0).deref().to_vec()),
-                                Err(err) => Err(debug_message!("{}", err).into()),
-                            }
-                        })
-                        .await
-                        {
-                            Ok(Ok(data)) => data,
-                            Ok(Err(err)) => {
-                                return Err(err);
-                            }
-                            Err(err) => return Err(debug_message!("{}", err).into()),
-                        };
-
-                        match database::base::upload_file(
-                            format!("/{}/profile_picture.webp", user_id),
-                            data,
-                        )
-                        .await
-                        {
-                            Ok(_) => {}
-                            Err(err) => {
-                                return Err(err);
-                            }
-                        };
-
-                        if need_mongo_update {
-                            database::settings::update_user(
-                                &db,
-                                user_id,
-                                doc! {
-                                    "profile_picture": true
-                                },
-                            )
-                            .await
-                        } else {
-                            Ok(())
-                        }
-                    },
-                    |result| match result {
-                        Ok(_) => SettingsMessage::SavedProfilePicture.into(),
-                        Err(err) => Message::Error(err),
-                    },
-                )
-            }
-            SettingsMessage::SavedProfilePicture => {
-                self.modal_stack.toggle_modal(());
-
-                Command::none()
-            }
+            SettingsMessage::SetImage(data) => self.update_profile_picture(data, globals),
             SettingsMessage::DeleteAccount => {
                 let user_id = globals.get_user().unwrap().get_id();
                 let db = globals.get_db().unwrap();
@@ -415,7 +354,11 @@ impl Scene for Settings {
                     },
                 )
             }
-            SettingsMessage::None => Command::none(),
+            SettingsMessage::DoneUpdate(update_function) => {
+                update_function(self, globals);
+
+                Command::none()
+            }
             SettingsMessage::Error(err) => {
                 self.input_error = Some(err.clone());
 
@@ -437,81 +380,25 @@ impl Scene for Settings {
                 (false, false)
             };
 
-        let title = Row::with_children(vec![
-            Button::new(Text::new(Icon::Leave.to_string()).font(ICON).size(30.0))
-                .padding(0.0)
-                .style(iced::widget::button::text)
-                .on_press(Message::ChangeScene(Scenes::Main(None)))
-                .into(),
-            Text::new(self.get_title()).size(30.0).into(),
-        ])
-        .width(Length::Fill)
-        .padding(10.0)
-        .spacing(10.0);
+        let title = self.title_element();
 
         let user = globals.get_user().unwrap();
 
-        let username = Column::with_children(vec![
-            Text::new("Username").size(20.0).into(),
-            Row::with_children(vec![
-                TextInput::new("Input username...", &*self.username_input.clone())
-                    .on_input(|value| SettingsMessage::UpdateUsernameField(value.clone()).into())
-                    .size(15.0)
-                    .into(),
-                Space::with_width(Length::Fill).into(),
-                if self.username_input.clone() == user.get_username().clone() {
-                    Button::new(Text::new("Update").size(15.0))
-                } else {
-                    Button::new(Text::new("Update").size(15.0))
-                        .on_press(SettingsMessage::UpdateUsername.into())
-                }
-                .into(),
-            ])
-            .spacing(5.0)
-            .into(),
-        ])
-        .width(Length::Fill)
-        .spacing(5.0)
-        .into();
+        let username = services::settings::username_input(
+            user.get_username().clone(),
+            self.username_input.clone(),
+        );
 
         let username_error = if username_error {
-            Text::new(
-                Error::AuthError(AuthError::RegisterBadCredentials {
-                    email: false,
-                    username: true,
-                    password: false,
-                })
-                .to_string(),
-            )
-            .style(theme::text::danger)
-            .size(15.0)
-            .into()
+            services::settings::username_error()
         } else {
             Space::with_width(Length::Fill).into()
         };
 
-        let user_tag = Column::with_children(vec![
-            Text::new("User Tag").size(20.0).into(),
-            Row::with_children(vec![
-                TextInput::new("Input user tag...", &*self.user_tag_input.clone())
-                    .on_input(|value| SettingsMessage::UpdateUserTagField(value.clone()).into())
-                    .size(15.0)
-                    .into(),
-                Space::with_width(Length::Fill).into(),
-                if self.user_tag_input.clone() == user.get_user_tag().clone() {
-                    Button::new(Text::new("Update").size(15.0))
-                } else {
-                    Button::new(Text::new("Update").size(15.0))
-                        .on_press(SettingsMessage::UpdateUserTag.into())
-                }
-                .into(),
-            ])
-            .spacing(5.0)
-            .into(),
-        ])
-        .width(Length::Fill)
-        .spacing(5.0)
-        .into();
+        let user_tag = services::settings::user_tag_input(
+            user.get_user_tag().clone(),
+            self.user_tag_input.clone(),
+        );
 
         let user_tag_error = if Some(Error::AuthError(AuthError::UserTagAlreadyExists))
             == self.input_error
@@ -526,72 +413,19 @@ impl Scene for Settings {
             Space::with_width(Length::Fill).into()
         };
 
-        let password = Row::with_children(vec![
-            Column::with_children(vec![
-                Text::new("Password").size(20.0).into(),
-                TextInput::new("Input password...", &*self.password_input.clone())
-                    .size(15.0)
-                    .on_input(|value| SettingsMessage::UpdatePasswordField(value.clone()).into())
-                    .secure(true)
-                    .into(),
-                TextInput::new("Repeat password...", &*self.password_repeat.clone())
-                    .size(15.0)
-                    .on_input(|value| {
-                        SettingsMessage::UpdatePasswordRepeatField(value.clone()).into()
-                    })
-                    .secure(true)
-                    .into(),
-            ])
-            .spacing(5.0)
-            .into(),
-            Space::with_width(Length::Fill).into(),
-            if self.password_input == self.password_repeat {
-                Button::new(Text::new("Update").size(15.0))
-                    .on_press(SettingsMessage::UpdatePassword.into())
-            } else {
-                Button::new(Text::new("Update").size(15.0))
-            }
-            .into(),
-        ])
-        .align_items(Alignment::End)
-        .width(Length::Fill)
-        .spacing(5.0)
-        .into();
+        let password = services::settings::password_input(
+            self.password_input.clone(),
+            self.password_repeat.clone(),
+        );
 
         let password_error = if password_error {
-            Text::new(
-                Error::AuthError(AuthError::RegisterBadCredentials {
-                    email: false,
-                    username: false,
-                    password: true,
-                })
-                .to_string(),
-            )
-            .style(theme::text::danger)
-            .size(15.0)
-            .into()
+            services::settings::password_error()
         } else {
             Space::with_width(Length::Fill).into()
         };
 
-        let profile_picture = Row::with_children(vec![
-            Text::new("Profile picture").size(20.0).into(),
-            Space::with_width(Length::Fill).into(),
-            Column::with_children(vec![
-                iced::widget::image::Image::new(self.profile_picture_input.clone())
-                    .height(200.0)
-                    .width(200.0)
-                    .into(),
-                Button::new("Select image")
-                    .on_press(SettingsMessage::SelectImage.into())
-                    .into(),
-            ])
-            .align_items(Alignment::Center)
-            .spacing(10.0)
-            .into(),
-        ])
-        .align_items(Alignment::Center)
-        .into();
+        let profile_picture =
+            services::settings::profile_picture_input(&self.profile_picture_input);
 
         let profile_picture_error =
             if self.input_error == Some(Error::AuthError(AuthError::ProfilePictureTooLarge)) {
@@ -608,7 +442,7 @@ impl Scene for Settings {
             .into();
 
         let underlay = Column::from_vec(vec![
-            title.into(),
+            title,
             Scrollable::new(Row::with_children(vec![
                 Space::with_width(Length::FillPortion(1)).into(),
                 Column::with_children(vec![

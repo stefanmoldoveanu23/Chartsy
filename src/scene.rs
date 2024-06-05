@@ -3,8 +3,11 @@ use crate::scenes::data::auth::User;
 use crate::scenes::data::posts::PixelImage;
 use crate::scenes::scenes::Scenes;
 use crate::utils::errors::Error;
-use iced::Theme;
+use crate::utils::icons::{Icon, ICON};
+use iced::advanced::widget::Text;
+use iced::widget::{Button, Row};
 use iced::{Command, Element, Renderer};
+use iced::{Length, Theme};
 use moka::future::Cache;
 use mongodb::bson::Uuid;
 use mongodb::{Client, ClientSession, Database};
@@ -29,6 +32,22 @@ pub trait Scene: Send + Sync {
 
     /// Returns the name of the [Scene].
     fn get_title(&self) -> String;
+
+    /// Returns the name in an element that changes to the main [Scene].
+    fn title_element(&self) -> Element<'_, Message, Theme, Renderer> {
+        Row::with_children(vec![
+            Button::new(Text::new(Icon::Leave.to_string()).font(ICON).size(30.0))
+                .padding(0.0)
+                .style(iced::widget::button::text)
+                .on_press(Message::ChangeScene(Scenes::Main(None)))
+                .into(),
+            Text::new(self.get_title()).size(30.0).into(),
+        ])
+        .width(Length::Fill)
+        .padding(10.0)
+        .spacing(10.0)
+        .into()
+    }
 
     /// Applies the [options](Self::Options) to self.
     fn apply_options(&mut self, options: Self::Options);

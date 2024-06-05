@@ -658,7 +658,7 @@ impl Scene for Main {
                         ),
                         (
                             MainTabIds::Online,
-                            String::from("Offline"),
+                            String::from("Online"),
                             online_tab.into(),
                         ),
                     ],
