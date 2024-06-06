@@ -16,10 +16,10 @@ mod scenes;
 mod utils;
 mod widgets;
 
-use utils::errors::error::Error;
 use lettre::transport::smtp::response::Response;
 use scene::{Globals, Message};
 use scenes::scenes::SceneManager;
+use utils::errors::error::Error;
 
 use crate::widgets::WaitPanel;
 use iced::font::{Family, Stretch, Style, Weight};
@@ -122,7 +122,7 @@ impl Application for Chartsy {
                 Err(err) => {
                     println!("Error connecting to database: {}", err);
                     Command::perform(
-                        database::base::connect_to_mongodb(),
+                        async { database::base::connect_to_mongodb().await },
                         Message::DoneDatabaseInit,
                     )
                 }

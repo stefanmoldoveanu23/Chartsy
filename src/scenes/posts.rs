@@ -1,9 +1,9 @@
+use crate::debug_message;
 use crate::scene::{Globals, Message, Scene, SceneMessage};
 use crate::scenes::data::auth::Role;
 use crate::scenes::data::auth::User;
 use crate::scenes::data::drawing::Tag;
 use crate::scenes::services;
-use crate::debug_message;
 use crate::utils::errors::Error;
 use crate::utils::icons::{Icon, ICON};
 use crate::utils::theme::{self, Theme};
@@ -858,7 +858,7 @@ impl Scene for Posts {
                     } else {
                         String::from("/default_profile_picture.webp")
                     },
-                    globals.get_cache(),
+                    globals.get_cache_async(),
                 ),
             ]),
         )
@@ -891,7 +891,7 @@ impl Scene for Posts {
                         } else {
                             String::from("/default_profile_picture.webp")
                         },
-                        globals.get_cache(),
+                        globals.get_cache_async(),
                     ),
                 }
             }
@@ -915,7 +915,7 @@ impl Scene for Posts {
                 let image = image.clone();
                 self.images.insert(id, image.clone());
 
-                let cache = globals.get_cache().clone();
+                let cache = globals.get_cache_async().clone();
 
                 Command::perform(
                     async move {
@@ -940,7 +940,7 @@ impl Scene for Posts {
                     commands.push(Self::get_image(
                         post_id,
                         format!("/{}/{}.webp", user_id, post_id),
-                        globals.get_cache(),
+                        globals.get_cache_async(),
                     ));
 
                     if !user_ids.contains(&user_id) {
@@ -954,7 +954,7 @@ impl Scene for Posts {
                             } else {
                                 String::from("/default_profile_picture.webp")
                             },
-                            globals.get_cache(),
+                            globals.get_cache_async(),
                         ));
                     }
                 }
@@ -1047,7 +1047,7 @@ impl Scene for Posts {
                     } else {
                         String::from("/default_profile_picture.webp")
                     },
-                    globals.get_cache(),
+                    globals.get_cache_async(),
                 )
             }
             PostsMessage::UpdateUserTagInput(user_tag_input) => {

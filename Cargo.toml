@@ -30,7 +30,7 @@ difflib = "0.4.0"
 litcrypt2 = "0.1.2"
 resvg = "0.41.0"
 rfd = { version = "0.14.1", features = ["tokio"] }
-moka = { version = "0.12.7", features = ["future"] }
+moka = { version = "0.12.7", features = ["future", "sync"] }
 chrono = "0.4.38"
 webp = "0.3.0"
 

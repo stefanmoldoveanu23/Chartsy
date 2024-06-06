@@ -119,9 +119,12 @@ impl SceneManager {
         match self.current_scene {
             Scenes::Main(_) => match self.main {
                 None => Err(debug_message!("Main scene missing.").into()),
-                Some(ref mut main) => main
-                    .unwrap_message(message.deref())
-                    .map(|message| main.update(globals, message)),
+                Some(ref mut main) => main.unwrap_message(message.deref()).map(|message| {
+                    Command::batch(vec![
+                        main.load_previews(globals),
+                        main.update(globals, message)
+                    ])
+                }),
             },
             Scenes::Drawing(_) => match self.drawing {
                 None => Err(debug_message!("Drawing scene missing.").into()),

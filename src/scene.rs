@@ -4,11 +4,13 @@ use crate::scenes::data::posts::PixelImage;
 use crate::scenes::scenes::Scenes;
 use crate::utils::errors::Error;
 use crate::utils::icons::{Icon, ICON};
+use crate::widgets::WaitPanel;
 use iced::advanced::widget::Text;
-use iced::widget::{Button, Row};
+use iced::widget::image::Handle;
+use iced::widget::{Button, Container, Image, Row};
 use iced::{Command, Element, Renderer};
 use iced::{Length, Theme};
-use moka::future::Cache;
+use moka;
 use mongodb::bson::Uuid;
 use mongodb::{Client, ClientSession, Database};
 use std::any::Any;
@@ -145,8 +147,11 @@ pub struct Globals {
     /// The database the program is connected to.
     mongo_client: Option<Client>,
 
-    /// The caching system.
-    cache: Cache<Uuid, Arc<PixelImage>>,
+    /// The async caching system.
+    cache_async: moka::future::Cache<Uuid, Arc<PixelImage>>,
+
+    /// The sync caching system.
+    cache_sync: moka::sync::Cache<Uuid, Arc<PixelImage>>,
 }
 
 impl Globals {
@@ -191,9 +196,33 @@ impl Globals {
         }
     }
 
-    /// Returns the cache.
-    pub fn get_cache(&self) -> &Cache<Uuid, Arc<PixelImage>> {
-        &self.cache
+    /// Returns the async cache.
+    pub fn get_cache_async(&self) -> &moka::future::Cache<Uuid, Arc<PixelImage>> {
+        &self.cache_async
+    }
+
+    /// Returns the sync cache.
+    pub fn get_cache_sync(&self) -> &moka::sync::Cache<Uuid, Arc<PixelImage>> {
+        &self.cache_sync
+    }
+
+    /// Gets the handle of an image from its id.
+    pub fn get_image<'a>(&self, id: Uuid) -> Element<'a, Message, Theme, Renderer> {
+        match self.cache_sync.get(&id) {
+            Some(pixels) => Image::new(Handle::from_rgba(
+                pixels.get_width(),
+                pixels.get_height(),
+                pixels.get_data().clone(),
+            ))
+            .width(Length::FillPortion(1))
+            .height(Length::Fixed(150.0))
+            .into(),
+            None => Container::new(WaitPanel::new("Loading..."))
+                .width(Length::FillPortion(1))
+                .height(Length::Fixed(150.0))
+                .style(iced::widget::container::bordered_box)
+                .into(),
+        }
     }
 }
 
@@ -202,9 +231,13 @@ impl Default for Globals {
         Globals {
             user: None,
             mongo_client: None,
-            cache: Cache::builder()
+            cache_async: moka::future::Cache::builder()
                 .time_to_idle(Duration::from_secs(60 * 60))
                 .max_capacity(500 * 1024 * 1024)
+                .build(),
+            cache_sync: moka::sync::Cache::builder()
+                .time_to_idle(Duration::from_secs(5 * 60))
+                .max_capacity(50 * 1024 * 1024)
                 .build(),
         }
     }
