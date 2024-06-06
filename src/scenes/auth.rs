@@ -3,13 +3,13 @@ use crate::scene::{Globals, Message, Scene, SceneMessage};
 use crate::scenes::data::auth::*;
 use crate::scenes::scenes::Scenes;
 use crate::utils::errors::{AuthError, Error};
-use crate::utils::icons::{Icon, ICON};
 use crate::utils::serde::Serialize;
-use crate::utils::theme::{self, Theme};
-use crate::widgets::{Centered, Tabs};
-use iced::widget::{Button, Column, Row, Text, TextInput};
-use iced::{Alignment, Command, Element, Length, Renderer};
+use crate::utils::theme::Theme;
+use iced::widget::Column;
+use iced::{Command, Element, Renderer};
 use std::any::Any;
+
+use super::services;
 
 /// Possible messages for the authentication page.
 #[derive(Clone)]
@@ -118,6 +118,100 @@ impl AuthOptions {
     }
 }
 
+impl Auth {
+    fn send_register(&mut self, globals: &mut Globals) -> Command<Message> {
+        let error = User::check_credentials(
+            self.register_form.get_username(),
+            self.register_form.get_email(),
+            self.register_form.get_password(),
+        );
+
+        if let Some(error) = error {
+            return self.update(globals, &AuthMessage::HandleError(error));
+        }
+
+        self.register_form.set_code(User::gen_register_code());
+
+        let mut register_form = self.register_form.clone();
+        register_form.set_password(pwhash::bcrypt::hash(register_form.get_password()).unwrap());
+
+        match globals.get_db() {
+            Some(db) => Command::perform(
+                async move {
+                    database::auth::create_user(
+                        &db,
+                        register_form.get_email().clone(),
+                        register_form.serialize(),
+                    )
+                    .await
+                },
+                move |res| match res {
+                    Ok(_) => AuthMessage::SendRegister(true).into(),
+                    Err(err) => Message::Error(err),
+                },
+            ),
+            None => Command::none(),
+        }
+    }
+
+    fn validate_email(&mut self, globals: &mut Globals) -> Command<Message> {
+        let register_code = self.register_code.clone();
+        let register_form = self.register_form.clone();
+        self.register_code = Some("".into());
+        self.code_error = None;
+
+        if let Some(db) = globals.get_db() {
+            Command::perform(
+                async move {
+                    database::auth::validate_email(
+                        &db,
+                        register_form.get_email().clone(),
+                        register_code.unwrap_or_default(),
+                    )
+                    .await
+                },
+                move |res| match res {
+                    Ok(_) => AuthMessage::DoneRegistration.into(),
+                    Err(err) => Message::Error(err),
+                },
+            )
+        } else {
+            Command::none()
+        }
+    }
+
+    pub fn logged_in(&mut self, user: &User, globals: &mut Globals) -> Command<Message> {
+        if !user.test_password(self.log_in_form.get_password()) {
+            return self.update(
+                globals,
+                &AuthMessage::HandleError(Error::AuthError(AuthError::LogInUserDoesntExist)),
+            );
+        }
+
+        if !user.is_validated() {
+            let email = user.get_email().clone();
+            let username = user.get_username().clone();
+
+            self.register_form.set_email(email);
+            self.register_form.set_username(username);
+            self.register_code = Some("".into());
+
+            let _ = self.update(globals, &AuthMessage::TabSelection(AuthTabIds::Register));
+
+            return self.update(globals, &AuthMessage::ResetRegisterCode);
+        }
+
+        globals.set_user(Some(user.clone()));
+        let db = globals.get_db().unwrap();
+        let id = user.get_id();
+
+        return Command::perform(
+            async move { database::auth::update_user_token(&db, id).await },
+            |_| Message::ChangeScene(Scenes::Main(None)),
+        );
+    }
+}
+
 impl Scene for Auth {
     type Message = AuthMessage;
 
@@ -184,63 +278,11 @@ impl Scene for Auth {
 
                     Command::perform(async {}, |_| Message::SendSmtpMail(mail))
                 } else {
-                    let error = User::check_credentials(
-                        self.register_form.get_username(),
-                        self.register_form.get_email(),
-                        self.register_form.get_password(),
-                    );
-
-                    if let Some(error) = error {
-                        return self.update(globals, &AuthMessage::HandleError(error));
-                    }
-
-                    self.register_form.set_code(User::gen_register_code());
-
-                    let mut register_form = self.register_form.clone();
-                    register_form
-                        .set_password(pwhash::bcrypt::hash(register_form.get_password()).unwrap());
-
-                    match globals.get_db() {
-                        Some(db) => Command::perform(
-                            async move {
-                                database::auth::create_user(
-                                    &db,
-                                    register_form.get_email().clone(),
-                                    register_form.serialize(),
-                                )
-                                .await
-                            },
-                            move |res| match res {
-                                Ok(_) => AuthMessage::SendRegister(true).into(),
-                                Err(err) => Message::Error(err),
-                            },
-                        ),
-                        None => Command::none(),
-                    }
+                    self.send_register(globals)
                 };
             }
             AuthMessage::ValidateEmail => {
-                let register_code = self.register_code.clone();
-                let register_form = self.register_form.clone();
-                self.register_code = Some("".into());
-                self.code_error = None;
-
-                if let Some(db) = globals.get_db() {
-                    return Command::perform(
-                        async move {
-                            database::auth::validate_email(
-                                &db,
-                                register_form.get_email().clone(),
-                                register_code.unwrap_or_default(),
-                            )
-                            .await
-                        },
-                        move |res| match res {
-                            Ok(_) => AuthMessage::DoneRegistration.into(),
-                            Err(err) => Message::Error(err),
-                        },
-                    );
-                }
+                return self.validate_email(globals);
             }
             AuthMessage::ResetRegisterCode => {
                 let db = globals.get_db().unwrap();
@@ -276,36 +318,7 @@ impl Scene for Auth {
                 }
             }
             AuthMessage::LoggedIn(user) => {
-                if !user.test_password(self.log_in_form.get_password()) {
-                    return self.update(
-                        globals,
-                        &AuthMessage::HandleError(Error::AuthError(
-                            AuthError::LogInUserDoesntExist,
-                        )),
-                    );
-                }
-
-                if !user.is_validated() {
-                    let email = user.get_email().clone();
-                    let username = user.get_username().clone();
-
-                    self.register_form.set_email(email);
-                    self.register_form.set_username(username);
-                    self.register_code = Some("".into());
-
-                    let _ = self.update(globals, &AuthMessage::TabSelection(AuthTabIds::Register));
-
-                    return self.update(globals, &AuthMessage::ResetRegisterCode);
-                }
-
-                globals.set_user(Some(user.clone()));
-                let db = globals.get_db().unwrap();
-                let id = user.get_id();
-
-                return Command::perform(
-                    async move { database::auth::update_user_token(&db, id).await },
-                    |_| Message::ChangeScene(Scenes::Main(None)),
-                );
+                return self.logged_in(user, globals);
             }
             AuthMessage::TabSelection(tab_id) => {
                 self.active_tab = *tab_id;
@@ -335,138 +348,18 @@ impl Scene for Auth {
     }
 
     fn view(&self, globals: &Globals) -> Element<'_, Message, Theme, Renderer> {
-        let register_error_text = Text::new(
-            if let Some(error) = self.register_form.get_error().clone() {
-                error.to_string()
-            } else {
-                String::from("")
-            },
-        )
-        .size(14.0)
-        .style(theme::text::danger);
+        let register_tab = services::auth::register_tab(
+            &self.register_form,
+            &self.register_code,
+            &self.code_error,
+            globals,
+        );
 
-        let log_in_error_text =
-            Text::new(if let Some(error) = self.log_in_form.get_error().clone() {
-                error.to_string()
-            } else {
-                String::from("")
-            })
-            .size(14.0)
-            .style(theme::text::danger);
+        let log_in_tab = services::auth::log_in_tab(&self.log_in_form, globals);
 
-        let code_error_text = Text::new(if let Some(error) = self.code_error.clone() {
-            error.to_string()
-        } else {
-            String::from("")
-        })
-        .size(14.0)
-        .style(theme::text::danger);
+        let tabs = services::auth::tabs(register_tab, log_in_tab, self.active_tab);
 
-        let register_tab = if let Some(code) = &self.register_code {
-            Column::with_children([
-                Text::new("A code has been sent to your email address:").into(),
-                code_error_text.into(),
-                TextInput::new("Input register code...", code)
-                    .on_input(|value| {
-                        AuthMessage::RegisterTextFieldUpdate(RegisterField::Code(value)).into()
-                    })
-                    .into(),
-                Button::new("Reset code")
-                    .on_press(AuthMessage::ResetRegisterCode.into())
-                    .into(),
-                Button::new("Validate")
-                    .on_press(AuthMessage::ValidateEmail.into())
-                    .into(),
-            ])
-        } else {
-            Column::with_children([
-                register_error_text.into(),
-                Text::new("Email:").into(),
-                TextInput::new("Input email...", &*self.register_form.get_email())
-                    .on_input(|value| {
-                        AuthMessage::RegisterTextFieldUpdate(RegisterField::Email(value)).into()
-                    })
-                    .into(),
-                Text::new("Username:").into(),
-                TextInput::new("Input username...", &*self.register_form.get_username())
-                    .on_input(|value| {
-                        AuthMessage::RegisterTextFieldUpdate(RegisterField::Username(value)).into()
-                    })
-                    .into(),
-                Text::new("Password:").into(),
-                TextInput::new("Input password...", &*self.register_form.get_password())
-                    .on_input(|value| {
-                        AuthMessage::RegisterTextFieldUpdate(RegisterField::Password(value)).into()
-                    })
-                    .secure(true)
-                    .into(),
-                if globals.get_db().is_some() {
-                    Button::new("Register")
-                        .on_press(AuthMessage::SendRegister(false).into())
-                        .into()
-                } else {
-                    Button::new("Register").into()
-                },
-            ])
-        }
-        .spacing(10.0);
-
-        let login_tab = Column::with_children([
-            log_in_error_text.into(),
-            Text::new("Email:").into(),
-            TextInput::new("Input email...", &*self.log_in_form.get_email())
-                .on_input(|value| {
-                    AuthMessage::LogInTextFieldUpdate(LogInField::Email(value)).into()
-                })
-                .into(),
-            Text::new("Password:").into(),
-            TextInput::new("Input password...", &*self.log_in_form.get_password())
-                .on_input(|value| {
-                    AuthMessage::LogInTextFieldUpdate(LogInField::Password(value)).into()
-                })
-                .secure(true)
-                .into(),
-            if globals.get_db().is_some() {
-                Button::new("Log In")
-                    .on_press(AuthMessage::SendLogIn.into())
-                    .into()
-            } else {
-                Button::new("Log In").into()
-            },
-        ])
-        .spacing(10.0);
-
-        Column::with_children(vec![
-            Row::with_children(vec![
-                Button::new(Text::new(Icon::Leave.to_string()).font(ICON).size(30.0))
-                    .on_press(Message::ChangeScene(Scenes::Main(None)))
-                    .style(iced::widget::button::text)
-                    .padding(10.0)
-                    .into(),
-                Text::new(self.get_title()).size(30.0).into(),
-            ])
-            .align_items(Alignment::Center)
-            .into(),
-            Centered::new(
-                Tabs::new_with_tabs(
-                    vec![
-                        (
-                            AuthTabIds::Register,
-                            String::from("Register"),
-                            register_tab.into(),
-                        ),
-                        (AuthTabIds::LogIn, String::from("Login"), login_tab.into()),
-                    ],
-                    |tab_id| AuthMessage::TabSelection(tab_id).into(),
-                )
-                .selected(self.active_tab)
-                .width(Length::Fill)
-                .height(Length::Fill),
-            )
-            .height(0.75)
-            .into(),
-        ])
-        .into()
+        Column::with_children(vec![self.title_element(), tabs]).into()
     }
 
     fn handle_error(&mut self, globals: &mut Globals, error: &Error) -> Command<Message> {
