@@ -1,4 +1,4 @@
-pub mod drawings;
+pub mod drawing;
 
 pub mod posts;
 

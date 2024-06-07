@@ -311,10 +311,10 @@ impl Scene for Main {
                     async move {
                         match save_mode {
                             SaveMode::Offline => {
-                                services::drawings::delete_drawing_offline(id).await
+                                services::drawing::delete_drawing_offline(id).await
                             }
                             SaveMode::Online => {
-                                services::drawings::delete_drawing_online(id, &globals).await
+                                services::drawing::delete_drawing_online(id, &globals).await
                             }
                         }
                     },

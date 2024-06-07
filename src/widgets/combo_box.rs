@@ -11,6 +11,8 @@ use iced::widget::{Column, Text, TextInput};
 use iced::{mouse, Border, Color, Event, Length, Point, Rectangle, Size, Vector};
 use std::fmt::Display;
 
+use crate::utils::theme;
+
 /// A widget where the user can input text and is offered choices from a given list of options
 ///that are similar to that input.
 pub struct ComboBox<'a, Tag, Message, Theme, Renderer>
@@ -331,18 +333,19 @@ where
 
         let children = layout.children();
         let mut index: usize = 0;
+        let palette = theme::extended_palette_generator(theme::PALETTE);
         for node in children {
             let mut bounds = node.bounds();
             bounds.width = width;
 
             let color = if let Some(pos) = self.tag_hovered.as_ref() {
                 if *pos == index {
-                    Color::from_rgb(0.7, 0.7, 0.7)
+                    palette.background.strong.color
                 } else {
-                    Color::WHITE
+                    palette.background.base.color
                 }
             } else {
-                Color::WHITE
+                palette.background.base.color
             };
 
             renderer.fill_quad(
@@ -361,7 +364,7 @@ where
             Quad {
                 bounds,
                 border: Border {
-                    color: Color::BLACK,
+                    color: palette.background.base.text,
                     width: 1.0,
                     radius: Default::default(),
                 },

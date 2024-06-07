@@ -46,6 +46,12 @@ pub mod text {
             color: Some(Color::from_rgb(0.5, 0.5, 0.5)),
         }
     }
+
+    pub fn dark(_theme: &Theme) -> Style {
+        Style {
+            color: Some(Color::BLACK),
+        }
+    }
 }
 
 pub mod button {

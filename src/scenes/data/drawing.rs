@@ -108,7 +108,7 @@ impl Deserialize<Document> for Tag {
         if let Ok(name) = document.get_str("name") {
             tag.name = name.into();
         }
-        if let Ok(uses) = document.get_i32("uses") {
+        if let Ok(uses) = document.get_i64("uses") {
             tag.uses = uses as u32;
         }
 
