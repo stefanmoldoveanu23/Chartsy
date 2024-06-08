@@ -2,15 +2,15 @@ use crate::canvas::layer::CanvasMessage;
 use crate::canvas::style::Style;
 use crate::utils::serde::{Deserialize, Serialize};
 use iced::event::Status;
+use iced::keyboard::Key;
 use iced::mouse::Cursor;
-use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
+use iced::widget::canvas::{Event, Fill, Frame, Geometry, LineJoin, Path, Stroke};
 use iced::{keyboard, mouse, Color, Point, Rectangle, Renderer};
 use json::object::Object;
 use json::JsonValue;
 use mongodb::bson::{doc, Bson, Document};
 use std::fmt::Debug;
 use std::sync::Arc;
-use iced::keyboard::Key;
 use svg::node::element::path::Data;
 use svg::node::element::Group;
 
@@ -226,10 +226,10 @@ impl Serialize<Group> for Triangle {
         let path = svg::node::element::Path::new()
             .set("stroke-width", self.style.get_stroke_width())
             .set("stroke", self.style.get_stroke_color())
+            .set("stroke-linejoin", "miter")
             .set("stroke-opacity", self.style.get_stroke_alpha())
             .set("fill", self.style.get_fill())
             .set("fill-opacity", self.style.get_fill_alpha())
-            .set("style", "mix-blend-mode:hard-light")
             .set("d", data);
 
         Group::new().set("class", self.id()).add(path)
@@ -290,7 +290,10 @@ impl Tool for Triangle {
         if let Some((width, color, _, _)) = self.style.stroke {
             frame.stroke(
                 &triangle,
-                Stroke::default().with_width(width).with_color(color),
+                Stroke::default()
+                    .with_width(width)
+                    .with_color(color)
+                    .with_line_join(LineJoin::Miter),
             );
         }
         if let Some((color, _)) = self.style.fill {

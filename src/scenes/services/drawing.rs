@@ -10,6 +10,7 @@ use iced::{
     },
     Alignment, Element, Length, Renderer,
 };
+use image::{load_from_memory_with_format, ImageFormat};
 use json::{object::Object, JsonValue};
 use mongodb::{bson::Uuid, Database};
 use rfd::AsyncFileDialog;
@@ -40,12 +41,126 @@ use crate::{
     },
     utils::{
         self,
+        cache::Cache,
         errors::Error,
         icons::{Icon, ToolIcon, ICON},
         theme::{self, Theme},
     },
     widgets::{Card, Close, Closeable, ComboBox, Grid},
 };
+
+pub async fn save_preview_offline(id: Uuid, document: SVG, cache: Cache) -> Result<(), Error> {
+    let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy")
+        .ok_or(debug_message!("Unable to find project directory").into())?;
+
+    let dir_path = proj_dirs.data_local_dir();
+    let file_path = dir_path.join(id.to_string()).join("data.webp");
+    let webp = utils::encoder::encode_svg(document, "webp").await?;
+
+    tokio::fs::write(file_path, webp.clone())
+        .await
+        .map_err(|err| debug_message!("{}", err).into())?;
+
+    let pixel_image = load_from_memory_with_format(webp.as_slice(), ImageFormat::WebP)
+        .map_err(|err| debug_message!("{}", err).into())?
+        .into();
+
+    cache.insert(id, Arc::new(pixel_image)).await
+}
+
+pub async fn save_preview_online(
+    id: Uuid,
+    user_id: Uuid,
+    document: SVG,
+    cache: Cache,
+) -> Result<(), Error> {
+    let webp = utils::encoder::encode_svg(document, "webp").await?;
+
+    database::base::upload_file(format!("/{user_id}/{id}.webp",), webp.clone()).await?;
+
+    let pixel_image = load_from_memory_with_format(webp.as_slice(), ImageFormat::WebP)
+        .map_err(|err| debug_message!("{}", err).into())?
+        .into();
+
+    cache.insert(id, Arc::new(pixel_image)).await
+}
+
+pub async fn save_offline(
+    id: Uuid,
+    name: String,
+    delete_bounds: (usize, usize),
+    mut tools: Vec<JsonValue>,
+    new_tools: Vec<JsonValue>,
+    layers: Vec<(Uuid, String)>,
+) -> Result<(), Error> {
+    let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy")
+        .ok_or(debug_message!("Unable to find project directory").into())?;
+    let dir_path = proj_dirs.data_local_dir();
+    let file_path = dir_path.join(id.to_string()).join("data.json");
+    let drawings_path = dir_path.join("drawings.json");
+
+    let drawings = tokio::fs::read_to_string(drawings_path.clone())
+        .await
+        .map_err(|err| debug_message!("{}", err).into())?;
+
+    match tokio::task::spawn_blocking(move || {
+        let mut drawings =
+            json::parse(&*drawings).map_err(|err| debug_message!("{}", err).into())?;
+
+        if let JsonValue::Array(drawings) = &mut drawings {
+            for drawing in drawings {
+                if let JsonValue::Object(drawing) = drawing {
+                    if let Some(JsonValue::String(id)) = drawing.get("id") {
+                        if id.clone() == id.to_string() {
+                            drawing.insert("name", JsonValue::String(name));
+                            break;
+                        };
+                    }
+                }
+            }
+        }
+
+        for _ in delete_bounds.0..delete_bounds.1 {
+            tools.pop();
+        }
+
+        tools.extend(new_tools);
+
+        let mut data = Object::new();
+        data.insert(
+            "layers",
+            JsonValue::Array(
+                layers
+                    .iter()
+                    .map(|(id, name)| {
+                        let mut object = Object::new();
+                        object.insert("id", JsonValue::String(id.to_string()));
+                        object.insert("name", JsonValue::String(name.clone()));
+
+                        JsonValue::Object(object)
+                    })
+                    .collect(),
+            ),
+        );
+        data.insert("tools", JsonValue::Array(tools));
+
+        Ok((drawings, data))
+    })
+    .await
+    {
+        Ok(Err(err)) => Err(err),
+        Ok(Ok((drawings, data))) => {
+            tokio::fs::write(drawings_path, json::stringify(drawings))
+                .await
+                .map_err(|err| debug_message!("{}", err).into())?;
+
+            tokio::fs::write(file_path, json::stringify(JsonValue::Object(data)))
+                .await
+                .map_err(|err| debug_message!("{}", err).into())
+        }
+        Err(err) => Err(debug_message!("{}", err).into()),
+    }
+}
 
 pub async fn delete_drawing_offline(id: Uuid) -> Result<(), Error> {
     let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy")

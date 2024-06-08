@@ -27,38 +27,30 @@ impl Style {
 
     /// Returns the color of the stroke in #rrggbb format.
     pub fn get_stroke_color(&self) -> String {
-        self.stroke.map_or_else(
-            || "transparent".into(),
-            |(_, color, _, _)| {
+        self.stroke
+            .map_or("transparent".into(), |(_, color, _, _)| {
                 let data = color.into_rgba8();
                 format!("#{:02x?}{:02x?}{:02x?}", data[0], data[1], data[2])
-            },
-        )
+            })
     }
 
     /// Returns the transparency of the stroke.
     pub fn get_stroke_alpha(&self) -> f32 {
-        self.stroke.map_or_else(
-            || 0.0,
-            |(_, color, _, _)| (10.0f32.powf(color.a) - 1.0) / 9.0,
-        )
+        self.stroke
+            .map_or(0.0, |(_, color, _, _)| (10.0f32.powf(color.a) - 1.0) / 9.0)
     }
 
     /// Returns the fill in #rrggbb format.
     pub fn get_fill(&self) -> String {
-        self.fill.map_or_else(
-            || "transparent".into(),
-            |(color, _)| {
-                let data = color.into_rgba8();
-                format!("#{:02x?}{:02x?}{:02x?}", data[0], data[1], data[2])
-            },
-        )
+        self.fill.map_or("transparent".into(), |(color, _)| {
+            let data = color.into_rgba8();
+            format!("#{:02x?}{:02x?}{:02x?}", data[0], data[1], data[2])
+        })
     }
 
     /// Returns the transparency of the fill.
     pub fn get_fill_alpha(&self) -> f32 {
-        self.fill
-            .map_or_else(|| 0.0, |(color, _)| (10.0f32.powf(color.a) - 1.0) / 9.0)
+        self.fill.map_or(0.0, |(color, _)| color.a)
     }
 
     /// Modifies the stroke width of the [pending tool](crate::canvas::tool::Pending).
@@ -147,62 +139,44 @@ impl Style {
             }
         };
 
-        /*let get_text_style = |condition: bool| {
-            if condition {
-                theme::text::Text::Dark
-            } else {
-                theme::text::Text::Light
-            }
-        };*/
-
         if let Some((width, color, visibility_width, visibility_color)) = self.stroke {
             column.push(
-                Button::new(
-                    Text::new("Stroke width")
-                        //.style(get_text_style(visibility_width))
-                        .horizontal_alignment(Horizontal::Center),
-                )
-                .on_press(StyleUpdate::ToggleStrokeWidth)
-                .style(get_button_style(visibility_width))
-                .width(Length::Fill)
-                .into(),
+                Button::new(Text::new("Stroke width").horizontal_alignment(Horizontal::Center))
+                    .on_press(StyleUpdate::ToggleStrokeWidth)
+                    .style(get_button_style(visibility_width))
+                    .width(Length::Fill)
+                    .into(),
             );
             if visibility_width {
                 column.push(Slider::new(1.0..=5.0, width, StyleUpdate::StrokeWidth).into());
             }
 
             column.push(
-                Button::new(
-                    Text::new("Stroke color")
-                        //.style(get_text_style(visibility_color))
-                        .horizontal_alignment(Horizontal::Center),
-                )
-                .on_press(StyleUpdate::ToggleStrokeColor)
-                .style(get_button_style(visibility_color))
-                .width(Length::Fill)
-                .into(),
+                Button::new(Text::new("Stroke color").horizontal_alignment(Horizontal::Center))
+                    .on_press(StyleUpdate::ToggleStrokeColor)
+                    .style(get_button_style(visibility_color))
+                    .width(Length::Fill)
+                    .into(),
             );
             if visibility_color {
-                let picker = ColorPicker::new(color.r, color.g, color.b, StyleUpdate::StrokeColor);
+                let picker =
+                    ColorPicker::new(color.r, color.g, color.b, color.a, StyleUpdate::StrokeColor);
                 column.push(picker.into());
             }
         }
 
         if let Some((color, visibility)) = self.fill {
             column.push(
-                Button::new(
-                    Text::new("Fill")
-                        //.style(get_text_style(visibility))
-                        .horizontal_alignment(Horizontal::Center),
-                )
-                .on_press(StyleUpdate::ToggleFill)
-                .style(get_button_style(visibility))
-                .width(Length::Fill)
-                .into(),
+                Button::new(Text::new("Fill").horizontal_alignment(Horizontal::Center))
+                    .on_press(StyleUpdate::ToggleFill)
+                    .style(get_button_style(visibility))
+                    .width(Length::Fill)
+                    .into(),
             );
 
             if visibility {
-                let picker = ColorPicker::new(color.r, color.g, color.b, StyleUpdate::Fill);
+                let picker =
+                    ColorPicker::new(color.r, color.g, color.b, color.a, StyleUpdate::Fill);
                 column.push(picker.into());
             }
         }

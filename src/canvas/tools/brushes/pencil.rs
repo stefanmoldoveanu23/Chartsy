@@ -1,6 +1,6 @@
 use crate::canvas::style::Style;
 use crate::canvas::tool::Tool;
-use iced::widget::canvas::{Frame, Path, Stroke};
+use iced::widget::canvas::{Frame, LineCap, LineJoin, Path, Stroke};
 use iced::{Point, Vector};
 use std::fmt::Debug;
 use svg::node::element::path::Data;
@@ -56,7 +56,14 @@ impl Brush for Pencil {
         });
 
         if let Some((width, color, _, _)) = style.stroke {
-            frame.stroke(&line, Stroke::default().with_width(width).with_color(color));
+            frame.stroke(
+                &line,
+                Stroke::default()
+                    .with_width(width)
+                    .with_color(color)
+                    .with_line_cap(LineCap::Round)
+                    .with_line_join(LineJoin::Round),
+            );
         }
     }
 
@@ -77,8 +84,9 @@ impl Brush for Pencil {
         let path = svg::node::element::Path::new()
             .set("stroke-width", style.get_stroke_width())
             .set("stroke", style.get_stroke_color())
+            .set("stroke-linecap", "round")
+            .set("stroke-linejoin", "round")
             .set("stroke-opacity", style.get_stroke_alpha())
-            //.set("style", "mix-blend-mode:hard-light")
             .set("d", data);
 
         svg.add(path)

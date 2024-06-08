@@ -94,9 +94,7 @@ impl Pending for LinePending {
             style.stroke = Some((2.0, Color::BLACK, false, false));
         }
 
-        if style.fill.is_none() {
-            style.fill = Some((Color::TRANSPARENT, false));
-        }
+        style.fill = None;
     }
 
     fn id(&self) -> String {
@@ -174,7 +172,6 @@ impl Serialize<Group> for Line {
             .set("stroke-width", self.style.get_stroke_width())
             .set("stroke", self.style.get_stroke_color())
             .set("stroke-opacity", self.style.get_stroke_alpha())
-            .set("style", "mix-blend-mode:hard-light")
             .set("d", data);
 
         Group::new().set("class", self.id()).add(path)

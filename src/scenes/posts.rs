@@ -10,23 +10,18 @@ use crate::utils::theme::{self, Theme};
 use crate::widgets::{
     Card, Close, Closeable, ComboBox, Grid, ModalStack, PostSummary, Rating, Tabs,
 };
-use crate::{config, database, LOADING_IMAGE};
-use iced::advanced::image::Handle;
+use crate::{config, database};
 use iced::alignment::Horizontal;
 use iced::widget::tooltip::Position;
-use iced::widget::{
-    Button, Column, Container, Image, Row, Scrollable, Space, Text, TextInput, Tooltip,
-};
+use iced::widget::{Button, Column, Container, Row, Scrollable, Space, Text, TextInput, Tooltip};
 use iced::{Alignment, Command, Element, Length, Renderer};
-use image::{load_from_memory_with_format, ExtendedColorType, ImageFormat};
+use image::{ExtendedColorType, ImageFormat};
 use lettre::message::{Attachment, MultiPart, SinglePart};
-use moka::future::Cache;
 use mongodb::bson::Uuid;
 use mongodb::Database;
 use std::any::Any;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::io::Cursor;
-use std::sync::Arc;
 
 use crate::scenes::data::posts::*;
 
@@ -40,9 +35,6 @@ pub enum PostsMessage {
 
     /// Triggers when some posts are loaded to be displayed.
     LoadedPosts(Vec<Post>, PostTabs),
-
-    /// Triggers when the given amount of images from the posts have been loaded.
-    LoadedImage { image: Arc<PixelImage>, id: Uuid },
 
     /// Loads a batch of images.
     LoadBatch(PostTabs),
@@ -108,7 +100,6 @@ impl SceneMessage for PostsMessage {
         match self {
             Self::LoadPosts => String::from("Load posts"),
             Self::LoadedPosts(_, _) => String::from("Loaded posts"),
-            Self::LoadedImage { .. } => String::from("Loaded image"),
             Self::LoadBatch(_) => String::from("Load batch"),
             Self::CommentMessage(_) => String::from("Loaded comments"),
             Self::ToggleModal(_) => String::from("Toggle modal"),
@@ -169,9 +160,6 @@ pub struct Posts {
     /// The user tag input.
     user_tag_input: String,
 
-    /// All necessary images, stored in a hashmap for avoiding storing the same image twice.
-    images: HashMap<Uuid, Arc<PixelImage>>,
-
     /// Currently active tab.
     active_tab: PostTabs,
 
@@ -183,60 +171,6 @@ pub struct Posts {
 }
 
 impl Posts {
-    /// Get an image handle or resort to the default.
-    fn get_handle(&self, image_id: Uuid) -> Handle {
-        match self.images.get(&image_id) {
-            Some(image) => {
-                let data = image.get_data().clone();
-
-                Handle::from_rgba(image.get_width(), image.get_height(), data)
-            }
-            None => Handle::from_bytes(LOADING_IMAGE),
-        }
-    }
-
-    /// Get an image if it is not in cache.
-    fn get_image(
-        image_id: Uuid,
-        image_path: String,
-        cache: &Cache<Uuid, Arc<PixelImage>>,
-    ) -> Command<Message> {
-        let cache = cache.clone();
-
-        Command::perform(
-            async move {
-                cache
-                    .try_get_with(image_id, async move {
-                        match database::base::download_file(image_path).await {
-                            Ok(data) => {
-                                match load_from_memory_with_format(
-                                    data.as_slice(),
-                                    ImageFormat::WebP,
-                                ) {
-                                    Ok(data) => Ok(Arc::new(data.into())),
-                                    Err(err) => {
-                                        return Err(debug_message!("{}", err).into());
-                                    }
-                                }
-                            }
-                            Err(err) => {
-                                return Err(debug_message!("{}", err)).into();
-                            }
-                        }
-                    })
-                    .await
-            },
-            move |result| match result {
-                Ok(data) => PostsMessage::LoadedImage {
-                    image: data,
-                    id: image_id,
-                }
-                .into(),
-                Err(err) => Message::Error(err.as_ref().clone().into()),
-            },
-        )
-    }
-
     /// Creates a command that returns a list of recommended posts.
     fn gen_recommended(db: Database, user_id: Uuid) -> Command<Message> {
         Command::perform(
@@ -287,22 +221,14 @@ impl Posts {
     }
 
     /// Creates a command that returns the list of posts on the given users profile.
-    fn gen_profile(
-        db: Database,
-        user_id: Uuid,
-        profile_picture_path: String,
-        cache: &Cache<Uuid, Arc<PixelImage>>,
-    ) -> Command<Message> {
-        Command::batch(vec![
-            Command::perform(
-                async move { database::posts::get_user_posts(&db, user_id).await },
-                |result| match result {
-                    Ok(posts) => PostsMessage::LoadedPosts(posts, PostTabs::Profile).into(),
-                    Err(err) => Message::Error(err),
-                },
-            ),
-            Self::get_image(user_id, profile_picture_path, cache),
-        ])
+    fn gen_profile(db: Database, user_id: Uuid) -> Command<Message> {
+        Command::perform(
+            async move { database::posts::get_user_posts(&db, user_id).await },
+            |result| match result {
+                Ok(posts) => PostsMessage::LoadedPosts(posts, PostTabs::Profile).into(),
+                Err(err) => Message::Error(err),
+            },
+        )
     }
 
     /// Applies the update corresponding the given message.
@@ -420,11 +346,11 @@ impl Posts {
                             PostSummary::<Message, Theme, Renderer>::new(
                                 Row::with_children(vec![
                                     Tooltip::new(
-                                        Button::new(
-                                            Image::new(self.get_handle(post.get_user().get_id()))
-                                                .width(50.0)
-                                                .height(50.0),
-                                        )
+                                        Button::new(globals.get_cache().get_element(
+                                            post.get_id(),
+                                            Length::Fixed(50.0),
+                                            Length::Fixed(50.0),
+                                        ))
                                         .on_press(
                                             PostsMessage::OpenProfile(post.get_user().clone())
                                                 .into(),
@@ -510,11 +436,11 @@ impl Posts {
                                     .into(),
                                 ])
                                 .spacing(10.0),
-                                Image::new(self.get_handle(post.get_id())),
+                                globals.get_cache().get_element(post.get_id(), 50.0, 50.0),
                             )
                             .padding(40)
                             .on_click_image(Into::<Message>::into(PostsMessage::ToggleModal(
-                                ModalType::ShowingImage(self.get_handle(post.get_id())),
+                                ModalType::ShowingImage(post.get_id()),
                             )))
                             .on_click_data(Into::<Message>::into(PostsMessage::ToggleModal(
                                 ModalType::ShowingPost(index),
@@ -541,26 +467,29 @@ impl Posts {
 
     /// Generate the modal that shows an image.
     pub fn gen_show_image<'a>(
-        image: Handle,
-        _globals: &Globals,
+        id: Uuid,
+        globals: &Globals,
     ) -> Element<'a, Message, Theme, Renderer> {
-        Closeable::new(Image::new(image.clone()).width(Length::Shrink))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .on_close(
-                Into::<Message>::into(PostsMessage::ToggleModal(ModalType::ShowingImage(image))),
-                40.0,
-            )
-            .style(theme::closeable::Closeable::SpotLight)
-            .into()
+        Closeable::new(
+            globals
+                .get_cache()
+                .get_element(id, Length::Shrink, Length::Shrink),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .on_close(
+            Into::<Message>::into(PostsMessage::ToggleModal(ModalType::ShowingImage(id))),
+            40.0,
+        )
+        .style(theme::closeable::Closeable::SpotLight)
+        .into()
     }
 
     /// Generate the modal that shows the post.
     pub fn gen_show_post<'a>(
         post_index: usize,
-        image: Handle,
         post: &'a Post,
-        _globals: &Globals,
+        globals: &Globals,
     ) -> Element<'a, Message, Theme, Renderer> {
         let mut comment_chain = Column::with_children(vec![Row::with_children(vec![
             TextInput::new("Write comment here...", &*post.get_comment_input())
@@ -692,14 +621,18 @@ impl Posts {
         }
 
         Row::with_children(vec![
-            Closeable::new(Image::new(image.clone()).width(Length::Shrink))
-                .width(Length::FillPortion(3))
-                .height(Length::Fill)
-                .style(theme::closeable::Closeable::SpotLight)
-                .on_click(Into::<Message>::into(PostsMessage::ToggleModal(
-                    ModalType::ShowingImage(image),
-                )))
-                .into(),
+            Closeable::new(globals.get_cache().get_element(
+                post.get_id(),
+                Length::Shrink,
+                Length::Shrink,
+            ))
+            .width(Length::FillPortion(3))
+            .height(Length::Fill)
+            .style(theme::closeable::Closeable::SpotLight)
+            .on_click(Into::<Message>::into(PostsMessage::ToggleModal(
+                ModalType::ShowingImage(post.get_id()),
+            )))
+            .into(),
             Closeable::new(Column::with_children(vec![
                 Text::new(post.get_user().get_username()).size(20.0).into(),
                 Text::new(post.get_description().clone()).into(),
@@ -825,7 +758,6 @@ impl Scene for Posts {
             profile: PostList::new(vec![]),
             user_profile: globals.get_user().unwrap().clone(),
             user_tag_input: String::from(""),
-            images: HashMap::new(),
             active_tab: PostTabs::Recommended,
             report_input: String::from(""),
             error: None,
@@ -850,16 +782,7 @@ impl Scene for Posts {
                         Err(err) => Message::Error(err),
                     },
                 ),
-                Self::gen_profile(
-                    db,
-                    user_id,
-                    if globals.get_user().unwrap().has_profile_picture() {
-                        format!("/{}/profile_picture.webp", user_id)
-                    } else {
-                        String::from("/default_profile_picture.webp")
-                    },
-                    globals.get_cache_async(),
-                ),
+                Self::gen_profile(db, user_id),
             ]),
         )
     }
@@ -883,16 +806,7 @@ impl Scene for Posts {
                         user_id,
                         self.tags.iter().map(|tag| tag.get_name().clone()).collect(),
                     ),
-                    PostTabs::Profile => Self::gen_profile(
-                        db,
-                        user_id,
-                        if globals.get_user().unwrap().has_profile_picture() {
-                            format!("/{}/profile_picture.webp", user_id)
-                        } else {
-                            String::from("/default_profile_picture.webp")
-                        },
-                        globals.get_cache_async(),
-                    ),
+                    PostTabs::Profile => Self::gen_profile(db, user_id),
                 }
             }
             PostsMessage::LoadedPosts(posts, tab) => {
@@ -906,60 +820,11 @@ impl Scene for Posts {
                     Command::none()
                 }
             }
-            PostsMessage::LoadedImage { image, id } => {
-                if self.images.contains_key(&id) {
-                    return Command::none();
-                }
-
-                let id = *id;
-                let image = image.clone();
-                self.images.insert(id, image.clone());
-
-                let cache = globals.get_cache_async().clone();
-
-                Command::perform(
-                    async move {
-                        if !cache.contains_key(&id) {
-                            cache.insert(id, image.clone()).await
-                        }
-                    },
-                    |()| Message::None,
-                )
-            }
             PostsMessage::LoadBatch(tab) => {
                 let tab = tab.clone();
-                let posts = self.get_tab_mut(tab).load_batch();
-                let mut user_ids = HashSet::<Uuid>::new();
+                self.get_tab_mut(tab).load_batch();
 
-                let mut commands = vec![];
-
-                for post in posts {
-                    let post_id = post.get_id();
-                    let user_id = post.get_user().get_id();
-
-                    commands.push(Self::get_image(
-                        post_id,
-                        format!("/{}/{}.webp", user_id, post_id),
-                        globals.get_cache_async(),
-                    ));
-
-                    if !user_ids.contains(&user_id) {
-                        let has_profile_picture = post.get_user().has_profile_picture();
-                        user_ids.insert(user_id);
-
-                        commands.push(Self::get_image(
-                            user_id,
-                            if has_profile_picture {
-                                format!("/{}/profile_picture.webp", user_id)
-                            } else {
-                                String::from("/default_profile_picture.webp")
-                            },
-                            globals.get_cache_async(),
-                        ));
-                    }
-                }
-
-                Command::batch(commands)
+                Command::none()
             }
             PostsMessage::CommentMessage(message) => self.update_comment(&message, globals),
             PostsMessage::ToggleModal(modal) => {
@@ -1039,16 +904,7 @@ impl Scene for Posts {
                 self.user_profile = user.clone();
                 self.active_tab = PostTabs::Profile;
 
-                Posts::gen_profile(
-                    globals.get_db().unwrap(),
-                    user.get_id(),
-                    if user.has_profile_picture() {
-                        format!("/{}/profile_picture.webp", user.get_id())
-                    } else {
-                        String::from("/default_profile_picture.webp")
-                    },
-                    globals.get_cache_async(),
-                )
+                Posts::gen_profile(globals.get_db().unwrap(), user.get_id())
             }
             PostsMessage::UpdateUserTagInput(user_tag_input) => {
                 self.user_tag_input = user_tag_input.clone();
@@ -1091,7 +947,14 @@ impl Scene for Posts {
                 let post_index = post_index.clone();
                 let report_description = self.report_input.clone();
                 let post = self.get_active_tab().get_post(post_index).unwrap();
-                let image: PixelImage = self.images.get(&post.get_id()).unwrap().as_ref().clone();
+                let image = match globals.get_cache().get(post.get_id()) {
+                    Some(image) => image,
+                    None => {
+                        return Command::perform(async {}, |()| {
+                            Message::Error(debug_message!("Post image not loaded yet.").into())
+                        });
+                    }
+                };
 
                 let mut data = vec![];
                 let mut cursor = Cursor::new(&mut data);
@@ -1240,17 +1103,17 @@ impl Scene for Posts {
         } else {
             Column::with_children(vec![
                 user_tag_input,
-                Button::new(
-                    Image::new(self.get_handle(self.user_profile.get_id())).height(Length::Fill),
-                )
+                Button::new(globals.get_cache().get_element(
+                    self.user_profile.get_id(),
+                    Length::Shrink,
+                    Length::Fill,
+                ))
                 .style(iced::widget::button::text)
                 .width(Length::Shrink)
                 .height(Length::FillPortion(1))
                 .on_press(
-                    PostsMessage::ToggleModal(ModalType::ShowingImage(
-                        self.get_handle(self.user_profile.get_id()),
-                    ))
-                    .into(),
+                    PostsMessage::ToggleModal(ModalType::ShowingImage(self.user_profile.get_id()))
+                        .into(),
                 )
                 .into(),
                 Text::new(self.user_profile.get_username())
@@ -1299,7 +1162,7 @@ impl Scene for Posts {
             ModalType::ShowingPost(post_index) => {
                 let post = self.get_active_tab().get_post(post_index).unwrap();
 
-                Self::gen_show_post(post_index, self.get_handle(post.get_id()), post, globals)
+                Self::gen_show_post(post_index, post, globals)
             }
             ModalType::ShowingReport(post_index) => self.gen_show_report(post_index, globals),
         };

@@ -21,13 +21,13 @@ use crate::{
             auth::{AuthTabIds, User},
             drawing::SaveMode,
             main::{MainTabIds, ModalType},
-            posts::PixelImage,
         },
         drawing::DrawingOptions,
         main::MainMessage,
         scenes::Scenes,
     },
     utils::{
+        cache::PixelImage,
         errors::Error,
         icons::{Icon, ICON},
         theme::{self, Theme},
@@ -121,8 +121,8 @@ pub async fn load_preview_offline(id: Uuid) -> Result<Arc<PixelImage>, Error> {
     }
 }
 
-pub async fn load_preview_online(user_id: Uuid, id: Uuid) -> Result<Arc<PixelImage>, Error> {
-    match database::base::download_file(format!("/{}/{}.webp", user_id, id)).await {
+pub async fn load_preview_online(ids: (Uuid, Uuid)) -> Result<Arc<PixelImage>, Error> {
+    match database::base::download_file(format!("/{}/{}.webp", ids.1, ids.0)).await {
         Ok(data) => load_from_memory_with_format(data.as_slice(), ImageFormat::WebP)
             .map(|data| Arc::new(data.into()))
             .map_err(|err| debug_message!("{}", err).into()),
@@ -287,7 +287,14 @@ pub fn drawings_tab<'a>(
                 .clone()
                 .iter()
                 .map(|(uuid, name)| {
-                    display_drawing(*uuid, globals.get_image(*uuid), name.clone(), save_mode)
+                    display_drawing(
+                        *uuid,
+                        globals
+                            .get_cache()
+                            .get_element(*uuid, Length::FillPortion(1), 150.0),
+                        name.clone(),
+                        save_mode,
+                    )
                 })
                 .collect(),
             None => vec![],

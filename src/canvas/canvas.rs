@@ -3,12 +3,12 @@ use super::tools::line::LinePending;
 use crate::canvas::layer::{CanvasMessage, Layer, LayerVessel};
 use crate::canvas::style::Style;
 use crate::canvas::svg::SVG;
-use crate::utils::errors::Error;
 use crate::scene::{Globals, Message};
+use crate::scenes::services;
+use crate::utils::errors::Error;
 use crate::utils::serde::Serialize;
 use crate::utils::theme::Theme;
-use crate::{database, debug_message, utils};
-use directories::ProjectDirs;
+use crate::database;
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::Quad;
 use iced::advanced::widget::{tree, Tree};
@@ -21,7 +21,6 @@ use json::object::Object;
 use json::JsonValue;
 use mongodb::bson::{Document, Uuid};
 use std::collections::HashMap;
-use std::fs;
 use std::ops::Deref;
 use std::sync::Arc;
 use svg::node::element::Group;
@@ -165,6 +164,222 @@ impl Canvas {
         self.json_tools.is_some()
     }
 
+    fn use_tool(&mut self, tool: &Arc<dyn Tool>) {
+        self.tools.push((tool.clone(), self.current_layer));
+        self.layers
+            .get_mut(&self.current_layer)
+            .unwrap()
+            .get_mut_tools()
+            .push(tool.clone());
+        self.undo_stack = Box::new(vec![]);
+        self.clear_cache(self.current_layer);
+    }
+
+    fn add_layer(&mut self) {
+        let layer_id = Uuid::new();
+
+        self.svg.add_layer(layer_id);
+        self.layer_order.push(layer_id);
+        self.layers.insert(layer_id, Default::default());
+        self.current_tool = self.current_tool.dyn_default();
+        self.current_layer = layer_id;
+        self.edited_layers = true;
+    }
+
+    fn remove_layer(&mut self, id: Uuid, globals: &mut Globals) -> Command<Message> {
+        if let Some(ref mut json_tools) = self.json_tools {
+            json_tools.retain(|tool| {
+                if let JsonValue::Object(object) = tool {
+                    if let Some(json_value) = object.get("id") {
+                        if let JsonValue::String(layer_id) = json_value {
+                            return layer_id.clone() != id.to_string();
+                        }
+                    }
+                }
+
+                false
+            });
+        }
+
+        self.tools.retain(|(_, layer_id)| *layer_id != id);
+        self.undo_stack.retain(|(_, layer_id)| *layer_id != id);
+        self.layers.remove(&id);
+        self.layer_order.retain(|layer_id| *layer_id != id);
+
+        self.edited_layers = true;
+        self.removed_layers.push(id);
+
+        if self.current_layer == id {
+            self.update(globals, CanvasMessage::ActivateLayer(self.layer_order[0]))
+        } else {
+            Command::none()
+        }
+    }
+
+    fn save(&mut self, globals: &mut Globals) -> Command<Message> {
+        let tools_svg = self.get_tools_svg();
+        if tools_svg.is_empty() && self.count_saved == self.last_saved && !self.edited_layers {
+            return Command::perform(async {}, |_| CanvasMessage::Saved.into());
+        }
+
+        let delete_lower_bound = self.count_saved;
+        let delete_upper_bound = self.last_saved;
+
+        for _ in delete_lower_bound..delete_upper_bound {
+            self.svg.remove();
+        }
+        for (tool, layer) in tools_svg {
+            self.svg.add_tool(&layer, tool);
+        }
+
+        let canvas_id = self.id;
+        let layers: Vec<(Uuid, String)> = self
+            .layer_order
+            .iter()
+            .map(|id| (*id, self.layers.get(id).unwrap().get_name().clone()))
+            .collect();
+
+        let canvas_name = self.name.clone();
+
+        let document = self.svg.as_document();
+        let cache = globals.get_cache();
+
+        if let Some(tools) = self.json_tools.clone() {
+            let tools_json = self.get_tools_json();
+
+            let save_image = Command::perform(
+                services::drawing::save_preview_offline(canvas_id, document.clone(), cache),
+                |result| match result {
+                    Ok(_) => Message::None,
+                    Err(err) => Message::Error(err),
+                },
+            );
+
+            let save_data = Command::perform(
+                services::drawing::save_offline(
+                    canvas_id,
+                    canvas_name,
+                    (delete_lower_bound, delete_upper_bound),
+                    tools,
+                    tools_json,
+                    layers,
+                ),
+                |result: Result<(), Error>| match result {
+                    Ok(_) => CanvasMessage::Saved.into(),
+                    Err(err) => Message::Error(err),
+                },
+            );
+
+            Command::batch(vec![save_data, save_image])
+        } else {
+            let tools_mongo = self.get_tools_serialized();
+            let removed_layers = self.removed_layers.clone();
+            let layer_data = self
+                .layers
+                .iter()
+                .map(|(id, layer)| (*id, layer.get_name().clone()))
+                .collect::<Vec<(Uuid, String)>>();
+            let db = globals.get_db();
+            let user_id = globals.get_user().unwrap().get_id();
+
+            if let Some(db) = db {
+                Command::batch(vec![
+                    Command::perform(
+                        services::drawing::save_preview_online(canvas_id, user_id, document.clone(), cache),
+                        |result| match result {
+                            Ok(_) => Message::None,
+                            Err(err) => Message::Error(err),
+                        },
+                    ),
+                    Command::perform(
+                        async move {
+                            database::drawing::update_drawing(
+                                &db,
+                                canvas_id,
+                                canvas_name.clone(),
+                                delete_lower_bound as u32,
+                                delete_upper_bound as u32,
+                                tools_mongo,
+                                removed_layers,
+                                layer_data,
+                            )
+                            .await
+                        },
+                        move |result| match result {
+                            Ok(()) => CanvasMessage::Saved.into(),
+                            Err(err) => Message::Error(err),
+                        },
+                    ),
+                ])
+            } else {
+                Command::none()
+            }
+        }
+    }
+
+    fn undo(&mut self) {
+        let opt = self.tools.pop();
+        if let Some((tool, layer)) = opt {
+            self.layers.get_mut(&layer).unwrap().get_mut_tools().pop();
+            self.undo_stack.push((tool.clone(), layer));
+
+            self.clear_cache(layer);
+        }
+
+        if self.count_saved > self.tools.len() {
+            self.count_saved = self.count_saved - 1;
+        }
+    }
+
+    fn redo(&mut self) {
+        let opt = self.undo_stack.pop();
+
+        if let Some((tool, layer)) = opt {
+            self.tools.push((tool.clone(), layer));
+            self.layers
+                .get_mut(&layer)
+                .unwrap()
+                .get_mut_tools()
+                .push(tool.clone());
+            self.clear_cache(layer);
+        }
+    }
+
+    fn loaded(
+        &mut self,
+        layers: Vec<(Uuid, String)>,
+        tools: Vec<(Arc<dyn Tool>, Uuid)>,
+        json_tools: Option<Vec<JsonValue>>,
+    ) {
+        self.tools = Box::new(vec![]);
+        self.layers = Box::new(HashMap::from_iter(
+            layers
+                .iter()
+                .map(|(id, name)| (*id, Layer::new(name.clone()))),
+        ));
+        self.layer_order = layers.iter().map(|(id, _)| *id).collect();
+        self.svg = SVG::new(&self.layer_order);
+        self.current_layer = self.layer_order[0];
+
+        for (tool, layer) in tools {
+            self.tools.push((tool.clone(), layer));
+            self.layers
+                .get_mut(&layer)
+                .unwrap()
+                .get_mut_tools()
+                .push(tool.clone());
+            self.svg.add_tool(
+                &layer,
+                Serialize::<Group>::serialize(tool.boxed_clone().deref()),
+            );
+        }
+
+        self.count_saved = self.tools.len();
+        self.last_saved = self.count_saved;
+
+        self.json_tools = json_tools;
+    }
+
     /// Returns the new unsaved tools as mongodb [documents](Document).
     fn get_tools_serialized(&self) -> Vec<Document> {
         let mut vec = vec![];
@@ -188,39 +403,29 @@ impl Canvas {
 
     /// Returns the new unsaved tools as svg [groups](Group).
     fn get_tools_svg(&self) -> Vec<(Group, Uuid)> {
-        let mut vec = vec![];
-
-        for pos in self.count_saved..self.tools.len() {
-            let val = self.tools.get(pos);
-
-            if let Some((tool, layer)) = val {
-                vec.push((
+        self.tools[self.count_saved..]
+            .iter()
+            .map(|(tool, layer)| {
+                (
                     Serialize::<Group>::serialize(tool.boxed_clone().deref()),
                     *layer,
-                ));
-            }
-        }
-
-        vec
+                )
+            })
+            .collect()
     }
 
     /// Returns the new unsaved tools as json [objects](JsonValue).
     fn get_tools_json(&self) -> Vec<JsonValue> {
-        let mut vec = vec![];
-
-        for pos in self.count_saved..self.tools.len() {
-            let val = self.tools.get(pos);
-
-            if let Some((tool, layer)) = val {
+        self.tools[self.count_saved..]
+            .iter()
+            .map(|(tool, layer)| {
                 let mut data: Object = Serialize::<Object>::serialize(tool.boxed_clone().deref());
                 data.insert("name", JsonValue::String(tool.id()));
                 data.insert("layer", JsonValue::String(layer.to_string()));
 
-                vec.push(JsonValue::Object(data));
-            }
-        }
-
-        vec
+                JsonValue::Object(data)
+            })
+            .collect()
     }
 
     /// Clears the cache of a layer.
@@ -264,29 +469,11 @@ impl Canvas {
                     self.new_name = Some(new_name);
                 }
             }
-            CanvasMessage::UseTool(tool) => {
-                self.tools.push((tool.clone(), self.current_layer));
-                self.layers
-                    .get_mut(&self.current_layer)
-                    .unwrap()
-                    .get_mut_tools()
-                    .push(tool.clone());
-                self.undo_stack = Box::new(vec![]);
-                self.clear_cache(self.current_layer);
-            }
+            CanvasMessage::UseTool(tool) => self.use_tool(&tool),
             CanvasMessage::UpdateStyle(update) => {
                 return self.style.update(update);
             }
-            CanvasMessage::AddLayer => {
-                let layer_id = Uuid::new();
-
-                self.svg.add_layer(layer_id);
-                self.layer_order.push(layer_id);
-                self.layers.insert(layer_id, Default::default());
-                self.current_tool = self.current_tool.dyn_default();
-                self.current_layer = layer_id;
-                self.edited_layers = true;
-            }
+            CanvasMessage::AddLayer => self.add_layer(),
             CanvasMessage::ActivateLayer(layer) => {
                 self.current_tool = self.current_tool.dyn_default();
                 self.current_layer = layer;
@@ -302,230 +489,13 @@ impl Canvas {
                 self.layers.get_mut(&id).unwrap().set_new_name(name);
             }
             CanvasMessage::RemoveLayer(id) => {
-                if let Some(ref mut json_tools) = self.json_tools {
-                    json_tools.retain(|tool| {
-                        if let JsonValue::Object(object) = tool {
-                            if let Some(json_value) = object.get("id") {
-                                if let JsonValue::String(layer_id) = json_value {
-                                    return layer_id.clone() != id.to_string();
-                                }
-                            }
-                        }
-
-                        false
-                    });
-                }
-
-                self.tools.retain(|(_, layer_id)| *layer_id != id);
-                self.undo_stack.retain(|(_, layer_id)| *layer_id != id);
-                self.layers.remove(&id);
-                self.layer_order.retain(|layer_id| *layer_id != id);
-
-                self.edited_layers = true;
-                self.removed_layers.push(id);
-
-                if self.current_layer == id {
-                    return self.update(globals, CanvasMessage::ActivateLayer(self.layer_order[0]));
-                }
+                return self.remove_layer(id, globals);
             }
             CanvasMessage::Save => {
-                let tools_svg = self.get_tools_svg();
-                if tools_svg.is_empty()
-                    && self.count_saved == self.last_saved
-                    && !self.edited_layers
-                {
-                    return Command::perform(
-                        async { },
-                        |_| CanvasMessage::Saved.into()
-                    );
-                }
-
-                let delete_lower_bound = self.count_saved;
-                let delete_upper_bound = self.last_saved;
-
-                for _ in delete_lower_bound..delete_upper_bound {
-                    self.svg.remove();
-                }
-                for (tool, layer) in tools_svg {
-                    self.svg.add_tool(&layer, tool);
-                }
-
-                let canvas_id = self.id;
-                let layers: Vec<(Uuid, String)> = self
-                    .layer_order
-                    .iter()
-                    .map(|id| (*id, self.layers.get(id).unwrap().get_name().clone()))
-                    .collect();
-
-                let canvas_name = self.name.clone();
-
-                let document = self.svg.as_document();
-
-                return if let Some(mut tools) = self.json_tools.clone() {
-                    let tools_json = self.get_tools_json();
-
-                    let save_image = Command::perform(
-                        async move {
-                            let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy")
-                                .ok_or(debug_message!("Unable to find project directory").into())?;
-
-                            let dir_path = proj_dirs.data_local_dir();
-                            let file_path = dir_path.join(canvas_id.to_string()).join("data.webp");
-                            let webp = utils::encoder::encode_svg(document, "webp").await?;
-
-                            tokio::fs::write(file_path, webp)
-                                .await
-                                .map_err(|err| debug_message!("{}", err).into())
-                        },
-                        |result| match result {
-                            Ok(_) => Message::None,
-                            Err(err) => Message::Error(err),
-                        },
-                    );
-
-                    let save_data = Command::perform(
-                        async move {
-                            let proj_dirs = ProjectDirs::from("", "CharMe", "Chartsy")
-                                .ok_or(debug_message!("Unable to find project directory").into())?;
-                            let dir_path = proj_dirs.data_local_dir();
-                            let file_path = dir_path.join(canvas_id.to_string()).join("data.json");
-                            let drawings_path = dir_path.join("drawings.json");
-
-                            let drawings = fs::read_to_string(drawings_path.clone())
-                                .map_err(|err| debug_message!("{}", err).into())?;
-                            let mut drawings = json::parse(&*drawings)
-                                .map_err(|err| debug_message!("{}", err).into())?;
-
-                            if let JsonValue::Array(drawings) = &mut drawings {
-                                for drawing in drawings {
-                                    if let JsonValue::Object(drawing) = drawing {
-                                        if let Some(JsonValue::String(id)) = drawing.get("id") {
-                                            if id.clone() == canvas_id.to_string() {
-                                                drawing
-                                                    .insert("name", JsonValue::String(canvas_name));
-                                                break;
-                                            };
-                                        }
-                                    }
-                                }
-                            }
-
-                            fs::write(drawings_path, json::stringify(drawings))
-                                .map_err(|err| debug_message!("{}", err).into())?;
-
-                            for _ in delete_lower_bound..delete_upper_bound {
-                                tools.pop();
-                            }
-
-                            tools.extend(tools_json);
-
-                            let mut data = Object::new();
-                            data.insert(
-                                "layers",
-                                JsonValue::Array(
-                                    layers
-                                        .iter()
-                                        .map(|(id, name)| {
-                                            let mut object = Object::new();
-                                            object.insert("id", JsonValue::String(id.to_string()));
-                                            object.insert("name", JsonValue::String(name.clone()));
-
-                                            JsonValue::Object(object)
-                                        })
-                                        .collect(),
-                                ),
-                            );
-                            data.insert("tools", JsonValue::Array(tools));
-
-                            fs::write(file_path, json::stringify(JsonValue::Object(data)))
-                                .map_err(|err| debug_message!("{}", err).into())
-                        },
-                        |result: Result<(), Error>| match result {
-                            Ok(_) => CanvasMessage::Saved.into(),
-                            Err(err) => Message::Error(err),
-                        },
-                    );
-
-                    Command::batch(vec![save_data, save_image])
-                } else {
-                    let tools_mongo = self.get_tools_serialized();
-                    let removed_layers = self.removed_layers.clone();
-                    let layer_data = self
-                        .layers
-                        .iter()
-                        .map(|(id, layer)| (*id, layer.get_name().clone()))
-                        .collect::<Vec<(Uuid, String)>>();
-                    let db = globals.get_db();
-                    let user_id = globals.get_user().unwrap().get_id();
-
-                    if let Some(db) = db {
-                        Command::batch(vec![
-                            Command::perform(
-                                async move {
-                                    let webp = utils::encoder::encode_svg(document, "webp").await?;
-
-                                    database::base::upload_file(
-                                        format!("/{user_id}/{canvas_id}.webp",),
-                                        webp,
-                                    )
-                                    .await
-                                },
-                                |result| match result {
-                                    Ok(_) => Message::None,
-                                    Err(err) => Message::Error(err),
-                                },
-                            ),
-                            Command::perform(
-                                async move {
-                                    database::drawing::update_drawing(
-                                        &db,
-                                        canvas_id,
-                                        canvas_name.clone(),
-                                        delete_lower_bound as u32,
-                                        delete_upper_bound as u32,
-                                        tools_mongo,
-                                        removed_layers,
-                                        layer_data,
-                                    )
-                                    .await
-                                },
-                                move |result| match result {
-                                    Ok(()) => CanvasMessage::Saved.into(),
-                                    Err(err) => Message::Error(err),
-                                },
-                            ),
-                        ])
-                    } else {
-                        Command::none()
-                    }
-                };
+                return self.save(globals);
             }
-            CanvasMessage::Undo => {
-                let opt = self.tools.pop();
-                if let Some((tool, layer)) = opt {
-                    self.layers.get_mut(&layer).unwrap().get_mut_tools().pop();
-                    self.undo_stack.push((tool.clone(), layer));
-
-                    self.clear_cache(layer);
-                }
-
-                if self.count_saved > self.tools.len() {
-                    self.count_saved = self.count_saved - 1;
-                }
-            }
-            CanvasMessage::Redo => {
-                let opt = self.undo_stack.pop();
-
-                if let Some((tool, layer)) = opt {
-                    self.tools.push((tool.clone(), layer));
-                    self.layers
-                        .get_mut(&layer)
-                        .unwrap()
-                        .get_mut_tools()
-                        .push(tool.clone());
-                    self.clear_cache(layer);
-                }
-            }
+            CanvasMessage::Undo => self.undo(),
+            CanvasMessage::Redo => self.redo(),
             CanvasMessage::ChangeTool(tool) => {
                 self.current_tool = (*tool).boxed_clone();
                 self.current_tool.shape_style(&mut self.style);
@@ -538,35 +508,7 @@ impl Canvas {
                 layers,
                 tools,
                 json_tools,
-            } => {
-                self.tools = Box::new(vec![]);
-                self.layers = Box::new(HashMap::from_iter(
-                    layers
-                        .iter()
-                        .map(|(id, name)| (*id, Layer::new(name.clone()))),
-                ));
-                self.layer_order = layers.iter().map(|(id, _)| *id).collect();
-                self.svg = SVG::new(&self.layer_order);
-                self.current_layer = self.layer_order[0];
-
-                for (tool, layer) in tools {
-                    self.tools.push((tool.clone(), layer));
-                    self.layers
-                        .get_mut(&layer)
-                        .unwrap()
-                        .get_mut_tools()
-                        .push(tool.clone());
-                    self.svg.add_tool(
-                        &layer,
-                        Serialize::<Group>::serialize(tool.boxed_clone().deref()),
-                    );
-                }
-
-                self.count_saved = self.tools.len();
-                self.last_saved = self.count_saved;
-
-                self.json_tools = json_tools;
-            }
+            } => self.loaded(layers, tools, json_tools),
         }
         Command::none()
     }

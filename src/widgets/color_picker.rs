@@ -2,10 +2,11 @@ use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::{Quad, Style};
 use iced::advanced::widget::Tree;
 use iced::advanced::{Clipboard, Layout, Shell, Widget};
+use iced::alignment::Horizontal;
 use iced::event::Status;
 use iced::gradient::Linear;
 use iced::mouse::{Button, Cursor, Interaction};
-use iced::widget::{Column, Row, Text, TextInput};
+use iced::widget::{Column, Row, Slider, Text, TextInput};
 use iced::{
     mouse, Alignment, Background, Color, Element, Event, Gradient, Length, Padding, Point,
     Rectangle, Size,
@@ -35,6 +36,9 @@ where
     /// The B component of the [ColorPicker].
     blue: f32,
 
+    /// The A component of the [ColorPicker].
+    alpha: f32,
+
     /// Tells whether the 2d gradient is currently being updated.
     editing_gradient_2d: bool,
 
@@ -62,11 +66,18 @@ where
     Message: Clone,
 {
     /// Initializes a [ColorPicker] with colors and an update function.
-    pub fn new(red: f32, green: f32, blue: f32, on_update: fn(Color) -> Message) -> Self {
+    pub fn new(
+        red: f32,
+        green: f32,
+        blue: f32,
+        alpha: f32,
+        on_update: fn(Color) -> Message,
+    ) -> Self {
         ColorPicker {
             red,
             green,
             blue,
+            alpha,
             editing_gradient_2d: false,
             editing_gradient_1d: false,
             width: Length::Shrink,
@@ -78,11 +89,18 @@ where
     }
 
     /// Initializes a [ColorPicker] with u8 colors and an update function.
-    pub fn new_rgb8(red: u8, green: u8, blue: u8, on_update: fn(Color) -> Message) -> Self {
+    pub fn new_rgb8(
+        red: u8,
+        green: u8,
+        blue: u8,
+        alpha: u8,
+        on_update: fn(Color) -> Message,
+    ) -> Self {
         Self::new(
             (red as f32) / 255.0,
             (green as f32) / 255.0,
             (blue as f32) / 255.0,
+            (alpha as f32) / 255.0,
             on_update,
         )
     }
@@ -396,7 +414,7 @@ where
         if self.editing_gradient_1d || self.editing_gradient_2d {
             Interaction::Grabbing
         } else if cursor.is_over(bounds_2d) || cursor.is_over(bounds_1d) {
-            Interaction::Grab
+            Interaction::Crosshair
         } else {
             Interaction::default()
         }
@@ -407,13 +425,17 @@ impl<'a, Message, Theme, Renderer> From<ColorPicker<Message>>
     for Element<'a, Message, Theme, Renderer>
 where
     Renderer: 'a + iced::advanced::Renderer + iced::advanced::text::Renderer,
-    Theme: 'a + iced::widget::text::Catalog + iced::widget::text_input::Catalog,
+    Theme: 'a
+        + iced::widget::text::Catalog
+        + iced::widget::text_input::Catalog
+        + iced::widget::slider::Catalog,
     Message: 'a + Clone,
 {
     fn from(value: ColorPicker<Message>) -> Self {
         let red_default = (value.red * 255.0) as u8;
         let green_default = (value.green * 255.0) as u8;
         let blue_default = (value.blue * 255.0) as u8;
+        let alpha = (value.alpha * 255.0) as u8;
 
         let parse_input = move |mut input: String, index: usize| {
             if input == "" {
@@ -435,6 +457,15 @@ where
             } else {
                 (value.on_update)(Color::from_rgb8(red_default, green_default, blue_default))
             }
+        };
+
+        let send_alpha = move |alpha| {
+            (value.on_update)(Color::from_rgba8(
+                red_default,
+                green_default,
+                blue_default,
+                (alpha as f32) / 255.0,
+            ))
         };
 
         let red_text = if red_default == 0 {
@@ -486,6 +517,18 @@ where
             ])
             .align_items(Alignment::Center)
             .spacing(5.0)
+            .padding(DEFAULT_PADDING)
+            .into(),
+            Row::with_children(vec![
+                Text::new("A:").into(),
+                Slider::new(0..=255, alpha, move |alpha| send_alpha(alpha)).into(),
+                Text::new(alpha)
+                    .width(Length::Fixed(25.0))
+                    .horizontal_alignment(Horizontal::Right)
+                    .into(),
+            ])
+            .align_items(Alignment::Center)
+            .spacing(2.0)
             .padding(DEFAULT_PADDING)
             .into(),
         ])

@@ -7,3 +7,5 @@ pub mod serde;
 pub mod theme;
 
 pub mod errors;
+
+pub mod cache;

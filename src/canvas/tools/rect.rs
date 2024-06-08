@@ -2,8 +2,9 @@ use crate::canvas::layer::CanvasMessage;
 use crate::canvas::style::Style;
 use crate::utils::serde::{Deserialize, Serialize};
 use iced::event::Status;
+use iced::keyboard::Key;
 use iced::mouse::Cursor;
-use iced::widget::canvas::{Event, Fill, Frame, Geometry, Path, Stroke};
+use iced::widget::canvas::{Event, Fill, Frame, Geometry, LineJoin, Path, Stroke};
 use iced::{keyboard, mouse, Color, Point, Rectangle, Renderer, Size};
 use json::object::Object;
 use json::JsonValue;
@@ -11,7 +12,6 @@ use mongodb::bson::{doc, Bson, Document};
 use std::fmt::Debug;
 use std::ops::Sub;
 use std::sync::Arc;
-use iced::keyboard::Key;
 use svg::node::element::Group;
 
 use crate::canvas::tool::{Pending, Tool};
@@ -191,10 +191,10 @@ impl Serialize<Group> for Rect {
             .set("height", (self.start.y - self.end.y).abs())
             .set("stroke-width", self.style.get_stroke_width())
             .set("stroke", self.style.get_stroke_color())
+            .set("stroke-linejoin", "miter")
             .set("stroke-opacity", self.style.get_stroke_alpha())
             .set("fill", self.style.get_fill())
-            .set("fill-opacity", self.style.get_fill_alpha())
-            .set("style", "mix-blend-mode:hard-light");
+            .set("fill-opacity", self.style.get_fill_alpha());
 
         Group::new().set("class", self.id()).add(rect)
     }
@@ -244,7 +244,13 @@ impl Tool for Rect {
         });
 
         if let Some((width, color, _, _)) = self.style.stroke {
-            frame.stroke(&rect, Stroke::default().with_width(width).with_color(color));
+            frame.stroke(
+                &rect,
+                Stroke::default()
+                    .with_width(width)
+                    .with_color(color)
+                    .with_line_join(LineJoin::Miter),
+            );
         }
         if let Some((color, _)) = self.style.fill {
             frame.fill(&rect, Fill::from(color));

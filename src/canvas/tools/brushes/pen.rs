@@ -1,7 +1,7 @@
 use crate::canvas::style::Style;
 use crate::canvas::tool::Tool;
 use iced::widget::canvas::{Fill, Frame, Path};
-use iced::{Point, Vector, Color};
+use iced::{Color, Point, Vector};
 use std::fmt::Debug;
 use std::ops::{Add, Sub};
 use svg::node::element::path::Data;
@@ -91,7 +91,6 @@ impl Brush for Pen {
         let path = svg::node::element::Path::new()
             .set("fill", style.get_stroke_color())
             .set("fill-opacity", style.get_stroke_alpha())
-            .set("style", "mix-blend-mode:hard-light")
             .set("d", data);
 
         svg.add(path)

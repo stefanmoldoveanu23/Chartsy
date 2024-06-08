@@ -92,8 +92,7 @@ impl Airbrush {
                 .set("cy", point.y + offset.y)
                 .set("r", radius)
                 .set("fill", style.get_stroke_color())
-                .set("fill-opacity", style.get_stroke_alpha())
-                .set("style", "mix-blend-mode:hard-light");
+                .set("fill-alpha", style.get_stroke_alpha());
 
             res = res.add(circle);
         }

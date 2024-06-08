@@ -2,59 +2,9 @@ use crate::scene::Message;
 use crate::scenes::data::auth::User;
 use crate::scenes::posts::PostsMessage;
 use crate::utils::serde::{Deserialize, Serialize};
-use iced::widget::image::Handle;
-use image::{DynamicImage, RgbaImage};
 use mongodb::bson::{doc, Bson, Document, Uuid, UuidRepresentation};
 use std::collections::HashMap;
 use std::sync::Arc;
-
-/// An image represented by pixel data.
-#[derive(Debug, Clone)]
-pub struct PixelImage {
-    /// The width of the [PixelImage].
-    width: u32,
-
-    /// The height of the [PixelImage].
-    height: u32,
-
-    /// The pixel data.
-    data: Vec<u8>,
-}
-
-impl PixelImage {
-    /// Initialize a [PixelImage].
-    pub fn new(width: u32, height: u32, data: Vec<u8>) -> Self {
-        PixelImage {
-            width,
-            height,
-            data,
-        }
-    }
-
-    pub fn get_width(&self) -> u32 {
-        self.width
-    }
-
-    pub fn get_height(&self) -> u32 {
-        self.height
-    }
-
-    pub fn get_data(&self) -> &Vec<u8> {
-        &self.data
-    }
-}
-
-impl From<DynamicImage> for PixelImage {
-    fn from(value: DynamicImage) -> Self {
-        Self::new(value.width(), value.height(), value.to_rgba8().to_vec())
-    }
-}
-
-impl Into<DynamicImage> for PixelImage {
-    fn into(self) -> DynamicImage {
-        DynamicImage::ImageRgba8(RgbaImage::from_raw(self.width, self.height, self.data).unwrap())
-    }
-}
 
 /// A comment on a post.
 #[derive(Clone)]
@@ -414,13 +364,11 @@ impl PostList {
     }
 
     /// Load the next batch of images.
-    pub fn load_batch(&mut self) -> &[Post] {
+    pub fn load_batch(&mut self) {
         let start = self.loaded;
         let total = self.posts.len();
 
         self.loaded += 10.min(total - start);
-
-        &self.posts[start..self.loaded]
     }
 
     /// Change the rating given to a post by the authenticated user.
@@ -606,7 +554,7 @@ impl PostList {
 #[derive(Clone)]
 pub enum ModalType {
     /// Modal for displaying an image in the center of the screen.
-    ShowingImage(Handle),
+    ShowingImage(Uuid),
 
     /// Modal for opening a post.
     ShowingPost(usize),

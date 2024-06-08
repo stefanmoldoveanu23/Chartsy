@@ -272,7 +272,6 @@ impl Serialize<Group> for Ellipse {
             .set("stroke-opacity", self.style.get_stroke_alpha())
             .set("fill", self.style.get_fill())
             .set("fill-opacity", self.style.get_fill_alpha())
-            .set("style", "mix-blend-mode:hard-light")
             .set("d", data);
 
         Group::new().set("class", self.id()).add(path)

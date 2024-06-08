@@ -1,9 +1,8 @@
 use std::any::Any;
-use std::sync::Arc;
 
+use crate::database;
 use crate::utils::errors::Error;
 use crate::widgets::ModalStack;
-use crate::{database, debug_message};
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{Button, Column, Container, Text};
 use iced::{Alignment, Command, Element, Length, Renderer, Theme};
@@ -126,68 +125,31 @@ impl Main {
     }
 
     pub fn load_previews(&self, globals: &Globals) -> Command<Message> {
-        let commands_offline = self.drawings_offline.clone().map_or(vec![], |drawings| {
-            drawings
-                .into_iter()
-                .filter_map(|(id, _)| {
-                    let cache_async = globals.get_cache_async().clone();
-                    let cache_sync = globals.get_cache_sync().clone();
+        let commands_offline = self
+            .drawings_offline
+            .clone()
+            .map_or(Command::none(), |drawings| {
+                globals.get_cache().insert_if_not(
+                    drawings.iter().map(|(id, _)| *id),
+                    std::convert::identity,
+                    services::main::load_preview_offline,
+                )
+            });
 
-                    (!cache_sync.contains_key(&id)).then_some(Command::perform(
-                        async move {
-                            let data = cache_async
-                                .try_get_with(id, services::main::load_preview_offline(id))
-                                .await?;
+        let commands_online = self
+            .drawings_online
+            .clone()
+            .map_or(Command::none(), |drawings| {
+                let user_id = globals.get_user().unwrap().get_id();
 
-                            tokio::task::spawn_blocking(move || {
-                                cache_sync.get_with(id, || Arc::clone(&data));
-                            })
-                            .await
-                            .map_err(|err| Arc::new(debug_message!("{}", err).into()))
-                        },
-                        |result: Result<(), Arc<Error>>| match result {
-                            Ok(_) => Message::None,
-                            Err(err) => Message::Error(err.as_ref().clone()),
-                        },
-                    ))
-                })
-                .collect()
-        });
+                globals.get_cache().insert_if_not(
+                    drawings.iter().map(|(id, _)| (*id, user_id)),
+                    |(id, _)| id,
+                    services::main::load_preview_online,
+                )
+            });
 
-        let commands_online = self.drawings_online.clone().map_or(vec![], |drawings| {
-            drawings
-                .into_iter()
-                .filter_map(|(id, _)| {
-                    let user_id = globals.get_user().unwrap().get_id();
-                    let cache_async = globals.get_cache_async().clone();
-                    let cache_sync = globals.get_cache_sync().clone();
-
-                    (!cache_sync.contains_key(&id)).then_some(Command::perform(
-                        async move {
-                            let data = cache_async
-                                .try_get_with(id, services::main::load_preview_online(user_id, id))
-                                .await?;
-
-                            tokio::task::spawn_blocking(move || {
-                                cache_sync.get_with(id, || Arc::clone(&data));
-                            })
-                            .await
-                            .map_err(|err| Arc::new(debug_message!("{}", err).into()))
-                        },
-                        |result: Result<(), Arc<Error>>| match result {
-                            Ok(_) => Message::None,
-                            Err(err) => Message::Error(err.as_ref().clone()),
-                        },
-                    ))
-                })
-                .collect()
-        });
-
-        Command::batch(
-            commands_offline
-                .into_iter()
-                .chain(commands_online.into_iter()),
-        )
+        Command::batch(vec![commands_offline, commands_online])
     }
 
     /// Logs out the currently authenticated user.
