@@ -292,7 +292,8 @@ pub fn drawings_tab<'a>(
                         globals.get_cache().get_element(
                             *uuid,
                             Size::new(Length::FillPortion(1), Length::Fixed(150.0)),
-                            Size::new(Length::Fixed(300.0), Length::Fixed(150.0)),
+                            Size::new(Length::Fixed(200.0), Length::Fixed(150.0)),
+                            None,
                         ),
                         name.clone(),
                         save_mode,

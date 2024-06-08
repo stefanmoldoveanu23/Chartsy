@@ -2,13 +2,17 @@ use std::{future::Future, sync::Arc, time::Duration};
 
 use iced::{
     widget::{image::Handle, Container, Image},
-    Command, Element, Length, Renderer, Size,
+    Command, Element, Length, Pixels, Renderer, Size,
 };
 use image::{DynamicImage, RgbaImage};
 use moka;
 use mongodb::bson::Uuid;
 
-use crate::{debug_message, scene::Message, widgets::WaitPanel};
+use crate::{
+    debug_message,
+    scene::Message,
+    widgets::{wait_panel::Appearance, WaitPanel},
+};
 
 use super::{errors::Error, theme::Theme};
 
@@ -103,7 +107,8 @@ impl Cache {
         &self,
         id: Uuid,
         size: Size<Length>,
-        backup_size: Size<Length>
+        backup_size: Size<Length>,
+        text_size: impl Into<Option<Pixels>>,
     ) -> Element<'a, Message, Theme, Renderer> {
         match self.cache_sync.get(&id) {
             Some(pixels) => Image::new(Handle::from_rgba(
@@ -114,11 +119,18 @@ impl Cache {
             .width(size.width)
             .height(size.height)
             .into(),
-            None => Container::new(WaitPanel::new("Loading..."))
-                .width(backup_size.width)
-                .height(backup_size.height)
-                .style(iced::widget::container::bordered_box)
-                .into(),
+            None => {
+                let mut appearance = Appearance::default();
+                if let Some(text_size) = text_size.into() {
+                    appearance = appearance.text_size(text_size);
+                }
+
+                Container::new(WaitPanel::new("Loading...").style(appearance))
+                    .width(backup_size.width)
+                    .height(backup_size.height)
+                    .style(iced::widget::container::bordered_box)
+                    .into()
+            }
         }
     }
 

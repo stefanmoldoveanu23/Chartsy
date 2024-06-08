@@ -19,6 +19,7 @@ use crate::{
         errors::{AuthError, Error},
         theme::{self, Theme},
     },
+    widgets::WaitPanel,
 };
 
 pub async fn get_profile_picture(user: &User) -> Result<Vec<u8>, Error> {
@@ -217,15 +218,24 @@ pub fn password_error<'a>() -> Element<'a, Message, Theme, Renderer> {
     .into()
 }
 
-pub fn profile_picture_input<'a>(image_handle: &Handle) -> Element<'a, Message, Theme, Renderer> {
+pub fn profile_picture_input<'a>(
+    image_handle: &Option<Handle>,
+) -> Element<'a, Message, Theme, Renderer> {
     Row::with_children(vec![
         Text::new("Profile picture").size(20.0).into(),
         Space::with_width(Length::Fill).into(),
         Column::with_children(vec![
-            Image::new(image_handle.clone())
-                .height(200.0)
-                .width(200.0)
-                .into(),
+            if let Some(image_handle) = image_handle {
+                Image::new(image_handle.clone())
+                    .height(200.0)
+                    .width(200.0)
+                    .into()
+            } else {
+                WaitPanel::new("Loading...")
+                    .width(200.0)
+                    .height(200.0)
+                    .into()
+            },
             Button::new("Select image")
                 .on_press(SettingsMessage::SelectImage.into())
                 .into(),

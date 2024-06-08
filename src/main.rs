@@ -29,8 +29,6 @@ use iced::{
 };
 use lettre::{AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
 
-pub const LOADING_IMAGE: &[u8] = include_bytes!("images/loading.png");
-
 pub const INCONSOLATA_BYTES: &[u8] = include_bytes!("images/Inconsolata-SemiBold.ttf");
 pub const INCONSOLATA: Font = Font {
     family: Family::Name("Inconsolata"),

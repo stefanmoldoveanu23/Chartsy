@@ -811,6 +811,7 @@ impl Scene for Posts {
                     self.user_profile.get_id(),
                     Size::new(Length::Shrink, Length::Fill),
                     Size::new(Length::Fixed(400.0), Length::Fixed(300.0)),
+                    None,
                 ))
                 .style(iced::widget::button::text)
                 .width(Length::Shrink)

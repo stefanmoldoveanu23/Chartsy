@@ -29,7 +29,7 @@ pub struct Settings {
     password_repeat: String,
 
     /// The current profile picture of the user.
-    profile_picture_input: Handle,
+    profile_picture_input: Option<Handle>,
 
     /// The last error that an update request has created.
     input_error: Option<Error>,
@@ -250,7 +250,7 @@ impl Settings {
             },
             |result| match result {
                 Ok(data) => SettingsMessage::DoneUpdate(Arc::new(move |settings, globals| {
-                    settings.profile_picture_input = Handle::from_bytes(data.clone());
+                    settings.profile_picture_input = Some(Handle::from_bytes(data.clone()));
                     globals.get_user_mut().unwrap().set_profile_picture();
                     settings.modal_stack.toggle_modal(());
                 }))
@@ -276,7 +276,7 @@ impl Scene for Settings {
             user_tag_input: user.get_user_tag().clone(),
             password_input: String::from(""),
             password_repeat: String::from(""),
-            profile_picture_input: Handle::from_path("./src/images/loading.png"),
+            profile_picture_input: None,
             input_error: None,
             deleted_account: false,
             modal_stack: ModalStack::new(),
@@ -329,7 +329,7 @@ impl Scene for Settings {
             }
             SettingsMessage::UpdatePassword => self.update_password(globals),
             SettingsMessage::LoadedProfilePicture(data) => {
-                self.profile_picture_input = Handle::from_bytes(data.clone());
+                self.profile_picture_input = Some(Handle::from_bytes(data.clone()));
 
                 Command::none()
             }

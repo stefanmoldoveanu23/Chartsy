@@ -5,7 +5,7 @@ use iced::{
     widget::{
         tooltip::Position, Button, Column, Container, Row, Scrollable, Space, TextInput, Tooltip,
     },
-    Alignment, Element, Length, Renderer, Size,
+    Alignment, Element, Length, Pixels, Renderer, Size,
 };
 use image::{load_from_memory_with_format, ImageFormat};
 use mongodb::{bson::Uuid, Database};
@@ -97,6 +97,7 @@ pub fn image_profile_link<'a>(
             post.get_user().get_id(),
             Size::new(Length::Fixed(50.0), Length::Fixed(50.0)),
             Size::new(Length::Fixed(50.0), Length::Fixed(50.0)),
+            Some(Pixels(5.0)),
         ))
         .on_press(PostsMessage::OpenProfile(post.get_user().clone()).into())
         .style(iced::widget::button::text),
@@ -199,6 +200,7 @@ pub fn generate_post_list<'a>(
                                 post.get_id(),
                                 Size::new(Length::Shrink, Length::Shrink),
                                 Size::new(Length::Fixed(800.0), Length::Fixed(600.0)),
+                                None,
                             ),
                         )
                         .padding(40)
@@ -233,6 +235,7 @@ pub fn generate_show_image<'a>(id: Uuid, cache: Cache) -> Element<'a, Message, T
         id,
         Size::new(Length::Shrink, Length::Shrink),
         Size::new(Length::Fixed(800.0), Length::Fixed(600.0)),
+        None,
     ))
     .width(Length::Fill)
     .height(Length::Fill)
@@ -414,6 +417,7 @@ pub fn generate_show_post<'a>(
             post.get_id(),
             Size::new(Length::Shrink, Length::Shrink),
             Size::new(Length::Fixed(800.0), Length::Fixed(600.0)),
+            None
         ))
         .width(Length::FillPortion(3))
         .height(Length::Fill)
