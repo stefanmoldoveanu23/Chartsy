@@ -2,7 +2,7 @@ use std::{future::Future, sync::Arc, time::Duration};
 
 use iced::{
     widget::{image::Handle, Container, Image},
-    Command, Element, Length, Renderer,
+    Command, Element, Length, Renderer, Size,
 };
 use image::{DynamicImage, RgbaImage};
 use moka;
@@ -102,8 +102,8 @@ impl Cache {
     pub fn get_element<'a>(
         &self,
         id: Uuid,
-        width: impl Into<Length>,
-        height: impl Into<Length>,
+        size: Size<Length>,
+        backup_size: Size<Length>
     ) -> Element<'a, Message, Theme, Renderer> {
         match self.cache_sync.get(&id) {
             Some(pixels) => Image::new(Handle::from_rgba(
@@ -111,12 +111,12 @@ impl Cache {
                 pixels.get_height(),
                 pixels.get_data().clone(),
             ))
-            .width(width.into())
-            .height(height.into())
+            .width(size.width)
+            .height(size.height)
             .into(),
             None => Container::new(WaitPanel::new("Loading..."))
-                .width(width.into())
-                .height(height.into())
+                .width(backup_size.width)
+                .height(backup_size.height)
                 .style(iced::widget::container::bordered_box)
                 .into(),
         }

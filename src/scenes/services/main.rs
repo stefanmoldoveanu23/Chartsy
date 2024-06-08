@@ -5,7 +5,7 @@ use iced::{
     advanced::widget::Text,
     alignment::{Horizontal, Vertical},
     widget::{Button, Column, Container, Row, Scrollable, Space},
-    Alignment, Element, Length, Renderer,
+    Alignment, Element, Length, Renderer, Size,
 };
 use image::{load_from_memory_with_format, ImageFormat};
 use json::JsonValue;
@@ -289,9 +289,11 @@ pub fn drawings_tab<'a>(
                 .map(|(uuid, name)| {
                     display_drawing(
                         *uuid,
-                        globals
-                            .get_cache()
-                            .get_element(*uuid, Length::FillPortion(1), 150.0),
+                        globals.get_cache().get_element(
+                            *uuid,
+                            Size::new(Length::FillPortion(1), Length::Fixed(150.0)),
+                            Size::new(Length::Fixed(300.0), Length::Fixed(150.0)),
+                        ),
                         name.clone(),
                         save_mode,
                     )

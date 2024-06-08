@@ -1,35 +1,38 @@
-use iced::{Element, Event, Length, mouse, Point, Rectangle, Size};
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::Style;
-use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::advanced::widget::Tree;
+use iced::advanced::{Clipboard, Layout, Shell, Text, Widget};
+use iced::alignment::{Horizontal, Vertical};
 use iced::event::Status;
 use iced::mouse::{Cursor, Interaction};
-use iced::widget::Image;
-use iced::widget::image::Handle;
+use iced::widget::text::{LineHeight, Shaping};
+use iced::{mouse, Color, Element, Event, Length, Padding, Point, Rectangle, Size};
+
+use crate::utils::icons::{Icon, ICON};
+use iced::advanced::text::Renderer;
 
 /// The default size of a star.
-const DEFAULT_SIZE :f32= 25.0;
+const DEFAULT_SIZE: f32 = 25.0;
 
-/// The default spacing between starts.
-const DEFAULT_SPACING :f32= 5.0;
+/// The default spacing between stars.
+const DEFAULT_SPACING: f32 = 5.0;
 
-pub struct Rating<Message, F>
+/// The default padding.
+const DEFAULT_PADDING: f32 = 5.0;
+
+pub struct Rating<F, Message>
 where
     F: Fn(usize) -> Message,
-    Message: Clone
+    Message: Clone,
 {
     /// The size of a star.
-    size: Length,
+    size: f32,
 
     /// The spacing between stars.
     spacing: f32,
 
-    /// The image to be used for an empty star.
-    star_empty: Image<Handle>,
-
-    /// The image to be used for a full star.
-    star_full: Image<Handle>,
+    /// The padding.
+    padding: Padding,
 
     /// Action to be triggered when a user has given a rating.
     on_rate: Option<F>,
@@ -44,183 +47,150 @@ where
     hovered_value: Option<usize>,
 }
 
-impl<Message, F> Rating<Message, F>
+impl<F, Message> Rating<F, Message>
 where
     Message: Clone,
-    F: Fn(usize) -> Message
+    F: Fn(usize) -> Message,
 {
     /// Initializes the empty and full star images and returns a default [Rating].
-    pub fn new() -> Self
-    {
-        let star_empty_memory = Handle::from_path("./src/images/star_empty.png");
-        let star_full_memory = Handle::from_path("./src/images/star_full.png");
-
+    pub fn new() -> Self {
         Rating {
-            size: DEFAULT_SIZE.into(),
+            size: DEFAULT_SIZE,
             spacing: DEFAULT_SPACING,
-            star_empty: Image::new(star_empty_memory.clone()).width(DEFAULT_SIZE).height(DEFAULT_SIZE),
-            star_full: Image::new(star_full_memory.clone()).width(DEFAULT_SIZE).height(DEFAULT_SIZE),
+            padding: DEFAULT_PADDING.into(),
             on_rate: None,
             on_unrate: None,
             value: 0,
-            hovered_value: None
+            hovered_value: None,
         }
     }
 
-    /// Sets the size of the stars in the [Rating].
-    pub fn size(mut self, size: impl Into<Length>) -> Self
-    {
-        let size = size.into();
-
-        self.size = size;
-        self.star_empty = self.star_empty.width(size.clone()).height(size.clone());
-        self.star_full = self.star_full.width(size.clone()).height(size.clone());
+    /// Sets the size of a star in the [Rating].
+    pub fn size(mut self, size: impl Into<f32>) -> Self {
+        self.size = size.into();
 
         self
     }
 
     /// Sets the spacing between stars in the [Rating].
-    pub fn spacing(mut self, spacing: impl Into<f32>) -> Self
-    {
+    pub fn spacing(mut self, spacing: impl Into<f32>) -> Self {
         self.spacing = spacing.into();
 
         self
     }
 
+    /// Sets the padding of the [Rating].
+    pub fn padding(mut self, padding: impl Into<Padding>) -> Self {
+        self.padding = padding.into();
+
+        self
+    }
+
     /// Sets the rating trigger for the [Rating].
-    pub fn on_rate(mut self, on_rate: F) -> Self
-    {
+    pub fn on_rate(mut self, on_rate: F) -> Self {
         self.on_rate = Some(on_rate);
 
         self
     }
 
     /// Sets the rating retraction trigger for the [Rating].
-    pub fn on_unrate(mut self, on_unrate: impl Into<Message>) -> Self
-    {
+    pub fn on_unrate(mut self, on_unrate: impl Into<Message>) -> Self {
         self.on_unrate = Some(on_unrate.into());
 
         self
     }
 
     /// Sets the current rating.
-    pub fn value(mut self, value: impl Into<usize>) -> Self
-    {
+    pub fn value(mut self, value: impl Into<usize>) -> Self {
         self.value = value.into();
 
         self
     }
 }
 
-impl<'a, Message, Theme, Renderer, F> Widget<Message, Theme, Renderer> for Rating<Message, F>
+impl<F, Message, Theme> Widget<Message, Theme, iced::Renderer> for Rating<F, Message>
 where
-    Message: 'a + Clone,
-    Renderer: 'a + iced::advanced::Renderer + iced::advanced::image::Renderer<Handle=Handle>,
-    F: 'a + Fn(usize) -> Message
+    Message: Clone,
+    F: Fn(usize) -> Message,
 {
     fn size(&self) -> Size<Length> {
         Size::new(
-            self.size,
-            self.size
+            Length::Fixed(
+                self.size * 5.0 + self.spacing * 4.0 + self.padding.left + self.padding.right,
+            ),
+            Length::Fixed(self.size + self.padding.top + self.padding.bottom),
         )
     }
 
-    fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
-        let limits = limits
-            .loose()
-            .width((&self.star_empty as &dyn Widget<Message, Theme, Renderer>).size().width)
-            .height((&self.star_empty as &dyn Widget<Message, Theme, Renderer>).size().height);
+    fn layout(&self, _tree: &mut Tree, _renderer: &iced::Renderer, _limits: &Limits) -> Node {
+        let size = Size::new(
+            self.size * 5.0 + self.spacing * 4.0 + self.padding.left + self.padding.right,
+            self.size + self.padding.top + self.padding.bottom,
+        );
 
-        let mut nodes :Vec<Node>= vec![];
-        let mut width = 0.0;
-        let mut height :f32= 0.0;
+        let mut nodes: Vec<Node> = vec![];
 
-        for i in 1..=5 {
-            let mut node = if i <= self.value {
-                (&self.star_full as &dyn Widget<Message, Theme, Renderer>)
-                    .layout(&mut tree.children[1], renderer, &limits)
-            } else {
-                (&self.star_empty as &dyn Widget<Message, Theme, Renderer>)
-                    .layout(&mut tree.children[0], renderer, &limits)
-            };
+        for i in 0..5 {
+            let mut node = Node::new(Size::new(self.size, self.size));
 
-            node.move_to_mut(Point::new(width, 0.0));
-
-            width += node.size().width + self.spacing;
-            height = height.max(node.size().height);
+            node.move_to_mut(Point::new(
+                self.padding.left + (i as f32) * (self.size + self.spacing),
+                self.padding.top,
+            ));
 
             nodes.push(node);
         }
 
-        Node::with_children(
-            Size::new(
-                width - self.spacing,
-                height
-            ),
-            nodes
-        )
+        Node::with_children(size, nodes)
     }
 
     fn draw(
         &self,
-        tree: &Tree,
-        renderer: &mut Renderer,
-        theme: &Theme,
-        style: &Style,
+        _tree: &Tree,
+        renderer: &mut iced::Renderer,
+        _theme: &Theme,
+        _style: &Style,
         layout: Layout<'_>,
-        cursor: Cursor,
-        viewport: &Rectangle
+        _cursor: Cursor,
+        _viewport: &Rectangle,
     ) {
         let mut children = layout.children();
-        let value = if let Some(value) = self.hovered_value {
-            if value == self.value {
-                0
-            } else {
-                value
-            }
-        } else {
-            self.value
-        };
 
-        for i in 1..=5 {
-            let layout = children.next().expect("Rating needs to have 5 stars.");
+        for i in 0..5 {
+            let layout = children
+                .next()
+                .expect(&*format!("Rating needs to have more than {} children.", i));
 
-            if i <= value {
-                (&self.star_full as &dyn Widget<Message, Theme, Renderer>).draw(
-                    &tree.children[1],
-                    renderer,
-                    theme,
-                    style,
-                    layout,
-                    cursor,
-                    viewport
-                );
+            let mut content: String = Icon::StarEmpty.to_string();
+
+            if let Some(hovered_value) = self.hovered_value {
+                if hovered_value != self.value {
+                    if i < hovered_value {
+                        content = Icon::StarFull.to_string();
+                    }
+                }
             } else {
-                (&self.star_empty as &dyn Widget<Message, Theme, Renderer>).draw(
-                    &tree.children[0],
-                    renderer,
-                    theme,
-                    style,
-                    layout,
-                    cursor,
-                    viewport
-                );
+                if i < self.value {
+                    content = Icon::StarFull.to_string();
+                }
             }
+
+            renderer.fill_text(
+                Text {
+                    content,
+                    bounds: layout.bounds().size(),
+                    size: self.size.into(),
+                    font: ICON,
+                    line_height: LineHeight::default(),
+                    horizontal_alignment: Horizontal::Center,
+                    vertical_alignment: Vertical::Center,
+                    shaping: Shaping::Basic,
+                },
+                Point::new(layout.bounds().center_x(), layout.bounds().center_y()),
+                Color::from_rgb8(255, 215, 0),
+                layout.bounds(),
+            );
         }
-    }
-
-    fn children(&self) -> Vec<Tree> {
-        vec![
-            Tree::new(&self.star_empty as &dyn Widget<Message, Theme, Renderer>),
-            Tree::new(&self.star_full as &dyn Widget<Message, Theme, Renderer>)
-        ]
-    }
-
-    fn diff(&self, tree: &mut Tree) {
-        tree.diff_children(&[
-            &self.star_empty as &dyn Widget<Message, Theme, Renderer>,
-            &self.star_full as &dyn Widget<Message, Theme, Renderer>
-        ])
     }
 
     fn on_event(
@@ -229,10 +199,10 @@ where
         event: Event,
         layout: Layout<'_>,
         cursor: Cursor,
-        _renderer: &Renderer,
+        _renderer: &iced::Renderer,
         _clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
-        _viewport: &Rectangle
+        _viewport: &Rectangle,
     ) -> Status {
         match event {
             Event::Mouse(mouse::Event::CursorMoved { .. }) => {
@@ -286,7 +256,7 @@ where
 
                 Status::Ignored
             }
-            _ => Status::Ignored
+            _ => Status::Ignored,
         }
     }
 
@@ -296,7 +266,7 @@ where
         layout: Layout<'_>,
         cursor: Cursor,
         _viewport: &Rectangle,
-        _renderer: &Renderer
+        _renderer: &iced::Renderer,
     ) -> Interaction {
         if cursor.is_over(layout.bounds()) {
             Interaction::Pointer
@@ -306,13 +276,12 @@ where
     }
 }
 
-impl<'a, Message, Theme, Renderer, F> From<Rating<Message, F>> for Element<'a, Message, Theme, Renderer>
+impl<'a, F, Message, Theme> From<Rating<F, Message>> for Element<'a, Message, Theme, iced::Renderer>
 where
     Message: 'a + Clone,
-    Renderer: 'a + iced::advanced::Renderer + iced::advanced::image::Renderer<Handle=Handle>,
-    F: 'a + Fn(usize) -> Message
+    F: 'a + Fn(usize) -> Message,
 {
-    fn from(value: Rating<Message, F>) -> Self {
+    fn from(value: Rating<F, Message>) -> Self {
         Element::new(value)
     }
 }

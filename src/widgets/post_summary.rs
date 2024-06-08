@@ -1,13 +1,16 @@
-use iced::{Alignment, Background, Border, Color, Element, Event, Length, mouse, Padding, Point, Rectangle, Size, Vector};
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::{Quad, Style};
-use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::advanced::widget::{Operation, Tree};
+use iced::advanced::{Clipboard, Layout, Shell, Widget};
 use iced::event::Status;
 use iced::mouse::{Cursor, Interaction};
+use iced::{
+    mouse, Alignment, Background, Border, Color, Element, Event, Length, Padding, Point, Rectangle,
+    Size, Vector,
+};
 
 /// The default padding of the image in the [post summary](PostSummary).
-const DEFAULT_PADDING :f32= 8.0;
+const DEFAULT_PADDING: f32 = 8.0;
 
 /// A widget which represents the summary of the post. Will present the image and basic data.
 pub struct PostSummary<'a, Message, Theme, Renderer>
@@ -44,7 +47,7 @@ where
     /// Creates a new [post summary](PostSummary), given the posts image.
     pub fn new(
         summary: impl Into<Element<'a, Message, Theme, Renderer>>,
-        image: impl Into<Element<'a, Message, Theme, Renderer>>
+        image: impl Into<Element<'a, Message, Theme, Renderer>>,
     ) -> Self {
         PostSummary {
             padding: DEFAULT_PADDING.into(),
@@ -57,24 +60,21 @@ where
     }
 
     /// Sets the padding of the image.
-    pub fn padding(mut self, padding: impl Into<Padding>) -> Self
-    {
+    pub fn padding(mut self, padding: impl Into<Padding>) -> Self {
         self.padding = padding.into();
 
         self
     }
 
     /// Sets the message triggered when pressing on the [post summary](PostSummary).
-    pub fn on_click_data(mut self, on_click_data: impl Into<Message>) -> Self
-    {
+    pub fn on_click_data(mut self, on_click_data: impl Into<Message>) -> Self {
         self.on_click_data = Some(on_click_data.into());
-        
+
         self
     }
 
     /// Sets the message triggered when pressing on the image.
-    pub fn on_click_image(mut self, on_click_image: impl Into<Message>) -> Self
-    {
+    pub fn on_click_image(mut self, on_click_image: impl Into<Message>) -> Self {
         self.on_click_image = Some(on_click_image.into());
 
         self
@@ -88,17 +88,15 @@ where
     }
 }
 
-impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer> for PostSummary<'a, Message, Theme, Renderer>
+impl<'a, Message, Theme, Renderer> Widget<Message, Theme, Renderer>
+    for PostSummary<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
     Renderer: 'a + iced::advanced::Renderer,
     Theme: 'a + StyleSheet,
 {
     fn size(&self) -> Size<Length> {
-        Size::new(
-            Length::Shrink,
-            Length::Shrink
-        )
+        Size::new(Length::Shrink, Length::Shrink)
     }
 
     fn layout(&self, tree: &mut Tree, renderer: &Renderer, limits: &Limits) -> Node {
@@ -110,7 +108,10 @@ where
             .height(self.image.as_widget().size().height)
             .shrink(padding);
 
-        let mut image = self.image.as_widget().layout(&mut tree.children[1], renderer, &limits_image);
+        let mut image =
+            self.image
+                .as_widget()
+                .layout(&mut tree.children[1], renderer, &limits_image);
         let image_size = image.size();
 
         let limits_summary = limits
@@ -119,26 +120,27 @@ where
             .height(self.summary.as_widget().size().height)
             .shrink(padding);
 
-        let mut summary = self.summary.as_widget().layout(&mut tree.children[0], renderer, &limits_summary);
+        let mut summary =
+            self.summary
+                .as_widget()
+                .layout(&mut tree.children[0], renderer, &limits_summary);
         let summary_size = summary.size();
 
         summary.move_to_mut(Point::new(padding.left, padding.top));
         summary.align_mut(Alignment::Start, Alignment::Start, summary.size());
 
-        image.move_to_mut(
-            Point::new(
-                padding.left,
-                2.0 * padding.top + summary_size.height
-            )
-        );
+        image.move_to_mut(Point::new(
+            padding.left,
+            2.0 * padding.top + summary_size.height,
+        ));
         image.align_mut(Alignment::Center, Alignment::Center, image.size());
 
         Node::with_children(
             Size::new(
                 image_size.width.max(summary_size.width),
-                image_size.height + summary_size.height + padding.top
+                image_size.height + summary_size.height + padding.top,
             )
-                .expand(padding),
+            .expand(padding),
             vec![summary, image],
         )
     }
@@ -151,7 +153,7 @@ where
         style: &Style,
         layout: Layout<'_>,
         cursor: Cursor,
-        viewport: &Rectangle
+        viewport: &Rectangle,
     ) {
         let bounds = layout.bounds();
 
@@ -167,7 +169,7 @@ where
                 border: Border {
                     color: appearance.border_color,
                     width: 2.0,
-                    radius: 10.0.into()
+                    radius: 10.0.into(),
                 },
                 shadow: Default::default(),
             },
@@ -183,7 +185,7 @@ where
             style,
             summary_layout,
             cursor,
-            viewport
+            viewport,
         );
 
         let image_layout = children.next().expect("Post needs to have image.");
@@ -194,7 +196,7 @@ where
             style,
             image_layout,
             cursor,
-            viewport
+            viewport,
         );
     }
 
@@ -211,15 +213,22 @@ where
         state: &mut Tree,
         layout: Layout<'_>,
         renderer: &Renderer,
-        operation: &mut dyn Operation<Message>
+        operation: &mut dyn Operation<Message>,
     ) {
         let mut children = layout.children();
 
         let summary_layout = children.next().expect("Post needs to have summary.");
-        self.summary.as_widget().operate(&mut state.children[0], summary_layout, renderer, operation);
+        self.summary.as_widget().operate(
+            &mut state.children[0],
+            summary_layout,
+            renderer,
+            operation,
+        );
 
         let image_layout = children.next().expect("Post needs to have image.");
-        self.image.as_widget().operate(&mut state.children[1], image_layout, renderer, operation);
+        self.image
+            .as_widget()
+            .operate(&mut state.children[1], image_layout, renderer, operation);
     }
 
     fn on_event(
@@ -231,7 +240,7 @@ where
         renderer: &Renderer,
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
-        viewport: &Rectangle
+        viewport: &Rectangle,
     ) -> Status {
         let bounds = layout.bounds();
 
@@ -248,7 +257,7 @@ where
             renderer,
             clipboard,
             shell,
-            viewport
+            viewport,
         );
 
         if result == Status::Captured {
@@ -273,7 +282,7 @@ where
 
                 Status::Ignored
             }
-            _ => Status::Ignored
+            _ => Status::Ignored,
         }
     }
 
@@ -283,7 +292,7 @@ where
         layout: Layout<'_>,
         cursor: Cursor,
         _viewport: &Rectangle,
-        _renderer: &Renderer
+        _renderer: &Renderer,
     ) -> Interaction {
         let bounds = layout.bounds();
 
@@ -299,24 +308,28 @@ where
         state: &'b mut Tree,
         layout: Layout<'_>,
         renderer: &Renderer,
-        translation: Vector
+        translation: Vector,
     ) -> Option<iced::advanced::overlay::Element<'b, Message, Theme, Renderer>> {
-        let summary_layout = layout.children().next().expect("Post needs to have summary");
+        let summary_layout = layout
+            .children()
+            .next()
+            .expect("Post needs to have summary");
 
         self.summary.as_widget_mut().overlay(
             &mut state.children[0],
             summary_layout,
             renderer,
-            translation
+            translation,
         )
     }
 }
 
-impl<'a, Message, Theme, Renderer> From<PostSummary<'a, Message, Theme, Renderer>> for Element<'a, Message, Theme, Renderer>
+impl<'a, Message, Theme, Renderer> From<PostSummary<'a, Message, Theme, Renderer>>
+    for Element<'a, Message, Theme, Renderer>
 where
     Message: 'a + Clone,
     Renderer: 'a + iced::advanced::Renderer,
-    Theme: 'a + StyleSheet
+    Theme: 'a + StyleSheet,
 {
     fn from(value: PostSummary<'a, Message, Theme, Renderer>) -> Self {
         Element::new(value)

@@ -20,6 +20,8 @@ pub enum Icon {
     Report,
     Trash,
     Loading,
+    StarEmpty,
+    StarFull
 }
 
 pub enum ToolIcon {
@@ -47,6 +49,8 @@ impl Display for Icon {
             Icon::Report => '\u{F0CE7}',
             Icon::Trash => '\u{F014}',
             Icon::Loading => '\u{F1978}',
+            Icon::StarEmpty => '\u{F41E}',
+            Icon::StarFull => '\u{F51F}'
         })
     }
 }

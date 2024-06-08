@@ -32,7 +32,7 @@ pub type ModalStack<ModalTypes> = modal_stack::ModalStack<ModalTypes>;
 pub type PostSummary<'a, Message, Theme, Renderer> =
     post_summary::PostSummary<'a, Message, Theme, Renderer>;
 
-pub type Rating<Message, F> = rating::Rating<Message, F>;
+pub type Rating<F, Message> = rating::Rating<F, Message>;
 
 pub type Tabs<'a, Type, Message, Theme, Renderer> = tabs::Tabs<'a, Type, Message, Theme, Renderer>;
 

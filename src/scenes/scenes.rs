@@ -122,7 +122,7 @@ impl SceneManager {
                 Some(ref mut main) => main.unwrap_message(message.deref()).map(|message| {
                     Command::batch(vec![
                         main.load_previews(globals),
-                        main.update(globals, message)
+                        main.update(globals, message),
                     ])
                 }),
             },
@@ -140,9 +140,12 @@ impl SceneManager {
             },
             Scenes::Posts(_) => match self.posts {
                 None => Err(debug_message!("Posts scene missing.").into()),
-                Some(ref mut posts) => posts
-                    .unwrap_message(message.deref())
-                    .map(|message| posts.update(globals, message)),
+                Some(ref mut posts) => posts.unwrap_message(message.deref()).map(|message| {
+                    Command::batch(vec![
+                        posts.update(globals, message),
+                        posts.load_images(globals),
+                    ])
+                }),
             },
             Scenes::Settings(_) => match self.settings {
                 None => Err(debug_message!("Settings scene missing.").into()),

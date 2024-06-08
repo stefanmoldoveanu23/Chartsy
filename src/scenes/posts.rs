@@ -1,20 +1,15 @@
 use crate::debug_message;
 use crate::scene::{Globals, Message, Scene, SceneMessage};
-use crate::scenes::data::auth::Role;
 use crate::scenes::data::auth::User;
 use crate::scenes::data::drawing::Tag;
 use crate::scenes::services;
 use crate::utils::errors::Error;
 use crate::utils::icons::{Icon, ICON};
 use crate::utils::theme::{self, Theme};
-use crate::widgets::{
-    Card, Close, Closeable, ComboBox, Grid, ModalStack, PostSummary, Rating, Tabs,
-};
+use crate::widgets::{Close, ComboBox, Grid, ModalStack, Tabs};
 use crate::{config, database};
-use iced::alignment::Horizontal;
-use iced::widget::tooltip::Position;
-use iced::widget::{Button, Column, Container, Row, Scrollable, Space, Text, TextInput, Tooltip};
-use iced::{Alignment, Command, Element, Length, Renderer};
+use iced::widget::{Button, Column, Container, Row, Text, TextInput};
+use iced::{Alignment, Command, Element, Length, Renderer, Size};
 use image::{ExtendedColorType, ImageFormat};
 use lettre::message::{Attachment, MultiPart, SinglePart};
 use mongodb::bson::Uuid;
@@ -171,37 +166,49 @@ pub struct Posts {
 }
 
 impl Posts {
+    /// Loads all necessary images.
+    pub fn load_images(&self, globals: &Globals) -> Command<Message> {
+        let ids = self
+            .recommended
+            .get_loaded_posts()
+            .into_iter()
+            .chain(self.filtered.get_loaded_posts())
+            .chain(self.profile.get_loaded_posts())
+            .map(|(post, _)| (post.get_id(), post.get_user().get_id()));
+
+        let post_images =
+            globals
+                .get_cache()
+                .insert_if_not(ids, |(id, _)| id, services::posts::load_post);
+
+        let profile_picure_ids = self
+            .recommended
+            .get_loaded_posts()
+            .into_iter()
+            .chain(self.filtered.get_loaded_posts())
+            .map(|(post, _)| {
+                post.get_user()
+                    .has_profile_picture()
+                    .then_some(post.get_user().get_id())
+            })
+            .chain(vec![self
+                .user_profile
+                .has_profile_picture()
+                .then_some(self.user_profile.get_id())]);
+
+        let profile_pictures = globals.get_cache().insert_if_not(
+            profile_picure_ids,
+            |option| option.unwrap_or_default(),
+            services::posts::load_profile_picture,
+        );
+
+        Command::batch(vec![post_images, profile_pictures])
+    }
+
     /// Creates a command that returns a list of recommended posts.
     fn gen_recommended(db: Database, user_id: Uuid) -> Command<Message> {
         Command::perform(
-            async move {
-                let mut posts = match database::posts::get_recommendations(&db, user_id).await {
-                    Ok(posts) => posts,
-                    Err(err) => {
-                        return Err(err);
-                    }
-                };
-
-                let need = 100 - posts.len();
-                let uuids: Vec<Uuid> = posts
-                    .iter()
-                    .map(|post: &Post| post.get_id().clone())
-                    .collect();
-
-                if posts.len() < 100 {
-                    let mut posts_random =
-                        match database::posts::get_random_posts(&db, need, user_id, uuids).await {
-                            Ok(posts) => posts,
-                            Err(err) => {
-                                return Err(err);
-                            }
-                        };
-
-                    posts.append(&mut posts_random);
-                }
-
-                Ok(posts)
-            },
+            services::posts::generate_recommended(db, user_id),
             |result| match result {
                 Ok(posts) => PostsMessage::LoadedPosts(posts, PostTabs::Recommended).into(),
                 Err(err) => Message::Error(err),
@@ -231,6 +238,89 @@ impl Posts {
         )
     }
 
+    fn open_comment(
+        &mut self,
+        post: &usize,
+        position: &(usize, usize),
+        globals: &mut Globals,
+    ) -> Command<Message> {
+        let (line, index) = position;
+
+        if self.get_active_tab_mut().open_comment(*post, *line, *index) {
+            self.update_comment(
+                &CommentMessage::Load {
+                    post: *post,
+                    parent: Some((*line, *index)),
+                },
+                globals,
+            )
+        } else {
+            Command::none()
+        }
+    }
+
+    fn close_comment(&mut self, post: &usize, position: &(usize, usize)) -> Command<Message> {
+        let (line, index) = position;
+
+        self.get_active_tab_mut()
+            .close_comment(*post, *line, *index);
+
+        Command::none()
+    }
+
+    fn add_comment(
+        &mut self,
+        post: &usize,
+        parent: &Option<(usize, usize)>,
+        globals: &Globals,
+    ) -> Command<Message> {
+        let db = globals.get_db().unwrap();
+        let user = globals.get_user().unwrap().clone();
+
+        let document = if let Some((line, index)) = parent {
+            self.get_active_tab_mut()
+                .add_reply(user, *post, *line, *index)
+        } else {
+            self.get_active_tab_mut().add_comment(user, *post)
+        };
+
+        Command::perform(
+            async move { database::posts::create_comment(&db, &document).await },
+            |result| match result {
+                Ok(_) => Message::None,
+                Err(err) => Message::Error(err),
+            },
+        )
+    }
+
+    fn load_comments(
+        &mut self,
+        post: &usize,
+        parent: &Option<(usize, usize)>,
+        globals: &Globals,
+    ) -> Command<Message> {
+        let db = globals.get_db().unwrap();
+        let parent = parent.clone();
+        let post = post.clone();
+
+        let active_tab = self.active_tab;
+        let filter = self.get_tab_mut(active_tab).load_comments(post, parent);
+
+        Command::perform(
+            async move { database::posts::get_comments(&db, filter).await },
+            move |result| match result {
+                Ok(comments) => CommentMessage::Loaded {
+                    post,
+                    parent,
+                    comments,
+                    tab: active_tab,
+                }
+                .into(),
+                Err(err) => Message::Error(err),
+            },
+        )
+    }
+
     /// Applies the update corresponding the given message.
     fn update_comment(
         &mut self,
@@ -238,29 +328,8 @@ impl Posts {
         globals: &mut Globals,
     ) -> Command<Message> {
         match comment_message {
-            CommentMessage::Open { post, position } => {
-                let (line, index) = position;
-
-                if self.get_active_tab_mut().open_comment(*post, *line, *index) {
-                    self.update_comment(
-                        &CommentMessage::Load {
-                            post: *post,
-                            parent: Some((*line, *index)),
-                        },
-                        globals,
-                    )
-                } else {
-                    Command::none()
-                }
-            }
-            CommentMessage::Close { post, position } => {
-                let (line, index) = position;
-
-                self.get_active_tab_mut()
-                    .close_comment(*post, *line, *index);
-
-                Command::none()
-            }
+            CommentMessage::Open { post, position } => self.open_comment(post, position, globals),
+            CommentMessage::Close { post, position } => self.close_comment(post, position),
             CommentMessage::UpdateInput {
                 post,
                 position,
@@ -271,47 +340,8 @@ impl Posts {
 
                 Command::none()
             }
-            CommentMessage::Add { post, parent } => {
-                let db = globals.get_db().unwrap();
-                let user = globals.get_user().unwrap().clone();
-
-                let document = if let Some((line, index)) = parent {
-                    self.get_active_tab_mut()
-                        .add_reply(user, *post, *line, *index)
-                } else {
-                    self.get_active_tab_mut().add_comment(user, *post)
-                };
-
-                Command::perform(
-                    async move { database::posts::create_comment(&db, &document).await },
-                    |result| match result {
-                        Ok(_) => Message::None,
-                        Err(err) => Message::Error(err),
-                    },
-                )
-            }
-            CommentMessage::Load { post, parent } => {
-                let db = globals.get_db().unwrap();
-                let parent = parent.clone();
-                let post = post.clone();
-
-                let active_tab = self.active_tab;
-                let filter = self.get_tab_mut(active_tab).load_comments(post, parent);
-
-                Command::perform(
-                    async move { database::posts::get_comments(&db, filter).await },
-                    move |result| match result {
-                        Ok(comments) => CommentMessage::Loaded {
-                            post,
-                            parent,
-                            comments,
-                            tab: active_tab,
-                        }
-                        .into(),
-                        Err(err) => Message::Error(err),
-                    },
-                )
-            }
+            CommentMessage::Add { post, parent } => self.add_comment(post, parent, globals),
+            CommentMessage::Load { post, parent } => self.load_comments(post, parent, globals),
             CommentMessage::Loaded {
                 post,
                 parent,
@@ -331,138 +361,17 @@ impl Posts {
         &self,
         tab: PostTabs,
         globals: &Globals,
-    ) -> Container<'_, Message, Theme, Renderer> {
-        let user = globals.get_user().unwrap();
-        let user_id = user.get_id();
-        let user_role = user.get_role();
-
-        Container::new(
-            Scrollable::new(
-                Column::with_children(
-                    self.get_tab(tab)
-                        .get_loaded_posts()
-                        .into_iter()
-                        .map(|(post, index)| {
-                            PostSummary::<Message, Theme, Renderer>::new(
-                                Row::with_children(vec![
-                                    Tooltip::new(
-                                        Button::new(globals.get_cache().get_element(
-                                            post.get_id(),
-                                            Length::Fixed(50.0),
-                                            Length::Fixed(50.0),
-                                        ))
-                                        .on_press(
-                                            PostsMessage::OpenProfile(post.get_user().clone())
-                                                .into(),
-                                        )
-                                        .style(iced::widget::button::text),
-                                        Text::new(format!(
-                                            "{}'s profile",
-                                            post.get_user().get_user_tag()
-                                        )),
-                                        Position::FollowCursor,
-                                    )
-                                    .into(),
-                                    Column::with_children(vec![
-                                        Tooltip::new(
-                                            Button::new(
-                                                Text::new(format!(
-                                                    "@{}",
-                                                    post.get_user().get_user_tag()
-                                                ))
-                                                .size(15.0)
-                                                .style(theme::text::gray),
-                                            )
-                                            .style(iced::widget::button::text)
-                                            .on_press(
-                                                PostsMessage::OpenProfile(post.get_user().clone())
-                                                    .into(),
-                                            ),
-                                            Text::new(format!(
-                                                "{}'s profile",
-                                                post.get_user().get_user_tag()
-                                            )),
-                                            Position::FollowCursor,
-                                        )
-                                        .into(),
-                                        Text::new(post.get_user().get_username()).size(20.0).into(),
-                                        Text::new(post.get_description().clone()).into(),
-                                    ])
-                                    .into(),
-                                    Space::with_width(Length::Fill).into(),
-                                    Column::with_children(vec![
-                                        Tooltip::new(
-                                            Button::new(
-                                                Text::new(Icon::Report.to_string())
-                                                    .font(ICON)
-                                                    .style(theme::text::danger)
-                                                    .size(30.0),
-                                            )
-                                            .on_press(
-                                                PostsMessage::ToggleModal(
-                                                    ModalType::ShowingReport(index),
-                                                )
-                                                .into(),
-                                            )
-                                            .padding(0.0)
-                                            .style(iced::widget::button::text),
-                                            Text::new("Report post"),
-                                            Position::FollowCursor,
-                                        )
-                                        .into(),
-                                        if *user_role == Role::Admin
-                                            || user_id == post.get_user().get_id()
-                                        {
-                                            Tooltip::new(
-                                                Button::new(
-                                                    Text::new(Icon::Trash.to_string())
-                                                        .font(ICON)
-                                                        .style(theme::text::danger)
-                                                        .size(30),
-                                                )
-                                                .on_press(
-                                                    PostsMessage::DeletePost(post.get_id()).into(),
-                                                )
-                                                .padding(0.0)
-                                                .style(iced::widget::button::text),
-                                                Text::new("Delete post"),
-                                                Position::FollowCursor,
-                                            )
-                                            .into()
-                                        } else {
-                                            Space::with_height(Length::Shrink).into()
-                                        },
-                                    ])
-                                    .into(),
-                                ])
-                                .spacing(10.0),
-                                globals.get_cache().get_element(post.get_id(), 50.0, 50.0),
-                            )
-                            .padding(40)
-                            .on_click_image(Into::<Message>::into(PostsMessage::ToggleModal(
-                                ModalType::ShowingImage(post.get_id()),
-                            )))
-                            .on_click_data(Into::<Message>::into(PostsMessage::ToggleModal(
-                                ModalType::ShowingPost(index),
-                            )))
-                            .into()
-                        })
-                        .collect::<Vec<Element<Message, Theme, Renderer>>>(),
-                )
-                .width(Length::Fill)
-                .align_items(Alignment::Center)
-                .spacing(50),
-            )
-            .on_scroll(move |viewport| {
-                if viewport.relative_offset().y == 1.0 && !self.get_tab(tab).done_loading() {
-                    Some(PostsMessage::LoadBatch(tab).into())
-                } else {
-                    None
-                }
-            })
-            .width(Length::Fill),
+        size: Size<Length>,
+    ) -> Element<'_, Message, Theme, Renderer> {
+        services::posts::generate_post_list(
+            tab,
+            self.get_tab(tab),
+            globals.get_user().unwrap(),
+            globals.get_cache(),
         )
-        .padding([20.0, 0.0, 0.0, 0.0])
+        .width(size.width)
+        .height(size.height)
+        .into()
     }
 
     /// Generate the modal that shows an image.
@@ -470,19 +379,7 @@ impl Posts {
         id: Uuid,
         globals: &Globals,
     ) -> Element<'a, Message, Theme, Renderer> {
-        Closeable::new(
-            globals
-                .get_cache()
-                .get_element(id, Length::Shrink, Length::Shrink),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .on_close(
-            Into::<Message>::into(PostsMessage::ToggleModal(ModalType::ShowingImage(id))),
-            40.0,
-        )
-        .style(theme::closeable::Closeable::SpotLight)
-        .into()
+        services::posts::generate_show_image(id, globals.get_cache())
     }
 
     /// Generate the modal that shows the post.
@@ -491,182 +388,7 @@ impl Posts {
         post: &'a Post,
         globals: &Globals,
     ) -> Element<'a, Message, Theme, Renderer> {
-        let mut comment_chain = Column::with_children(vec![Row::with_children(vec![
-            TextInput::new("Write comment here...", &*post.get_comment_input())
-                .width(Length::Fill)
-                .on_input(move |value| {
-                    CommentMessage::UpdateInput {
-                        post: post_index,
-                        position: None,
-                        input: value,
-                    }
-                    .into()
-                })
-                .into(),
-            Button::new("Add comment")
-                .on_press(
-                    CommentMessage::Add {
-                        post: post_index,
-                        parent: None,
-                    }
-                    .into(),
-                )
-                .into(),
-        ])
-        .into()]);
-
-        let mut position = if let Some(index) = post.get_open_comment() {
-            Ok((0usize, *index))
-        } else {
-            Err(0usize)
-        };
-
-        let mut done = false;
-        while !done {
-            comment_chain = comment_chain.push(match position {
-                Ok((line, index)) => {
-                    position = if let Some(reply_index) =
-                        post.get_comments()[line][index].get_open_reply()
-                    {
-                        Ok((
-                            post.get_comments()[line][index].get_replies().unwrap(),
-                            *reply_index,
-                        ))
-                    } else {
-                        Err(post.get_comments()[line][index]
-                            .get_replies()
-                            .unwrap_or(post.get_comments().len()))
-                    };
-
-                    Into::<Element<Message, Theme, Renderer>>::into(
-                        Closeable::new(Column::with_children(vec![
-                            Text::new(
-                                post.get_comments()[line][index]
-                                    .get_user()
-                                    .get_username()
-                                    .clone(),
-                            )
-                            .size(17.0)
-                            .into(),
-                            Text::new(post.get_comments()[line][index].get_content().clone())
-                                .into(),
-                            Row::with_children(vec![
-                                TextInput::new(
-                                    "Write reply here...",
-                                    &*post.get_comments()[line][index].get_reply_input(),
-                                )
-                                .on_input(move |value| {
-                                    CommentMessage::UpdateInput {
-                                        post: post_index,
-                                        position: Some((line, index)),
-                                        input: value.clone(),
-                                    }
-                                    .into()
-                                })
-                                .into(),
-                                Button::new("Add reply")
-                                    .on_press(
-                                        CommentMessage::Add {
-                                            post: post_index,
-                                            parent: Some((line, index)),
-                                        }
-                                        .into(),
-                                    )
-                                    .into(),
-                            ])
-                            .into(),
-                        ]))
-                        .on_close(
-                            Into::<Message>::into(CommentMessage::Close {
-                                post: post_index,
-                                position: (line, index),
-                            }),
-                            20.0,
-                        ),
-                    )
-                }
-                Err(line) => {
-                    done = true;
-
-                    if line >= post.get_comments().len() {
-                        Text::new("Loading").into()
-                    } else {
-                        Column::with_children(
-                            post.get_comments()[line]
-                                .iter()
-                                .zip(0..post.get_comments()[line].len())
-                                .map(|(comment, index)| {
-                                    Button::new(Column::with_children(vec![
-                                        Text::new(comment.get_user().get_username().clone())
-                                            .size(17.0)
-                                            .into(),
-                                        Text::new(comment.get_content().clone()).into(),
-                                    ]))
-                                    .style(iced::widget::button::text)
-                                    .on_press(
-                                        CommentMessage::Open {
-                                            post: post_index,
-                                            position: (line, index),
-                                        }
-                                        .into(),
-                                    )
-                                    .into()
-                                })
-                                .collect::<Vec<Element<Message, Theme, Renderer>>>(),
-                        )
-                        .into()
-                    }
-                }
-            });
-        }
-
-        Row::with_children(vec![
-            Closeable::new(globals.get_cache().get_element(
-                post.get_id(),
-                Length::Shrink,
-                Length::Shrink,
-            ))
-            .width(Length::FillPortion(3))
-            .height(Length::Fill)
-            .style(theme::closeable::Closeable::SpotLight)
-            .on_click(Into::<Message>::into(PostsMessage::ToggleModal(
-                ModalType::ShowingImage(post.get_id()),
-            )))
-            .into(),
-            Closeable::new(Column::with_children(vec![
-                Text::new(post.get_user().get_username()).size(20.0).into(),
-                Text::new(post.get_description().clone()).into(),
-                Rating::new()
-                    .on_rate(move |value| {
-                        PostsMessage::RatePost {
-                            post_index: post_index.clone(),
-                            rating: value,
-                        }
-                        .into()
-                    })
-                    .on_unrate(Into::<Message>::into(PostsMessage::RatePost {
-                        post_index,
-                        rating: 0,
-                    }))
-                    .value(*post.get_rating())
-                    .into(),
-                comment_chain.into(),
-            ]))
-            .width(Length::FillPortion(1))
-            .height(Length::Fill)
-            .horizontal_alignment(Alignment::Start)
-            .vertical_alignment(Alignment::Start)
-            .padding([30.0, 0.0, 0.0, 10.0])
-            .style(theme::closeable::Closeable::Default)
-            .on_close(
-                Into::<Message>::into(PostsMessage::ToggleModal(ModalType::ShowingPost(
-                    post_index,
-                ))),
-                40.0,
-            )
-            .into(),
-        ])
-        .into()
+        services::posts::generate_show_post(post, post_index, &globals.get_cache())
     }
 
     /// Generates the modal for sending a report.
@@ -675,36 +397,7 @@ impl Posts {
         post_index: usize,
         _globals: &Globals,
     ) -> Element<Message, Theme, Renderer> {
-        Closeable::new(
-            Card::new(
-                Text::new("Report post").size(20.0),
-                Column::with_children(vec![
-                    TextInput::new(
-                        "Give a summary of the issue...",
-                        &*self.report_input.clone(),
-                    )
-                    .on_input(|value| PostsMessage::UpdateReportInput(value.clone()).into())
-                    .into(),
-                    Container::new(
-                        Button::new("Submit")
-                            .on_press(PostsMessage::SubmitReport(post_index).into()),
-                    )
-                    .width(Length::Fill)
-                    .align_x(Horizontal::Center)
-                    .into(),
-                ])
-                .padding(20.0)
-                .spacing(30.0),
-            )
-            .width(300.0),
-        )
-        .on_close(
-            Into::<Message>::into(PostsMessage::ToggleModal(ModalType::ShowingReport(
-                post_index,
-            ))),
-            25.0,
-        )
-        .into()
+        services::posts::generate_show_report(post_index, self.report_input.clone())
     }
 
     /// Returns the required tab.
@@ -1035,7 +728,13 @@ impl Scene for Posts {
     }
 
     fn view(&self, globals: &Globals) -> Element<'_, Message, Theme, Renderer> {
-        let recommended_tab = self.gen_post_list(PostTabs::Recommended, globals).into();
+        let recommended_tab = self
+            .gen_post_list(
+                PostTabs::Recommended,
+                globals,
+                Size::new(Length::Shrink, Length::Shrink),
+            )
+            .into();
 
         let filtered_tab = Column::with_children(vec![
             Column::with_children(vec![
@@ -1073,7 +772,12 @@ impl Scene for Posts {
             .padding([0.0, 300.0, 0.0, 300.0])
             .spacing(10.0)
             .into(),
-            self.gen_post_list(PostTabs::Filtered, globals).into(),
+            self.gen_post_list(
+                PostTabs::Filtered,
+                globals,
+                Size::new(Length::Shrink, Length::Shrink),
+            )
+            .into(),
         ])
         .spacing(20.0)
         .padding([20.0, 0.0, 0.0, 0.0])
@@ -1105,8 +809,8 @@ impl Scene for Posts {
                 user_tag_input,
                 Button::new(globals.get_cache().get_element(
                     self.user_profile.get_id(),
-                    Length::Shrink,
-                    Length::Fill,
+                    Size::new(Length::Shrink, Length::Fill),
+                    Size::new(Length::Fixed(400.0), Length::Fixed(300.0)),
                 ))
                 .style(iced::widget::button::text)
                 .width(Length::Shrink)
@@ -1115,13 +819,16 @@ impl Scene for Posts {
                     PostsMessage::ToggleModal(ModalType::ShowingImage(self.user_profile.get_id()))
                         .into(),
                 )
+                .padding(0.0)
                 .into(),
                 Text::new(self.user_profile.get_username())
                     .size(30.0)
                     .into(),
-                self.gen_post_list(PostTabs::Profile, globals)
-                    .height(Length::FillPortion(3))
-                    .into(),
+                self.gen_post_list(
+                    PostTabs::Profile,
+                    globals,
+                    Size::new(Length::Fill, Length::FillPortion(3)),
+                ),
             ])
         }
         .spacing(10.0)
