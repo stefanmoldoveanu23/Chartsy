@@ -427,6 +427,180 @@ impl Posts {
     fn get_active_tab_mut(&mut self) -> &mut PostList {
         self.get_tab_mut(self.active_tab.clone())
     }
+
+    /// Loads the posts for the given tab.
+    fn load_posts(&mut self, tab: PostTabs, globals: &mut Globals) -> Command<Message> {
+        let db = globals.get_db().unwrap();
+        let user_id = globals.get_user().unwrap().get_id();
+
+        match tab {
+            PostTabs::Recommended => Self::gen_recommended(db, user_id),
+            PostTabs::Filtered => Self::gen_filtered(
+                db,
+                user_id,
+                self.tags.iter().map(|tag| tag.get_name().clone()).collect(),
+            ),
+            PostTabs::Profile => Self::gen_profile(db, user_id),
+        }
+    }
+
+    /// Receives a list of posts for a tab.
+    fn loaded_posts(
+        &mut self,
+        posts: &Vec<Post>,
+        tab: &PostTabs,
+        globals: &mut Globals,
+    ) -> Command<Message> {
+        let tab = tab.clone();
+        *self.get_tab_mut(tab.clone()) = PostList::new(posts.clone());
+        let length = posts.len();
+
+        if length > 0 {
+            self.update(globals, &PostsMessage::LoadBatch(tab))
+        } else {
+            Command::none()
+        }
+    }
+
+    /// Toggles the given modal.
+    fn toggle_modal(&mut self, modal: &ModalType, globals: &mut Globals) -> Command<Message> {
+        self.modals.toggle_modal(modal.clone());
+
+        match modal {
+            ModalType::ShowingPost(post) => {
+                if !self.recommended.has_loaded_comments(*post) {
+                    self.update_comment(
+                        &CommentMessage::Load {
+                            post: *post,
+                            parent: None,
+                        },
+                        globals,
+                    )
+                } else {
+                    Command::none()
+                }
+            }
+            ModalType::ShowingReport(_) => {
+                self.report_input = String::from("");
+                Command::none()
+            }
+            _ => Command::none(),
+        }
+    }
+
+    /// Changes rating given to a post.
+    fn rate_post(
+        &mut self,
+        post_index: usize,
+        rating: usize,
+        globals: &mut Globals,
+    ) -> Command<Message> {
+        let user_id = globals.get_user().unwrap().get_id();
+        let db = globals.get_db().unwrap();
+
+        let (post_id, rating) = self.get_active_tab_mut().rate_post(post_index, rating);
+
+        if let Some(rating) = rating {
+            Command::perform(
+                async move {
+                    database::posts::update_rating(&db, post_id, user_id, rating as i32).await
+                },
+                |result| match result {
+                    Ok(_) => Message::None,
+                    Err(err) => Message::Error(err),
+                },
+            )
+        } else {
+            Command::perform(
+                async move { database::posts::delete_rating(&db, post_id, user_id).await },
+                |result| match result {
+                    Ok(_) => Message::None,
+                    Err(err) => Message::Error(err),
+                },
+            )
+        }
+    }
+
+    /// Submits a report.
+    fn submit_report(&mut self, post_index: usize, globals: &mut Globals) -> Command<Message>
+    {
+        let post_index = post_index.clone();
+        let report_description = self.report_input.clone();
+        let post = self.get_active_tab().get_post(post_index).unwrap();
+        let image = match globals.get_cache().get(post.get_id()) {
+            Some(image) => image,
+            None => {
+                return Command::perform(async {}, |()| {
+                    Message::Error(debug_message!("Post image not loaded yet.").into())
+                });
+            }
+        };
+
+        let mut data = vec![];
+        let mut cursor = Cursor::new(&mut data);
+        match image::write_buffer_with_format(
+            &mut cursor,
+            image.get_data().as_slice(),
+            image.get_width(),
+            image.get_height(),
+            ExtendedColorType::Rgba8,
+            ImageFormat::WebP,
+        ) {
+            Ok(_) => {}
+            Err(err) => {
+                return Command::perform(async {}, move |()| {
+                    Message::Error(debug_message!("{}", err).into())
+                });
+            }
+        }
+
+        let message = lettre::Message::builder()
+            .from(
+                format!("Chartsy <{}>", config::email_address())
+                    .parse()
+                    .unwrap(),
+            )
+            .to(
+                format!("Stefan Moldoveanu <{}>", config::admin_email_address())
+                    .parse()
+                    .unwrap(),
+            )
+            .subject("Anonymous user has submitted a report")
+            .multipart(
+                MultiPart::mixed()
+                    .multipart(
+                        MultiPart::related()
+                            .singlepart(SinglePart::html(String::from(format!(
+                                "<p>A user has submitted a report regarding a post:</p>\
+                                    <p>\"{}\"</p>\
+                                    <p>Data regarding the post:</p>\
+                                    <p>Username: \"{}\"</p>\
+                                    <p>Post description: \"{}\"</p>\
+                                    <p>Image:</p>\
+                                    <div><img src=cid:post_image></div>",
+                                report_description,
+                                post.get_user().get_username().clone(),
+                                post.get_description().clone()
+                            ))))
+                            .singlepart(
+                                Attachment::new_inline(String::from("post_image"))
+                                    .body(data.clone(), "image/*".parse().unwrap()),
+                            ),
+                    )
+                    .singlepart(
+                        Attachment::new(String::from("post_image.webp"))
+                            .body(data.clone(), "image/*".parse().unwrap()),
+                    ),
+            )
+            .unwrap();
+
+        Command::batch(vec![
+            Command::perform(async {}, move |()| Message::SendSmtpMail(message)),
+            Command::perform(async {}, move |()| {
+                PostsMessage::ToggleModal(ModalType::ShowingReport(post_index)).into()
+            }),
+        ])
+    }
 }
 
 /// The [Posts] scene does not have any optional initialization values.
@@ -488,31 +662,8 @@ impl Scene for Posts {
 
     fn update(&mut self, globals: &mut Globals, message: &Self::Message) -> Command<Message> {
         match message {
-            PostsMessage::LoadPosts => {
-                let db = globals.get_db().unwrap();
-                let user_id = globals.get_user().unwrap().get_id();
-
-                match self.active_tab {
-                    PostTabs::Recommended => Self::gen_recommended(db, user_id),
-                    PostTabs::Filtered => Self::gen_filtered(
-                        db,
-                        user_id,
-                        self.tags.iter().map(|tag| tag.get_name().clone()).collect(),
-                    ),
-                    PostTabs::Profile => Self::gen_profile(db, user_id),
-                }
-            }
-            PostsMessage::LoadedPosts(posts, tab) => {
-                let tab = tab.clone();
-                *self.get_tab_mut(tab.clone()) = PostList::new(posts.clone());
-                let length = posts.len();
-
-                if length > 0 {
-                    self.update(globals, &PostsMessage::LoadBatch(tab))
-                } else {
-                    Command::none()
-                }
-            }
+            PostsMessage::LoadPosts => self.load_posts(self.active_tab, globals),
+            PostsMessage::LoadedPosts(posts, tab) => self.loaded_posts(posts, tab, globals),
             PostsMessage::LoadBatch(tab) => {
                 let tab = tab.clone();
                 self.get_tab_mut(tab).load_batch();
@@ -520,56 +671,9 @@ impl Scene for Posts {
                 Command::none()
             }
             PostsMessage::CommentMessage(message) => self.update_comment(&message, globals),
-            PostsMessage::ToggleModal(modal) => {
-                self.modals.toggle_modal(modal.clone());
-
-                match modal {
-                    ModalType::ShowingPost(post) => {
-                        if !self.recommended.has_loaded_comments(*post) {
-                            self.update_comment(
-                                &CommentMessage::Load {
-                                    post: *post,
-                                    parent: None,
-                                },
-                                globals,
-                            )
-                        } else {
-                            Command::none()
-                        }
-                    }
-                    ModalType::ShowingReport(_) => {
-                        self.report_input = String::from("");
-                        Command::none()
-                    }
-                    _ => Command::none(),
-                }
-            }
+            PostsMessage::ToggleModal(modal) => self.toggle_modal(modal, globals),
             PostsMessage::RatePost { post_index, rating } => {
-                let user_id = globals.get_user().unwrap().get_id();
-                let db = globals.get_db().unwrap();
-
-                let (post_id, rating) = self.get_active_tab_mut().rate_post(*post_index, *rating);
-
-                if let Some(rating) = rating {
-                    Command::perform(
-                        async move {
-                            database::posts::update_rating(&db, post_id, user_id, rating as i32)
-                                .await
-                        },
-                        |result| match result {
-                            Ok(_) => Message::None,
-                            Err(err) => Message::Error(err),
-                        },
-                    )
-                } else {
-                    Command::perform(
-                        async move { database::posts::delete_rating(&db, post_id, user_id).await },
-                        |result| match result {
-                            Ok(_) => Message::None,
-                            Err(err) => Message::Error(err),
-                        },
-                    )
-                }
+                self.rate_post(*post_index, *rating, globals)
             }
             PostsMessage::LoadedTags(tags) => {
                 self.all_tags = HashSet::from_iter(tags.iter().map(|tag| tag.clone()));
@@ -636,84 +740,7 @@ impl Scene for Posts {
 
                 Command::none()
             }
-            PostsMessage::SubmitReport(post_index) => {
-                let post_index = post_index.clone();
-                let report_description = self.report_input.clone();
-                let post = self.get_active_tab().get_post(post_index).unwrap();
-                let image = match globals.get_cache().get(post.get_id()) {
-                    Some(image) => image,
-                    None => {
-                        return Command::perform(async {}, |()| {
-                            Message::Error(debug_message!("Post image not loaded yet.").into())
-                        });
-                    }
-                };
-
-                let mut data = vec![];
-                let mut cursor = Cursor::new(&mut data);
-                match image::write_buffer_with_format(
-                    &mut cursor,
-                    image.get_data().as_slice(),
-                    image.get_width(),
-                    image.get_height(),
-                    ExtendedColorType::Rgba8,
-                    ImageFormat::WebP,
-                ) {
-                    Ok(_) => {}
-                    Err(err) => {
-                        return Command::perform(async {}, move |()| {
-                            Message::Error(debug_message!("{}", err).into())
-                        });
-                    }
-                }
-
-                let message = lettre::Message::builder()
-                    .from(
-                        format!("Chartsy <{}>", config::email_address())
-                            .parse()
-                            .unwrap(),
-                    )
-                    .to(
-                        format!("Stefan Moldoveanu <{}>", config::admin_email_address())
-                            .parse()
-                            .unwrap(),
-                    )
-                    .subject("Anonymous user has submitted a report")
-                    .multipart(
-                        MultiPart::mixed()
-                            .multipart(
-                                MultiPart::related()
-                                    .singlepart(SinglePart::html(String::from(format!(
-                                        "<p>A user has submitted a report regarding a post:</p>\
-                                            <p>\"{}\"</p>\
-                                            <p>Data regarding the post:</p>\
-                                            <p>Username: \"{}\"</p>\
-                                            <p>Post description: \"{}\"</p>\
-                                            <p>Image:</p>\
-                                            <div><img src=cid:post_image></div>",
-                                        report_description,
-                                        post.get_user().get_username().clone(),
-                                        post.get_description().clone()
-                                    ))))
-                                    .singlepart(
-                                        Attachment::new_inline(String::from("post_image"))
-                                            .body(data.clone(), "image/*".parse().unwrap()),
-                                    ),
-                            )
-                            .singlepart(
-                                Attachment::new(String::from("post_image.webp"))
-                                    .body(data.clone(), "image/*".parse().unwrap()),
-                            ),
-                    )
-                    .unwrap();
-
-                Command::batch(vec![
-                    Command::perform(async {}, move |()| Message::SendSmtpMail(message)),
-                    Command::perform(async {}, move |()| {
-                        PostsMessage::ToggleModal(ModalType::ShowingReport(post_index)).into()
-                    }),
-                ])
-            }
+            PostsMessage::SubmitReport(post_index) => self.submit_report(*post_index, globals),
             PostsMessage::SelectTab(tab_id) => {
                 self.active_tab = *tab_id;
 

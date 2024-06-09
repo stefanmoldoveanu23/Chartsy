@@ -510,10 +510,12 @@ pub fn layers_section<'a>(canvas: &'a Canvas) -> Element<'a, Message, Theme, Ren
                             .width(Length::Fill)
                             .into(),
                         Button::new(Text::new(Icon::Edit.to_string()).font(ICON))
+                            .padding(0.0)
                             .style(iced::widget::button::text)
                             .on_press(CanvasMessage::ToggleEditLayerName(*id).into())
                             .into(),
                     ])
+                    .spacing(5.0)
                     .align_items(Alignment::Center)
                     .into()
                 },
@@ -530,16 +532,23 @@ pub fn layers_section<'a>(canvas: &'a Canvas) -> Element<'a, Message, Theme, Ren
                 )
                 .style(iced::widget::button::text)
                 .on_press(CanvasMessage::ToggleLayer(*id).into())
+                .padding(0.0)
                 .into(),
                 if layer_count > 1 {
-                    Button::new(Text::new(Icon::X.to_string()).font(ICON))
-                        .style(iced::widget::button::text)
-                        .on_press(CanvasMessage::RemoveLayer(*id).into())
-                        .into()
+                    Button::new(
+                        Text::new(Icon::X.to_string())
+                            .font(ICON)
+                            .style(theme::text::danger),
+                    )
+                    .style(iced::widget::button::text)
+                    .on_press(CanvasMessage::RemoveLayer(*id).into())
+                    .padding(0.0)
+                    .into()
                 } else {
                     Space::with_width(Length::Shrink).into()
                 },
             ])
+            .spacing(5.0)
             .align_items(Alignment::Center),
         )
         .width(Length::Fill)
