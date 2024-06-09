@@ -3,6 +3,8 @@ use std::any::Any;
 use crate::canvas::canvas::Canvas;
 use crate::canvas::svg::SVG;
 use crate::widgets::{ModalStack, WaitPanel};
+use iced::widget::text_editor::Content;
+use iced::widget::Container;
 use iced::{Command, Element, Length, Renderer};
 use json::object::Object;
 use json::JsonValue;
@@ -236,7 +238,7 @@ impl Drawing {
         let document = self.canvas.get_svg().as_document();
         let db = globals.get_db().unwrap();
         let user_id = globals.get_user().unwrap().get_id();
-        let description = self.post_data.get_description().clone();
+        let description = self.post_data.get_description().text();
 
         let tags: Vec<String> = self
             .post_data
@@ -246,7 +248,7 @@ impl Drawing {
             .collect();
 
         self.post_data.set_post_tags(vec![]);
-        self.post_data.set_description("");
+        self.post_data.set_description(Content::new());
         self.post_data.set_tag_input("");
 
         let close_modal_command = self.update(
@@ -265,8 +267,7 @@ impl Drawing {
             wait_modal_command,
             Command::perform(
                 async move {
-                    services::drawing::create_post(user_id, &document, description, tags, &db)
-                        .await
+                    services::drawing::create_post(user_id, &document, description, tags, &db).await
                 },
                 |res| match res {
                     Ok(_) => {
@@ -465,7 +466,9 @@ impl Scene for Drawing {
         let modal_transform = |modal_type: ModalTypes| -> Element<Message, Theme, Renderer> {
             match modal_type {
                 ModalTypes::PostPrompt => services::drawing::post_prompt(&self.post_data),
-                ModalTypes::WaitScreen(message) => WaitPanel::new(message).into(),
+                ModalTypes::WaitScreen(message) => Container::new(WaitPanel::new(message))
+                    .style(iced::widget::container::bordered_box)
+                    .into(),
             }
         };
 

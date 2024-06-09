@@ -6,7 +6,7 @@ use iced::{
     alignment::Horizontal,
     widget::{
         scrollable::{Direction, Properties},
-        Button, Column, Container, Row, Scrollable, Space, TextInput,
+        Button, Column, Container, Row, Scrollable, Space, TextEditor, TextInput,
     },
     Alignment, Element, Length, Renderer,
 };
@@ -719,10 +719,9 @@ pub fn post_prompt<'a>(post_data: &'a PostData) -> Element<'a, Message, Theme, R
             Text::new("Create a new post"),
             Column::with_children(vec![
                 Text::new("Description:").into(),
-                TextInput::new("Write description here...", &*post_data.get_description())
-                    .on_input(|new_value| {
-                        DrawingMessage::UpdatePostData(UpdatePostData::Description(new_value))
-                            .into()
+                TextEditor::new(&post_data.get_description())
+                    .on_action(|action| {
+                        DrawingMessage::UpdatePostData(UpdatePostData::Description(action)).into()
                     })
                     .into(),
                 Text::new("Tags:").into(),

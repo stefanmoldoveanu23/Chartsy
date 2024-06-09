@@ -1,4 +1,5 @@
 use crate::utils::serde::{Deserialize, Serialize};
+use iced::widget::text_editor::{Action, Content};
 use mongodb::bson::{doc, Document};
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
@@ -117,10 +118,10 @@ impl Deserialize<Document> for Tag {
 }
 
 /// The data of a post.
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub struct PostData {
     /// The description of the post.
-    description: String,
+    description: Content,
 
     /// The list of tags the user has chosen for the post.
     post_tags: Vec<Tag>,
@@ -135,7 +136,7 @@ pub struct PostData {
 /// Possible updates to a new post data.
 #[derive(Clone)]
 pub enum UpdatePostData {
-    Description(String),
+    Description(Action),
     NewTag(String),
     SelectedTag(Tag),
     AllTags(Vec<Tag>),
@@ -147,7 +148,7 @@ impl PostData {
     /// Updates the new post data.
     pub fn update(&mut self, update: UpdatePostData) {
         match update {
-            UpdatePostData::Description(description) => self.description = description,
+            UpdatePostData::Description(action) => self.description.perform(action),
             UpdatePostData::NewTag(name) => {
                 let tag = Tag { name, uses: 0 }.reduced();
 
@@ -180,7 +181,7 @@ impl PostData {
         }
     }
 
-    pub fn get_description(&self) -> &String {
+    pub fn get_description(&self) -> &Content {
         &self.description
     }
 
@@ -200,7 +201,7 @@ impl PostData {
         self.all_tags.is_empty()
     }
 
-    pub fn set_description(&mut self, description: impl Into<String>) {
+    pub fn set_description(&mut self, description: impl Into<Content>) {
         self.description = description.into();
     }
 
