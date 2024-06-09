@@ -13,7 +13,7 @@ use std::any::Any;
 use std::fmt::{Debug, Formatter};
 
 /// An individual scene that handles its actions internally.
-pub trait Scene: Send + Sync {
+pub trait Scene: {
     type Message: SceneMessage;
     type Options: Debug + Send + Sync;
 

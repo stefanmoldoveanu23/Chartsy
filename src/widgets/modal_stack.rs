@@ -42,6 +42,11 @@ where
         }
     }
 
+    /// Clears all modals.
+    pub fn clear(&mut self) {
+        self.stack = vec![];
+    }
+
     /// Returns an element with the modals overlaid on top of each other.
     pub fn get_modal<'a, F>(
         &self,

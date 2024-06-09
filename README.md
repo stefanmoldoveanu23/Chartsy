@@ -1,5 +1,4 @@
 ## Plans
-- Stylize pages(other details maybe later)
 - Fix similarities trigger to take into consideration account deletion and reinstatement
 - Handle all cases of accessing deleted user data(comments)
 - App icon

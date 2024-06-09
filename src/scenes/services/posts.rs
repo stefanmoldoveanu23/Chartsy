@@ -3,7 +3,8 @@ use std::sync::Arc;
 use iced::{
     advanced::widget::Text,
     widget::{
-        tooltip::Position, Button, Column, Container, Row, Scrollable, Space, TextInput, Tooltip,
+        text_editor::Content, tooltip::Position, Button, Column, Container, Row, Scrollable, Space,
+        TextEditor, TextInput, Tooltip,
     },
     Alignment, Element, Length, Pixels, Renderer, Size,
 };
@@ -99,7 +100,9 @@ pub fn image_profile_link<'a>(
             Size::new(Length::Fixed(50.0), Length::Fixed(50.0)),
             Some(Pixels(5.0)),
         ))
-        .on_press(PostsMessage::OpenProfile(post.get_user().clone()).into())
+        .on_press(
+            PostsMessage::ToggleModal(ModalType::ShowingImage(post.get_user().get_id())).into(),
+        )
         .style(iced::widget::button::text),
         Text::new(format!("{}'s profile", post.get_user().get_user_tag())),
         Position::FollowCursor,
@@ -115,6 +118,7 @@ pub fn tag_profile_link<'a>(post: &'a Post) -> Element<'a, Message, Theme, Rende
                 .style(theme::text::gray),
         )
         .style(iced::widget::button::text)
+        .padding(0.0)
         .on_press(PostsMessage::OpenProfile(post.get_user().clone()).into()),
         Text::new(format!("{}'s profile", post.get_user().get_user_tag())),
         Position::FollowCursor,
@@ -260,7 +264,7 @@ fn comment_input<'a>(post: &'a Post, post_index: usize) -> Column<'a, Message, T
                 .into()
             })
             .into(),
-        Button::new("Add comment")
+        Button::new(Text::new(Icon::Submit.to_string()).font(ICON))
             .on_press(
                 CommentMessage::Add {
                     post: post_index,
@@ -268,6 +272,7 @@ fn comment_input<'a>(post: &'a Post, post_index: usize) -> Column<'a, Message, T
                 }
                 .into(),
             )
+            .style(iced::widget::button::text)
             .into(),
     ])
     .into()])
@@ -280,49 +285,58 @@ fn comment_with_children<'a>(
     index: usize,
 ) -> Element<'a, Message, Theme, Renderer> {
     Into::<Element<Message, Theme, Renderer>>::into(
-        Closeable::new(Column::with_children(vec![
-            Text::new(
-                post.get_comments()[line][index]
-                    .get_user()
-                    .get_username()
-                    .clone(),
-            )
-            .size(17.0)
-            .into(),
-            Text::new(post.get_comments()[line][index].get_content().clone()).into(),
-            Row::with_children(vec![
-                TextInput::new(
-                    "Write reply here...",
-                    &*post.get_comments()[line][index].get_reply_input(),
-                )
-                .on_input(move |value| {
-                    CommentMessage::UpdateInput {
+        Row::with_children(vec![
+            Button::new(Text::new(Icon::Down.to_string()).font(ICON))
+                .style(iced::widget::button::text)
+                .on_press(
+                    CommentMessage::Close {
                         post: post_index,
-                        position: Some((line, index)),
-                        input: value.clone(),
+                        position: (line, index),
                     }
-                    .into()
-                })
-                .into(),
-                Button::new("Add reply")
-                    .on_press(
-                        CommentMessage::Add {
-                            post: post_index,
-                            parent: Some((line, index)),
-                        }
-                        .into(),
-                    )
                     .into(),
+                )
+                .into(),
+            Column::with_children(vec![
+                Text::new(
+                    post.get_comments()[line][index]
+                        .get_user()
+                        .get_username()
+                        .clone(),
+                )
+                .size(17.0)
+                .into(),
+                Text::new(post.get_comments()[line][index].get_content().clone()).into(),
+                Row::with_children(vec![
+                    TextInput::new(
+                        "Write reply here...",
+                        &*post.get_comments()[line][index].get_reply_input(),
+                    )
+                    .on_input(move |value| {
+                        CommentMessage::UpdateInput {
+                            post: post_index,
+                            position: Some((line, index)),
+                            input: value.clone(),
+                        }
+                        .into()
+                    })
+                    .into(),
+                    Button::new(Text::new(Icon::Submit.to_string()).font(ICON))
+                        .style(iced::widget::button::text)
+                        .on_press(
+                            CommentMessage::Add {
+                                post: post_index,
+                                parent: Some((line, index)),
+                            }
+                            .into(),
+                        )
+                        .into(),
+                ])
+                .into(),
             ])
             .into(),
-        ]))
-        .on_close(
-            Into::<Message>::into(CommentMessage::Close {
-                post: post_index,
-                position: (line, index),
-            }),
-            20.0,
-        ),
+        ])
+        .spacing(5.0)
+        .align_items(Alignment::Center),
     )
 }
 
@@ -336,24 +350,31 @@ fn comment_without_children<'a>(
             .iter()
             .zip(0..post.get_comments()[line].len())
             .map(|(comment, index)| {
-                Button::new(Column::with_children(vec![
-                    Text::new(comment.get_user().get_username().clone())
-                        .size(17.0)
+                Row::with_children(vec![
+                    Button::new(Text::new(Icon::Right.to_string()).font(ICON))
+                        .style(iced::widget::button::text)
+                        .on_press(
+                            CommentMessage::Open {
+                                post: post_index,
+                                position: (line, index),
+                            }
+                            .into(),
+                        )
                         .into(),
-                    Text::new(comment.get_content().clone()).into(),
-                ]))
-                .style(iced::widget::button::text)
-                .on_press(
-                    CommentMessage::Open {
-                        post: post_index,
-                        position: (line, index),
-                    }
+                    Column::with_children(vec![
+                        Text::new(comment.get_user().get_username().clone())
+                            .size(17.0)
+                            .into(),
+                        Text::new(comment.get_content().clone()).into(),
+                    ])
                     .into(),
-                )
+                ])
+                .spacing(10.0)
+                .align_items(Alignment::Center)
                 .into()
-            })
-            .collect::<Vec<Element<Message, Theme, Renderer>>>(),
+            }),
     )
+    .spacing(10.0)
     .into()
 }
 
@@ -402,7 +423,7 @@ pub fn generate_comment_chain<'a>(
         });
     }
 
-    comment_chain.into()
+    comment_chain.spacing(10.0).into()
 }
 
 pub fn generate_show_post<'a>(
@@ -417,7 +438,7 @@ pub fn generate_show_post<'a>(
             post.get_id(),
             Size::new(Length::Shrink, Length::Shrink),
             Size::new(Length::Fixed(800.0), Length::Fixed(600.0)),
-            None
+            None,
         ))
         .width(Length::FillPortion(3))
         .height(Length::Fill)
@@ -426,25 +447,37 @@ pub fn generate_show_post<'a>(
             ModalType::ShowingImage(post.get_id()),
         )))
         .into(),
-        Closeable::new(Column::with_children(vec![
-            Text::new(post.get_user().get_username()).size(20.0).into(),
-            Text::new(post.get_description().clone()).into(),
-            Rating::new()
-                .on_rate(move |value| {
-                    PostsMessage::RatePost {
-                        post_index: post_index.clone(),
-                        rating: value,
-                    }
-                    .into()
-                })
-                .on_unrate(Into::<Message>::into(PostsMessage::RatePost {
-                    post_index,
-                    rating: 0,
-                }))
-                .value(*post.get_rating())
+        Closeable::new(
+            Column::with_children(vec![
+                Row::with_children(vec![
+                    image_profile_link(post, cache),
+                    Column::with_children(vec![
+                        tag_profile_link(post),
+                        Text::new(post.get_user().get_username()).size(20.0).into(),
+                        Text::new(post.get_description().clone()).into(),
+                    ])
+                    .spacing(5.0)
+                    .into(),
+                ])
                 .into(),
-            comment_chain,
-        ]))
+                Rating::new()
+                    .on_rate(move |value| {
+                        PostsMessage::RatePost {
+                            post_index: post_index.clone(),
+                            rating: value,
+                        }
+                        .into()
+                    })
+                    .on_unrate(Into::<Message>::into(PostsMessage::RatePost {
+                        post_index,
+                        rating: 0,
+                    }))
+                    .value(*post.get_rating())
+                    .into(),
+                comment_chain,
+            ])
+            .spacing(5.0),
+        )
         .width(Length::FillPortion(1))
         .height(Length::Fill)
         .horizontal_alignment(Alignment::Start)
@@ -464,14 +497,14 @@ pub fn generate_show_post<'a>(
 
 pub fn generate_show_report<'a>(
     post_index: usize,
-    report_input: String,
+    content: &'a Content,
 ) -> Element<'a, Message, Theme, Renderer> {
     Closeable::new(
         Card::new(
             Text::new("Report post").size(20.0),
             Column::with_children(vec![
-                TextInput::new("Give a summary of the issue...", &*report_input.clone())
-                    .on_input(|value| PostsMessage::UpdateReportInput(value.clone()).into())
+                TextEditor::new(content)
+                    .on_action(|action| PostsMessage::UpdateReportInput(action).into())
                     .into(),
                 Container::new(
                     Button::new("Submit").on_press(PostsMessage::SubmitReport(post_index).into()),
@@ -490,5 +523,6 @@ pub fn generate_show_report<'a>(
         ))),
         25.0,
     )
+    .style(theme::closeable::Closeable::Transparent)
     .into()
 }

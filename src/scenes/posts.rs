@@ -8,6 +8,7 @@ use crate::utils::icons::{Icon, ICON};
 use crate::utils::theme::{self, Theme};
 use crate::widgets::{Close, ComboBox, Grid, ModalStack, Tabs};
 use crate::{config, database};
+use iced::widget::text_editor::{Action, Content};
 use iced::widget::{Button, Column, Container, Row, Text, TextInput};
 use iced::{Alignment, Command, Element, Length, Renderer, Size};
 use image::{ExtendedColorType, ImageFormat};
@@ -68,7 +69,7 @@ pub enum PostsMessage {
     DeletePost(Uuid),
 
     /// Updates the post report input.
-    UpdateReportInput(String),
+    UpdateReportInput(Action),
 
     /// Submits a post report.
     SubmitReport(usize),
@@ -126,7 +127,6 @@ impl Into<Box<dyn SceneMessage + 'static>> for Box<PostsMessage> {
 }
 
 /// A scene that displays posts.
-#[derive(Clone)]
 pub struct Posts {
     /// The stack of modals.
     modals: ModalStack<ModalType>,
@@ -159,7 +159,7 @@ pub struct Posts {
     active_tab: PostTabs,
 
     /// The user input of a report.
-    report_input: String,
+    report_input: Content,
 
     /// User error.
     error: Option<Error>,
@@ -397,7 +397,7 @@ impl Posts {
         post_index: usize,
         _globals: &Globals,
     ) -> Element<Message, Theme, Renderer> {
-        services::posts::generate_show_report(post_index, self.report_input.clone())
+        services::posts::generate_show_report(post_index, &self.report_input)
     }
 
     /// Returns the required tab.
@@ -481,7 +481,7 @@ impl Posts {
                 }
             }
             ModalType::ShowingReport(_) => {
-                self.report_input = String::from("");
+                self.report_input = Content::new();
                 Command::none()
             }
             _ => Command::none(),
@@ -522,10 +522,9 @@ impl Posts {
     }
 
     /// Submits a report.
-    fn submit_report(&mut self, post_index: usize, globals: &mut Globals) -> Command<Message>
-    {
+    fn submit_report(&mut self, post_index: usize, globals: &mut Globals) -> Command<Message> {
         let post_index = post_index.clone();
-        let report_description = self.report_input.clone();
+        let report_description = self.report_input.text();
         let post = self.get_active_tab().get_post(post_index).unwrap();
         let image = match globals.get_cache().get(post.get_id()) {
             Some(image) => image,
@@ -578,7 +577,7 @@ impl Posts {
                                     <p>Post description: \"{}\"</p>\
                                     <p>Image:</p>\
                                     <div><img src=cid:post_image></div>",
-                                report_description,
+                                report_description.clone(),
                                 post.get_user().get_username().clone(),
                                 post.get_description().clone()
                             ))))
@@ -626,7 +625,7 @@ impl Scene for Posts {
             user_profile: globals.get_user().unwrap().clone(),
             user_tag_input: String::from(""),
             active_tab: PostTabs::Recommended,
-            report_input: String::from(""),
+            report_input: Content::new(),
             error: None,
         };
 
@@ -700,6 +699,8 @@ impl Scene for Posts {
                 self.error = None;
                 self.user_profile = user.clone();
                 self.active_tab = PostTabs::Profile;
+                
+                self.modals.clear();
 
                 Posts::gen_profile(globals.get_db().unwrap(), user.get_id())
             }
@@ -735,8 +736,8 @@ impl Scene for Posts {
                     },
                 )
             }
-            PostsMessage::UpdateReportInput(report_input) => {
-                self.report_input = report_input.clone();
+            PostsMessage::UpdateReportInput(action) => {
+                self.report_input.perform(action.clone());
 
                 Command::none()
             }
@@ -783,7 +784,9 @@ impl Scene for Posts {
                 Grid::new(self.tags.iter().map(|tag| {
                     Container::new(
                         Row::with_children(vec![
-                            Text::new(tag.get_name().clone()).into(),
+                            Text::new(tag.get_name().clone())
+                                .style(theme::text::dark)
+                                .into(),
                             Close::new(Into::<Message>::into(PostsMessage::RemoveTag(tag.clone())))
                                 .size(15.0)
                                 .into(),
