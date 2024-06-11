@@ -114,7 +114,7 @@ impl Comment {
 impl Default for Comment {
     fn default() -> Self {
         Comment {
-            id: Uuid::default(),
+            id: Uuid::from_bytes([0; 16]),
             user: User::default(),
             content: Default::default(),
             reply_to: None,
@@ -298,7 +298,7 @@ impl Post {
 impl Default for Post {
     fn default() -> Self {
         Post {
-            id: Uuid::default(),
+            id: Uuid::from_bytes([0; 16]),
             description: "".into(),
             tags: vec![],
             user: User::default(),

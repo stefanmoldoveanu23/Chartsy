@@ -300,7 +300,9 @@ impl Serialize<Document> for RegisterForm {
                 DateTime::from_millis(DateTime::now().timestamp_millis() + 5 * 60 * 1000)
             ),
             "profile_picture": false,
-            "expiration_date": null
+            "expiration_date": Bson::DateTime(
+                DateTime::from_millis(DateTime::now().timestamp_millis() + 30 * 24 * 60 * 60 * 1000)
+            )
         }
     }
 }

@@ -1,13 +1,8 @@
 ## Plans
-- Fix similarities trigger to take into consideration account deletion and reinstatement
-- Handle all cases of accessing deleted user data(comments)
 - App icon
 - As time constraints may allow
-    - restructure into services
     - take into consideration loss of connection
     - more tooling functionality
     - translate+scale drawing
     - add reference images(+ text notes)
-    - image rendering optimizations?
-    - consider dropbox data deletion upon automatic account deletion
     - TBA

@@ -77,7 +77,10 @@ pub async fn update_user_token(database: &Database, user_id: Uuid) -> Result<(),
                 "auth_token": token.clone(),
                 "token_expiration": Bson::DateTime(
                     DateTime::from_millis(DateTime::now().timestamp_millis() + 30 * 24 * 60 * 60 * 1000)
-                )
+                ),
+            },
+            "$unset": {
+                "expiration_date": null
             }
         },
         None
@@ -152,6 +155,9 @@ pub async fn validate_email(db: &Database, email: String, code: String) -> Resul
             doc! {
                 "$set": {
                     "validated": true
+                },
+                "$unset": {
+                    "expiration_date": null
                 }
             },
             None,
@@ -183,7 +189,9 @@ pub async fn reset_register_code(db: &Database, email: String, code: String) -> 
                     "code_expiration": Bson::DateTime(
                         DateTime::from_millis(DateTime::now().timestamp_millis() + 5 * 60 * 1000)
                     ),
-                    "expiration_date": null
+                    "expiration_date": Bson::DateTime(
+                        DateTime::from_millis(DateTime::now().timestamp_millis() + 30 * 24 * 60 * 60 * 1000)
+                    )
                 }
             },
             None,

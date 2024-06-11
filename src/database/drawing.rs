@@ -1,10 +1,10 @@
 use crate::canvas::tool;
 use crate::canvas::tool::Tool;
 use crate::database;
-use crate::utils::errors::{Error, DebugError};
 use crate::debug_message;
 use crate::scene::Globals;
 use crate::scenes::data::drawing::Tag;
+use crate::utils::errors::{DebugError, Error};
 use mongodb::bson::{doc, Bson, Document, Uuid, UuidRepresentation};
 use mongodb::Database;
 use std::sync::Arc;
@@ -35,7 +35,7 @@ pub async fn get_drawing(
                                     bin.to_uuid_with_representation(UuidRepresentation::Standard)
                                         .unwrap()
                                 } else {
-                                    Uuid::default()
+                                    Uuid::from_bytes([0; 16])
                                 },
                                 document.get_str("name").unwrap().to_string(),
                             )

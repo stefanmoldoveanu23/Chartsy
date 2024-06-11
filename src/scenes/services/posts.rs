@@ -95,7 +95,11 @@ pub fn image_profile_link<'a>(
 ) -> Element<'a, Message, Theme, Renderer> {
     Tooltip::new(
         Button::new(cache.get_element(
-            post.get_user().get_id(),
+            if post.get_user().has_profile_picture() {
+                post.get_user().get_id()
+            } else {
+                Uuid::from_bytes([0; 16])
+            },
             Size::new(Length::Fixed(50.0), Length::Fixed(50.0)),
             Size::new(Length::Fixed(50.0), Length::Fixed(50.0)),
             Some(Pixels(5.0)),

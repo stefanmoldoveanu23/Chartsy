@@ -198,7 +198,7 @@ impl Posts {
 
         let profile_pictures = globals.get_cache().insert_if_not(
             profile_picure_ids,
-            |option| option.unwrap_or_default(),
+            |option| option.unwrap_or(Uuid::from_bytes([0; 16])),
             services::posts::load_profile_picture,
         );
 
@@ -699,7 +699,7 @@ impl Scene for Posts {
                 self.error = None;
                 self.user_profile = user.clone();
                 self.active_tab = PostTabs::Profile;
-                
+
                 self.modals.clear();
 
                 Posts::gen_profile(globals.get_db().unwrap(), user.get_id())
@@ -838,7 +838,11 @@ impl Scene for Posts {
             Column::with_children(vec![
                 user_tag_input,
                 Button::new(globals.get_cache().get_element(
-                    self.user_profile.get_id(),
+                    if self.user_profile.has_profile_picture() {
+                        self.user_profile.get_id()
+                    } else {
+                        Uuid::from_bytes([0; 16])
+                    },
                     Size::new(Length::Shrink, Length::Fill),
                     Size::new(Length::Fixed(400.0), Length::Fixed(300.0)),
                     None,

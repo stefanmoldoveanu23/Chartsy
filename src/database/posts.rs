@@ -23,6 +23,15 @@ pub async fn get_comments(db: &Database, filter: Document) -> Result<Vec<Comment
                         "from": "users",
                         "localField": "user_id",
                         "foreignField": "id",
+                        "pipeline": vec![
+                            doc! {
+                                "$match": {
+                                    "$expr": {
+                                        "$eq": [ { "$type": "$expiration_date" }, "missing" ]
+                                    }
+                                }
+                            }
+                        ],
                         "as": "user"
                     }
                 },
@@ -89,6 +98,15 @@ pub async fn get_recommendations(db: &Database, user_id: Uuid) -> Result<Vec<Pos
                         "from": "users",
                         "localField": "_id",
                         "foreignField": "id",
+                        "pipeline": vec![
+                            doc! {
+                                "$match": {
+                                    "$expr": {
+                                        "$eq": [ { "$type": "$expiration_date" }, "missing" ]
+                                    }
+                                }
+                            }
+                        ],
                         "as": "user"
                     }
                 },
@@ -189,6 +207,15 @@ pub async fn get_filtered(
                         "from": "users",
                         "localField": "post.user_id",
                         "foreignField": "id",
+                        "pipeline": vec![
+                            doc! {
+                                "$match": {
+                                    "$expr": {
+                                        "$eq": [ { "$type": "$expiration_date" }, "missing" ]
+                                    }
+                                }
+                            }
+                        ],
                         "as": "user"
                     }
                 },
@@ -252,6 +279,15 @@ pub async fn get_user_posts(db: &Database, user_id: Uuid) -> Result<Vec<Post>, E
                         "from": "users",
                         "localField": "post.user_id",
                         "foreignField": "id",
+                        "pipeline": vec![
+                            doc! {
+                                "$match": {
+                                    "$expr": {
+                                        "$eq": [ { "$type": "$expiration_date" }, "missing" ]
+                                    }
+                                }
+                            }
+                        ],
                         "as": "user"
                     }
                 },
@@ -319,6 +355,15 @@ pub async fn get_random_posts(
                         "from": "users",
                         "localField": "user_id",
                         "foreignField": "id",
+                        "pipeline": vec![
+                            doc! {
+                                "$match": {
+                                    "$expr": {
+                                        "$eq": [ { "$type": "$expiration_date" }, "missing" ]
+                                    }
+                                }
+                            }
+                        ],
                         "as": "user"
                     }
                 },
@@ -416,7 +461,8 @@ pub async fn get_user_by_tag(db: &Database, user_tag: String) -> Result<User, Er
         .collection::<Document>("users")
         .find_one(
             doc! {
-                "user_tag": user_tag.clone()
+                "user_tag": user_tag.clone(),
+                "expiration_date": { "$exists": false }
             },
             None,
         )

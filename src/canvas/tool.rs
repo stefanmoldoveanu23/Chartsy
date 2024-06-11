@@ -37,7 +37,7 @@ pub trait Tool:
 
 /// Returns the list of [tools](Tool) stored in the given [Document].
 pub fn get_deserialized(document: &Document) -> Option<(Arc<dyn Tool>, Uuid)> {
-    let mut layer :Uuid= Uuid::default();
+    let mut layer :Uuid= Uuid::from_bytes([0; 16]);
     if let Some(Bson::Binary(bin)) = document.get("layer") {
         layer = bin.to_uuid_with_representation(UuidRepresentation::Standard).unwrap();
     }
@@ -63,7 +63,7 @@ pub fn get_deserialized(document: &Document) -> Option<(Arc<dyn Tool>, Uuid)> {
 
 /// Returns the list of [tools](Tool) stored in the given [json](Object).
 pub fn get_json(value: &Object) -> Option<(Arc<dyn Tool>, Uuid)> {
-    let mut layer :Uuid= Uuid::default();
+    let mut layer :Uuid= Uuid::from_bytes([0; 16]);
     if let Some(JsonValue::String(layer_count)) = value.get("layer") {
         layer = Uuid::parse_str(&*layer_count).unwrap();
     }
