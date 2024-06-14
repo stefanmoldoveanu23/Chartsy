@@ -468,7 +468,7 @@ impl Posts {
 
         match modal {
             ModalType::ShowingPost(post) => {
-                if !self.recommended.has_loaded_comments(*post) {
+                if !self.get_active_tab().has_loaded_comments(*post) {
                     self.update_comment(
                         &CommentMessage::Load {
                             post: *post,

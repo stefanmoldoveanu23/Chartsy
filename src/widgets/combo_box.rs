@@ -477,41 +477,23 @@ fn filter_tags<Tag>(tags: Vec<Tag>, user_input: &str, count: usize) -> Vec<Tag>
 where
     Tag: Clone + Display,
 {
-    let mut scores: Vec<f64> = vec![];
-    let mut filtered: Vec<usize> = vec![];
+    let mut filtered: Vec<(usize, f64)> = vec![];
     let user_input = user_input.to_lowercase();
-    let user_words = user_input.split(" ");
 
     for (tag, i) in tags.iter().zip(0..tags.len()) {
-        let mut i = i;
         let tag_name = tag.to_string().to_lowercase();
-        let tag_words = tag_name.split(" ");
-        let mut total_score: f64 = 0.0;
 
-        for (user_word, tag_word) in user_words.clone().zip(tag_words) {
-            let mut matcher = SequenceMatcher::new(user_word, tag_word);
-            let score = (matcher.ratio() * 100.0) as f64;
-            total_score += score;
-        }
+        let mut matcher = SequenceMatcher::new(&user_input, &tag_name);
+        let score = matcher.ratio() as f64;
 
-        if total_score > 30.0 {
-            if filtered.len() == count && *(scores.last().unwrap()) > total_score {
-                continue;
-            }
-
-            for j in 0..filtered.len() {
-                if scores[j] < total_score {
-                    (i, filtered[j]) = (filtered[j], i);
-                    (scores[j], total_score) = (total_score, scores[j]);
-                }
-            }
-
+        if score > 0.35 {
             if filtered.len() < count {
-                filtered.push(i);
-                scores.push(total_score);
+                filtered.push((i, score));
             }
         }
     }
 
-    filtered.iter().map(|pos| tags[*pos].clone()).collect()
+    filtered.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+
+    filtered.iter().map(|(pos, _)| tags[*pos].clone()).collect()
 }
