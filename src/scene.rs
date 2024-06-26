@@ -13,16 +13,13 @@ use std::any::Any;
 use std::fmt::{Debug, Formatter};
 
 /// An individual scene that handles its actions internally.
-pub trait Scene: {
+pub trait Scene {
     type Message: SceneMessage;
     type Options: Debug + Send + Sync;
 
     /// Returns a [Scene] by initializing it with its [options](SceneOptions) and giving it access to
     /// the [global](Globals) values.
-    fn new(
-        options: Option<Self::Options>,
-        globals: &mut Globals,
-    ) -> (Self, Command<impl Into<Message>>)
+    fn new(options: Option<Self::Options>, globals: &mut Globals) -> (Self, Command<Message>)
     where
         Self: Sized;
 

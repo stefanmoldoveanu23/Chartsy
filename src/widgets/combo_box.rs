@@ -494,6 +494,5 @@ where
     }
 
     filtered.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-
     filtered.iter().map(|(pos, _)| tags[*pos].clone()).collect()
 }

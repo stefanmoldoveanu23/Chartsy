@@ -148,7 +148,7 @@ impl Style {
                     .into(),
             );
             if visibility_width {
-                column.push(Slider::new(1.0..=5.0, width, StyleUpdate::StrokeWidth).into());
+                column.push(Slider::new(1.0..=30.0, width, StyleUpdate::StrokeWidth).into());
             }
 
             column.push(

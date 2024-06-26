@@ -135,7 +135,7 @@ impl SceneManager {
             Scenes::Auth(_) => match self.auth {
                 None => Err(debug_message!("Auth scene missing.").into()),
                 Some(ref mut auth) => auth
-                    .unwrap_message(message.deref())
+                    .unwrap_message(Deref::deref(&message))
                     .map(|message| auth.update(globals, message)),
             },
             Scenes::Posts(_) => match self.posts {
