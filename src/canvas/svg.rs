@@ -1,6 +1,6 @@
+use mongodb::bson::Uuid;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
-use mongodb::bson::Uuid;
 use svg::node::element::{Group, Rectangle};
 use svg::Document;
 
@@ -15,6 +15,9 @@ pub struct SVG {
 
     /// The total amount of tools.
     tool_count: usize,
+
+    /// The order of the layers.
+    layer_order: Vec<Uuid>,
 }
 
 impl SVG {
@@ -24,16 +27,17 @@ impl SVG {
             tools: HashMap::from_iter(layers.iter().map(|id| (*id, vec![]))),
             group_order: BTreeMap::new(),
             tool_count: 0,
+            layer_order: layers.clone(),
         }
     }
-    
+
     pub fn add_layer(&mut self, layer_id: Uuid) {
         self.tools.insert(layer_id, vec![]);
+        self.layer_order.push(layer_id);
     }
 
     /// Add a new tool serialized as a [Group] to the given layer.
     pub fn add_tool(&mut self, layer: &Uuid, data: Group) {
-
         let last_order = self.tools[layer].last();
         if let Some(last_order) = last_order {
             self.group_order.remove(&last_order.1);
@@ -41,7 +45,10 @@ impl SVG {
 
         self.group_order.insert(self.tool_count, *layer);
 
-        self.tools.get_mut(layer).unwrap().push((data, self.tool_count));
+        self.tools
+            .get_mut(layer)
+            .unwrap()
+            .push((data, self.tool_count));
         self.tool_count += 1;
     }
 
@@ -73,6 +80,14 @@ impl SVG {
         self.tool_count -= 1;
     }
 
+    /// Removes the given layer.
+    pub fn remove_layer(&mut self, layer_id: &Uuid) {
+        self.group_order.retain(|_, layer| *layer != *layer_id);
+        self.tool_count -= self.tools.get(layer_id).unwrap().len();
+        self.tools.remove(layer_id);
+        self.layer_order.retain(|id| *id != *layer_id);
+    }
+
     /// Save the svg locally at the given path;
     pub fn save<T>(self, path: T)
     where
@@ -95,11 +110,11 @@ impl SVG {
 
         let mut tools = Group::new().set("style", "isolation:isolate");
 
-        for layer in &self.tools {
+        for layer in &self.layer_order {
             let mut group = Group::new();
 
-            for (tool, _) in layer.1 {
-                group = group.add(tool.clone());
+            for tool in self.tools.get(layer).unwrap() {
+                group = group.add(tool.0.clone());
             }
             tools = tools.add(group);
         }

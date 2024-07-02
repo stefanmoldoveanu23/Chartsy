@@ -16,6 +16,8 @@ mod scenes;
 mod utils;
 mod widgets;
 
+use iced::window::icon::from_rgba;
+use image::load_from_memory_with_format;
 use lettre::transport::smtp::response::Response;
 use scene::{Globals, Message};
 use scenes::scenes::SceneManager;
@@ -36,6 +38,8 @@ pub const INCONSOLATA: Font = Font {
     stretch: Stretch::Normal,
     style: Style::Normal,
 };
+
+pub const APP_ICON: &[u8] = include_bytes!("images/icon.png");
 
 pub fn main() -> iced::Result {
     Chartsy::run(Settings {
@@ -65,6 +69,10 @@ impl Application for Chartsy {
         let mut globals = Globals::default();
         let scene_loader = SceneManager::new(&mut globals);
 
+        let icon = load_from_memory_with_format(APP_ICON, image::ImageFormat::Png).unwrap();
+        let width = icon.width();
+        let height = icon.height();
+
         (
             Chartsy {
                 scene_loader,
@@ -72,6 +80,10 @@ impl Application for Chartsy {
             },
             Command::batch(vec![
                 window::maximize(window::Id::MAIN, true),
+                window::change_icon(
+                    window::Id::MAIN,
+                    from_rgba(icon.into_bytes(), width, height).unwrap(),
+                ),
                 iced::font::load(utils::icons::ICON_BYTES).map(|_| Message::None),
                 iced::font::load(INCONSOLATA_BYTES).map(|_| Message::None),
                 Command::perform(

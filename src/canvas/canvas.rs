@@ -3,12 +3,12 @@ use super::tools::line::LinePending;
 use crate::canvas::layer::{CanvasMessage, Layer, LayerVessel};
 use crate::canvas::style::Style;
 use crate::canvas::svg::SVG;
+use crate::database;
 use crate::scene::{Globals, Message};
 use crate::scenes::services;
 use crate::utils::errors::Error;
 use crate::utils::serde::Serialize;
 use crate::utils::theme::Theme;
-use crate::database;
 use iced::advanced::layout::{Limits, Node};
 use iced::advanced::renderer::Quad;
 use iced::advanced::widget::{tree, Tree};
@@ -285,7 +285,12 @@ impl Canvas {
             if let Some(db) = db {
                 Command::batch(vec![
                     Command::perform(
-                        services::drawing::save_preview_online(canvas_id, user_id, document.clone(), cache),
+                        services::drawing::save_preview_online(
+                            canvas_id,
+                            user_id,
+                            document.clone(),
+                            cache,
+                        ),
                         |result| match result {
                             Ok(_) => Message::None,
                             Err(err) => Message::Error(err),
@@ -351,6 +356,8 @@ impl Canvas {
         tools: Vec<(Arc<dyn Tool>, Uuid)>,
         json_tools: Option<Vec<JsonValue>>,
     ) {
+        println!("{}", layers[0].1);
+
         self.tools = Box::new(vec![]);
         self.layers = Box::new(HashMap::from_iter(
             layers
